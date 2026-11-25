@@ -19,7 +19,7 @@ import { ConversationMessageIndex, type IndexedUserMessage } from './conversatio
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { BotArtifactLibrary, type ArtifactAvailability } from './bot-artifacts';
-import { BotMemoryPanel, type MemoryAvailability } from './bot-memory';
+import { BotMemoryPanel, type MemoryAvailability, type MemoryDirectoryScope } from './bot-memory';
 import { openRunDraft } from './workflow-draft';
 import { requestAction } from './action-dialog';
 import { fileSelectionOptions } from './image-cropper';
@@ -113,7 +113,7 @@ function initialize(): void {
   });
   mountAggregateToolbar();
 
-  interface State { conversationUi?: KanbanConversationUi; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: ConversationAccess; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string; botArtifacts?: ArtifactAvailability; botMemory?: MemoryAvailability; artifactRemovalRevision?: number; workflowDrafts?: boolean; botArtifactScope?: { instance: boolean; label: string } }
+  interface State { conversationUi?: KanbanConversationUi; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: ConversationAccess; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string; botArtifacts?: ArtifactAvailability; botMemory?: MemoryAvailability; botMemoryDirectories?: MemoryDirectoryScope; botCredentials?: boolean; artifactRemovalRevision?: number; workflowDrafts?: boolean; botArtifactScope?: { instance: boolean; label: string } }
   interface FieldView {
     field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
@@ -305,6 +305,7 @@ function initialize(): void {
     configurations: configurationPanel,
     artifacts: { available: () => !!state?.botArtifacts && !hostHistory() && !embeddedConversation, open: () => library.open() },
     memory: { available: () => !!state?.botMemory && state.botMemory !== 'unsupported' && !embeddedConversation, open: () => memoryPanel.open() },
+    credentials: { available: () => !!state?.botCredentials && !hostHistory() && !embeddedConversation, open: () => post({ type: 'bot-credentials-manage' }) },
     skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
     tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
       changed: policies => post({ type: 'tool-policy', entrypointId: entrypoint.value, policies }) }),
@@ -1259,8 +1260,10 @@ function initialize(): void {
       view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false, message.references);
     }
     if (!hostHistory() && message.pendingInput && view.prompt?.request.requestId !== message.pendingInput.requestId) {
-      view.prompt?.root.remove(); view.prompt = new InputPrompt(message.pendingInput, {
-        submit: (values) => post({ type: 'resume', messageId: message.id, requestId: message.pendingInput!.requestId, values }),
+      const request = message.pendingInput;
+      view.prompt?.root.remove(); view.prompt = new InputPrompt(request, {
+        submit: (values) => post({ type: 'resume', messageId: message.id, requestId: request.requestId, values }),
+        credential: state?.botCredentials && !embeddedConversation ? () => post({ type: 'bot-credential-input', messageId: message.id, requestId: request.requestId }) : undefined,
         stop: () => post({ type: 'stop' }),
         files: (name) => post({ type: 'attach', messageId: message.id, requestId: message.pendingInput!.requestId, paramName: name, ...fileSelectionOptions(message.pendingInput!.params.find(field => field.name === name)) }),
       }); view.promptRoot.append(view.prompt.root);
@@ -1314,7 +1317,8 @@ function initialize(): void {
     const artifactScope = next.botArtifactScope;
     const botIdentity = artifactScope?.instance ? t('Bot instance: {0}', artifactScope.label) : t('Original Bot: {0}', artifactScope?.label ?? next.project.name);
     library.configure(embeddedConversation ? undefined : next.botArtifacts, botIdentity, next.artifactRemovalRevision);
-    memoryPanel.configure(embeddedConversation ? undefined : next.botMemory, botIdentity);
+    memoryPanel.configure(embeddedConversation ? undefined : next.botMemory, next.project.assistant ? next.project.name : botIdentity,
+      embeddedConversation ? undefined : next.botMemoryDirectories);
     if (openArtifacts && next.project.projectType === 'bot') { openArtifacts = false; library.open(); }
     if (openMemory && next.project.projectType === 'bot') { openMemory = false; memoryPanel.open(); }
     for (const [key, request] of stopRequests) {
@@ -1995,6 +1999,11 @@ function initialize(): void {
     else if (message.type === 'exported' && message.sessionId === state?.activeId) {
       const button = messages.get(message.messageId)?.root.querySelector<HTMLButtonElement>('.export-message'); if (button) { button.disabled = false; button.innerHTML = icon('export'); }
     } else if (message.type === 'error' && (!message.sessionId || message.sessionId === state?.activeId)) {
+      if (message.requestType === 'bot-credential-input') {
+        const prompt = messages.get(message.messageId)?.prompt;
+        if (prompt && prompt.request.requestId === message.requestId) prompt.credentialFailed(message.message);
+        return;
+      }
       if ((['select-paths', 'resolve-paths', 'import-drop'].includes(message.requestType) || message.requestType === 'upload' && message.requestId && !message.messageId && !message.paramName) && !pendingDrops.delete(message.requestId)) return;
       if (message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }
       if (message.requestType === 'resume' && messages.get(message.messageId)?.prompt?.request.requestId !== message.requestId) { return; }

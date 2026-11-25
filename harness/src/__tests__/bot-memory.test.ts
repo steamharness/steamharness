@@ -265,6 +265,44 @@ test("separate Bot conversations retrieve the same project memory while a disabl
   assert.match(JSON.stringify(await get.execute("separate-task", { category: "facts", key: "two" })), /two/);
 });
 
+test("directory-aware memory tools route every operation and skip ambiguous background recall", async t => {
+  const primary = createMemoryRuntimePersistence(), secondary = createMemoryRuntimePersistence();
+  t.after(async () => { await primary.close(); await secondary.close(); });
+  const a = path.join(os.tmpdir(), "memory-a"), b = path.join(os.tmpdir(), "memory-b");
+  const run = context(primary);
+  const scope = { projectId: run.projectId, entryId: run.entryId };
+  const address = { category: "facts", key: "storage" };
+  const read = { action: "get", ...address } as const;
+  await primary.botMemory!(scope).execute({ action: "save", ...address, content: "AlphaSQLite" });
+  const tools = () => createBotMemoryTools({ context: run, defaultEnabled: true, readOnly: false, input });
+  const legacy = tools().find(tool => tool.name === "memory_save")!;
+  assert.doesNotMatch(JSON.stringify(legacy.parameters), /projectPath/);
+  await assert.rejects(legacy.execute("legacy-explicit", { ...address, projectPath: b, content: "No fallback" }), /authorized project directory/);
+
+  primary.botMemoryDirectories = { kind: "workspace-roots", primary: a, roots: [a, b], async withStore(bot, directory, use) {
+    assert.deepEqual(bot, scope);
+    if (directory !== a && directory !== b) throw new Error("Directory not authorized");
+    return use((directory === a ? primary : secondary).botMemory!(bot));
+  } };
+  const offered = tools();
+  assert.ok(offered.every(tool => JSON.stringify(tool.parameters).includes("projectPath")));
+  const save = offered.find(tool => tool.name === "memory_save")!, get = offered.find(tool => tool.name === "memory_get")!;
+  await save.execute("linked-save", { ...address, content: "BetaSQLite", projectPath: b });
+  assert.match(JSON.stringify(await get.execute("linked-get", { projectPath: b, ...address })), /BetaSQLite/);
+  assert.match(JSON.stringify(await get.execute("default-get", address)), /AlphaSQLite/);
+  await assert.rejects(save.execute("invalid-save", { ...address, key: "blocked", content: "No fallback", projectPath: os.tmpdir() }), /not authorized/);
+  assert.deepEqual(await primary.botMemory!(scope).execute({ ...read, key: "blocked" }), { memory: null });
+  assert.equal(((await primary.botMemory!(scope).execute(read)).memory as BotMemoryEntry).content, "AlphaSQLite");
+
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: [{ name: "memory_search", enabled: true, autoApprove: true }], projectName: "bot", runId: "scoped-lookup" });
+  const recall = createBotMemoryRecall(run, true);
+  assert.equal(await recall("AlphaSQLite"), undefined);
+  primary.botMemoryDirectories = { ...primary.botMemoryDirectories, kind: "folder-context", roots: [a] };
+  assert.equal(await recall("AlphaSQLite"), undefined);
+  primary.botMemoryDirectories = { ...primary.botMemoryDirectories, kind: "workspace-roots" };
+  assert.match(await recall("AlphaSQLite") ?? "", /AlphaSQLite/);
+});
+
 test("a Bot can save memory and a new conversation can retrieve, update and delete it through model tool calls", { timeout: 15_000 }, async t => {
   const ai = await import("@earendil-works/pi-ai");
   const faux = ai.fauxProvider({ models: [{ id: "memory-tools", contextWindow: 100_000, maxTokens: 1_000 }] });

@@ -8,6 +8,7 @@ import { i18n } from '@steamharness/i18n';
 import { createInterface } from 'node:readline';
 import { createWebRuntime } from './web/runtime';
 import { parseHostConfiguration, parseHostAuthentication, parseHostResourceProjects } from './web/host-config';
+import { createBotCredentialHost } from './web/bot-credential-host';
 import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-project';
 import { parseUserSettings } from 'steamharness';
 import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from './online';
@@ -70,16 +71,18 @@ export async function main(argv: string[]): Promise<number> {
   }
   const initialPlatform = await resolveOnlineConnections(options.online);
   const publishWebAppConfigurations = Boolean(input && host?.platform === true);
-  const app = await startWebServer({ ...options, initialPlatform, host, onWebAppConfigurationChanged: publishWebAppConfigurations ? (entryId, configuration) => {
+  const credentials = input && host?.localBotCredentials && process.env.STEAMHARNESS_WEB_HOST === 'studio'
+    ? createBotCredentialHost(message => console.log(JSON.stringify(message))) : undefined;
+  const app = await startWebServer({ ...options, initialPlatform, host, botCredentialHost: credentials?.open, onWebAppConfigurationChanged: publishWebAppConfigurations ? (entryId, configuration) => {
     console.log(JSON.stringify({ type: 'web-app-configuration', entryId, configuration }));
   } : undefined, onWebAppLogin: publishWebAppConfigurations ? (entryId, configuration) => {
     console.log(JSON.stringify({ type: 'web-app-login', entryId, configuration }));
   } : undefined }).catch(error => { input?.close(); throw error; });
-  const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
+  const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); credentials?.close(); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
   const hostConversationProtocolVersion = input && host?.surface === 'editor' && host.folderBot?.background !== false ? 1 : undefined;
   const workflowScheduleProtocolVersion = input && host?.workflowScheduleKey && process.env.STEAMHARNESS_WEB_HOST === 'studio' ? 1 : undefined;
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, studioPreviewProtocolVersion: host ? 1 : undefined, hostConversationProtocolVersion, workflowScheduleProtocolVersion, folderBotProtocolVersion: host?.folderBot ? 1 : undefined, folderBotProfileVersion: host?.folderBot?.profileRecord ? 1 : undefined, botArtifactProtocolVersion: host?.localBotArtifacts ? 1 : undefined, botMemoryProtocolVersion: host?.localBotArtifacts ? 1 : undefined, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, studioPreviewProtocolVersion: host ? 1 : undefined, hostConversationProtocolVersion, workflowScheduleProtocolVersion, folderBotProtocolVersion: host?.folderBot ? 1 : undefined, folderBotProfileVersion: host?.folderBot?.profileRecord ? 1 : undefined, botArtifactProtocolVersion: host?.localBotArtifacts ? 1 : undefined, botMemoryProtocolVersion: host?.localBotArtifacts ? 1 : undefined, botCredentialProtocolVersion: credentials ? 1 : undefined, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {
@@ -96,6 +99,7 @@ export async function main(argv: string[]): Promise<number> {
           else if (message.type === 'web-apps') { await app.setHostWebApps(parseWebAppBindings(message.webApps)); }
           else if (message.type === 'resource-projects') { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); }
           else if (message.type === 'user-settings') { await app.setHostUserSettings(parseUserSettings(message.userSettings)); }
+          else if (message.type === 'bot-credential-result' && credentials) { credentials.reply(message); }
           else if (message.type === 'trace-model-request' && host?.surface === 'editor') {
             const { requestId, entryId, sessionId, messageId, executionId } = message;
             if ([requestId, entryId, sessionId, messageId, executionId].every(id => typeof id === 'string' && id.length > 0 && id.length <= 256)) {

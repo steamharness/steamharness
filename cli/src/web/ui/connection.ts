@@ -280,6 +280,7 @@ export class BrowserConnection {
       const body = { ...message, ...(this.applicationId ? { applicationId: this.applicationId } : {}), clientId: this.clientId };
       // Navigation is independent of the event stream and must not wait on its handshake.
       const timeout = ['ready', 'navigate'].includes(message.type) ? 10_000
+        : ['bot-credential-input', 'bot-credentials-manage'].includes(message.type) ? 310_000
         : ['project-server-check', 'project-reload'].includes(message.type) ? 180_000
         : ['kanban-bridge', 'resource-bridge'].includes(message.type) && message.call?.operation?.startsWith('files.') ? 125_000
         : message.type === 'kanban-bridge' && ['entries.runEntrypoint', 'conversations.viewMessage'].includes(message.call?.operation) ? AGENT_COMMAND_REQUEST_TIMEOUT_MS

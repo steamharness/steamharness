@@ -177,8 +177,12 @@ try {
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
-    let memoryManagement;
-    try { memoryManagement = (await import(resolve('steamharness/runtime-storage', coreUrl))).BOT_MEMORY_MANAGEMENT_VERSION; }
+    let memoryManagement, memoryDirectories;
+    try {
+      const storage = await import(resolve('steamharness/runtime-storage', coreUrl));
+      memoryManagement = storage.BOT_MEMORY_MANAGEMENT_VERSION;
+      memoryDirectories = storage.BOT_MEMORY_DIRECTORY_VERSION;
+    }
     catch { /* An older SDK may not export runtime storage. */ }
     for (const folderPath of request.paths) {
       try {
@@ -193,7 +197,7 @@ try {
           entryId: registration.entryId, entryRoot: path.resolve(folderPath, registration.root),
           aggregateName: resolveProjectName(pkg.name, projectInfo, language),
           entries: manifest.entries, defaultEntry: manifest.defaultEntry,
-          runtime: { harnessVersion: coreManifest.version, harnessPath, botMemoryManagementVersion: memoryManagement, folderBotProfileVersion: core.LOCAL_BOT_PROFILE_PROTOCOL_VERSION },
+          runtime: { harnessVersion: coreManifest.version, harnessPath, botMemoryManagementVersion: memoryManagement, botMemoryDirectoryVersion: memoryDirectories, folderBotProfileVersion: core.LOCAL_BOT_PROFILE_PROTOCOL_VERSION, botCredentialInputVersion: core.BOT_CREDENTIAL_INPUT_VERSION },
           folderPath,
           name: resolveProjectName(registration.name, readProjectInfo(registration), language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),
@@ -221,9 +225,8 @@ try {
     }
     await send('result', { projects, errors });
   } else if (request.project?.folderPath) {
-    const projectKey = createHash('sha256').update(request.project.assistant ? `assistant:${request.project.id}:${request.project.assistant.workdir}` : request.project.folderPath).digest('hex').slice(0, 24);
-    const { projectDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
-    const dataDir = request.project.assistant ? path.join(request.storageDir, projectKey)
+    const { assistantDataDirectory, botMemoryDirectoryScope, createWebBotMemoryDirectories, projectDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
+    const dataDir = request.project.assistant ? assistantDataDirectory(request.storageDir, request.project.id, request.project.assistant.workdir)
       : await projectDataDirectory(request.storageDir, request.project.folderPath, request.project.id, request.project.entryId);
     if (request.project.assistant) {
       const assistant = request.project.assistant;
@@ -240,9 +243,16 @@ try {
     }
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
       localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
-    const { createLocalRuntimePersistence } = await import(resolve('steamharness/runtime-storage', coreUrl));
-    runtimePersistence = createLocalRuntimePersistence({ directory: path.join(dataDir, 'runtime'),
+    const { createLocalRuntimePersistence, BOT_MEMORY_DIRECTORY_VERSION } = await import(resolve('steamharness/runtime-storage', coreUrl));
+    const runtimeDirectory = path.join(dataDir, 'runtime');
+    runtimePersistence = createLocalRuntimePersistence({ directory: runtimeDirectory,
       allowBotArtifactPublish: request.method === 'run' && request.runtimeHost?.kind === 'studio' && request.allowBotArtifactPublish === true && !request.folderBot?.background });
+    if (request.method === 'run' && request.runtimeHost?.kind === 'studio' && BOT_MEMORY_DIRECTORY_VERSION === 1) {
+      const scope = botMemoryDirectoryScope(request.project, request.folderBot);
+      if (scope) runtimePersistence.botMemoryDirectories = createWebBotMemoryDirectories(scope, {
+        storageDir: request.storageDir, runtimeDirectory, projectId: request.project.id, persistence: runtimePersistence, createPersistence: createLocalRuntimePersistence,
+      });
+    }
     if (runtimePersistence && request.method === 'run' && request.resumeAgent) {
       const deadline = Date.now() + 35_000;
       const acquire = async operation => {
@@ -380,6 +390,12 @@ try {
           },
           requestInput: () => undefined,
           waitForInput,
+          ...(request.allowBotCredentialInput === true && request.runtimeHost?.kind === 'studio' && !request.folderBot?.background && !request.readOnly && core.BOT_CREDENTIAL_INPUT_VERSION === 1
+            ? { waitForCredential: async (input, signal) => {
+              const receipt = await waitForInput(input, signal);
+              if (receipt.requestId !== input.requestId || !core.isBotCredentialStatus(receipt.values?.status)) throw new Error('Invalid Bot credential receipt.');
+              return receipt.values.status;
+            } } : {}),
         },
         abortSignal: controller.signal,
         onRuntimeEvent: (event) => send('event', event),

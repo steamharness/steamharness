@@ -18,6 +18,7 @@ export interface WebHostConfiguration {
   /** Native local Studio only. Configured through the private host pipe. */
   localBotArtifacts?: true;
   localBotArtifactLabel?: string;
+  localBotCredentials?: true;
   workflowScheduleKey?: string;
 }
 
@@ -102,6 +103,7 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
     ...(configuration.localBotArtifacts === true && !folderBot?.background ? { localBotArtifacts: true as const,
       localBotArtifactLabel: typeof configuration.localBotArtifactLabel === 'string' ? configuration.localBotArtifactLabel.trim().slice(0, 160) : undefined } : {}),
+    ...(configuration.localBotCredentials === true && !folderBot?.background ? { localBotCredentials: true as const } : {}),
     ...(configuration.surface === 'editor' && !folderBot && typeof configuration.workflowScheduleKey === 'string' && /^[a-f0-9]{64}$/u.test(configuration.workflowScheduleKey)
       ? { workflowScheduleKey: configuration.workflowScheduleKey } : {}),
     connection: connections.project, systemAiConnection: connections.ai, platform: configuration.platform === true, folderBot,

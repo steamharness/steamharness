@@ -7,6 +7,7 @@ interface PromptOptions {
   submit(values: ParamValues): void;
   stop(): void;
   files?(name: string): void;
+  credential?(): void;
 }
 
 export class InputPrompt {
@@ -17,24 +18,27 @@ export class InputPrompt {
   private readonly steps: number[];
   private index = 0;
   private busy = false;
+  private openingCredential = false;
   private error = '';
 
   constructor(readonly request: InputRequest, private readonly options: PromptOptions) {
-    this.steps = [...new Set(request.params.map((field) => field.step ?? 1))].sort((a, b) => a - b);
-    for (const field of request.params) {
+    const fields = request.credential ? [] : request.params;
+    this.steps = [...new Set(fields.map((field) => field.step ?? 1))].sort((a, b) => a - b);
+    for (const field of fields) {
       const value = request.defaultValues?.[field.name] ?? field.defaultValue ?? '';
       this.values[field.name] = projectFormValue(field, value);
     }
     this.root.className = 'input-prompt';
-    const title = document.createElement('h2'); title.textContent = request.title;
+    const title = document.createElement('h2'); title.textContent = request.credential ? t('Bot credential') : request.title;
     const header = document.createElement('header'); header.append(title, iconButton('close', t("End run"), this.options.stop)); this.root.append(header);
-    if (request.description) { const description = document.createElement('p'); description.textContent = request.description; this.root.append(description); }
+    if (!request.credential && request.description) { const description = document.createElement('p'); description.textContent = request.description; this.root.append(description); }
     this.root.append(this.form);
     this.form.addEventListener('submit', (event) => { event.preventDefault(); });
     this.render();
   }
 
   setBusy(busy: boolean, error = ''): void { if (this.busy === busy && this.error === error) { return; } this.busy = busy; this.error = error; this.render(); }
+  credentialFailed(error: string): void { this.openingCredential = false; this.busy = false; this.error = error; this.render(); }
   fileValue(name: string, value: string): void { this.values[name] = value; this.touched.add(name); this.render(); }
 
   private button(label: string, action: () => void, className = ''): HTMLButtonElement {
@@ -120,7 +124,15 @@ export class InputPrompt {
     const active = document.activeElement;
     const focusName = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.id : '';
     this.form.replaceChildren();
-    if (this.request.metadata?.type === 'agent-plan-approval') { this.renderPlan(); }
+    if (this.request.credential) {
+      const { name, kind } = this.request.credential;
+      const alias = document.createElement('p');
+      alias.textContent = t('{0}: {1}', t(kind === 'ssh-private-key' ? 'SSH private key' : kind === 'password' ? 'Password' : 'API key or token'), name);
+      alias.style.overflowWrap = 'anywhere';
+      const open = this.button(t('Open secure input'), () => { this.openingCredential = true; this.error = ''; this.render(); this.options.credential?.(); });
+      open.disabled ||= this.openingCredential || !this.options.credential;
+      this.form.append(alias, open);
+    } else if (this.request.metadata?.type === 'agent-plan-approval') { this.renderPlan(); }
     else if (this.request.metadata?.type === 'tool-approval') {
       if (this.request.metadata.toolArguments !== undefined) { const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = t("Tool input"); const pre = document.createElement('pre'); pre.textContent = JSON.stringify(this.request.metadata.toolArguments, null, 2); details.append(summary, pre); this.form.append(details); }
       const actions = document.createElement('div'); actions.className = 'prompt-navigation';

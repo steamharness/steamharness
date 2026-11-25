@@ -18,9 +18,21 @@ export interface RuntimeHistoryLease {
   usage(entry: TokenUsageEntry): Promise<void>;
   close(): Promise<void>;
 }
+
+export const BOT_MEMORY_DIRECTORY_VERSION = 1;
+
+/** An optional selector supplied by the local host. The selector is a workspace directory, not a storage path. */
+export interface BotMemoryDirectories {
+  readonly kind: "workspace-roots" | "folder-context";
+  readonly primary: string;
+  readonly roots: readonly string[];
+  withStore<T>(scope: BotMemoryScope, projectPath: string, use: (store: BotMemoryStore) => Promise<T>): Promise<T>;
+}
+
 export interface RuntimePersistence {
   /** Shared by this Bot's conversations; never keyed by account or conversation ID. */
   botMemory?(scope: BotMemoryScope): BotMemoryStore;
+  botMemoryDirectories?: BotMemoryDirectories;
   /** Optional host-local files. Separate Bot instances must use separate runtime directories. */
   botFiles?(scope: { projectId: string; entryId: string }): BotFileWorkspace | undefined;
   botArtifacts?(scope: { projectId: string; entryId: string }): BotArtifactStore | undefined;

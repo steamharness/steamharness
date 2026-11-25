@@ -14,7 +14,7 @@ import { loadAgentModelCatalog } from './agent-model-catalog';
 import { t } from './localization';
 import { locale } from './localization';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -45,13 +45,14 @@ import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
 import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
-import { folderBotDataRoot, projectDataDirectory } from './project-data-directory';
+import { assistantDataDirectory, botMemoryDirectoryError, botMemoryDirectoryScope, createWebBotMemoryDirectories, folderBotDataRoot, projectDataDirectory } from './project-data-directory';
 import { readFolderBotProfile } from './folder-bot-profile';
 import { previewRunDraft } from './workflow-draft';
 import { workflowScheduleHandler } from './workflow-schedule';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
 import { hostConversation } from './host-conversation';
 import { respondToBotArtifacts } from './bot-artifacts';
+import { credentialUnavailable, type BotCredentialHost } from './bot-credential-host';
 import type { EntryConversationSnapshot } from 'steamharness';
 
 import { conversationViewHtml, conversationViewClientId, scopeConversationViewMessage, passiveConversationViewMessage, type OpenConversationView } from './conversation-view';
@@ -63,6 +64,7 @@ export interface WebOptions { entryId?: string; mount?: { origin: string; basePa
   invokeEntry?(call: AggregateEntryCall): Promise<unknown>;
   subscribeConversation?(sourceEntryId: string, entryId: string, conversationId: string, listener: (snapshot: EntryConversationSnapshot) => void): () => void;
 }; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration; initialPlatform?: PlatformConnections;
+  botCredentialHost?: BotCredentialHost;
   onWebAppConfigurationChanged?(entryId: string, configuration: { id: string; name: string; params: Record<string, unknown> }): void;
   onWebAppLogin?(entryId: string, configuration: { id: string; name: string; params: Record<string, unknown> }): void;
 }
@@ -186,6 +188,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     run: (request, emit, onModelRequest) => {
       const settings = hydrateUserSettings(request.userSettings, userSettings);
       const input = { ...request, allowBotArtifactPublish: artifactStore && request.allowBotArtifactPublish && !isHostConversation(request.conversationId) ? true as const : undefined,
+        allowBotCredentialInput: credentialInput && request.allowBotCredentialInput && !request.readOnly && !request.entryCall && !isHostConversation(request.conversationId) ? true as const : undefined,
         userSettings: folderBot?.background ? { agent: { ...settings.agent, permissionPolicy: userSettings.agent.permissionPolicy } } : settings };
       return options.host?.surface === 'editor' && onModelRequest ? executor.run(input, emit, onModelRequest) : executor.run(input, emit);
     },
@@ -196,7 +199,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const runtime: Runtime = Object.assign(Object.create(executor), runtimeOverrides);
   let inspected;
   try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
-  const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string; botMemoryManagementVersion?: number; folderBotProfileVersion?: number } };
+  const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string; botMemoryManagementVersion?: number; botMemoryDirectoryVersion?: number; folderBotProfileVersion?: number; botCredentialInputVersion?: number } };
   try {
     if (!descriptor) throw new Error(inspected.errors.join('\n') || 'No Workflow project found.');
     if (folderBot?.profileRecord && descriptor.runtime?.folderBotProfileVersion !== 1) throw new Error('Update the project SDK to use this folder Bot profile.');
@@ -204,17 +207,23 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) throw new Error('Unsupported Workflow project type.');
   } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
+  const credentialHost = hostKind === 'studio' && options.host?.localBotCredentials === true && !folderBot?.background && !projectOnline && project.projectType === 'bot'
+    ? options.botCredentialHost : undefined;
+  const credentialInput = !!credentialHost && project.conversation?.engine === 'agent' && descriptor.runtime?.botCredentialInputVersion === 1;
+  if (!credentialInput) project.tools = project.tools?.filter(tool => tool.name !== 'bot_credentials_request');
+  const credentialLifetime = new AbortController();
   const applyUserSettings = () => {
     const view = projectWithUserSettings({ ...descriptor, agentModelPolicy: project.agentModelPolicy }, userSettings);
     project.fields = view.fields; project.entrypoints = view.entrypoints;
   };
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast(), options.mount?.basePath);
-  const key = project.assistant ? createHash('sha256').update(`assistant:${project.id}:${project.assistant.workdir}`).digest('hex').slice(0, 24)
-    : path.relative(storageDir, await projectDataDirectory(storageDir, projectDir, project.id, project.entryId));
-  const activityDirectory = path.join(storageDir, key);
+  const activityDirectory = project.assistant ? assistantDataDirectory(storageDir, project.id, project.assistant.workdir)
+    : await projectDataDirectory(storageDir, projectDir, project.id, project.entryId);
+  const key = path.relative(storageDir, activityDirectory);
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   let pendingSave = Promise.resolve();
-  const runtimePersistence = options.runtimePersistence ?? createLocalRuntimePersistence({ directory: path.join(activityDirectory, 'runtime') });
+  const runtimeDirectory = path.join(activityDirectory, 'runtime');
+  const runtimePersistence = options.runtimePersistence ?? createLocalRuntimePersistence({ directory: runtimeDirectory });
   const botScope = { projectId: project.id, entryId: project.entryId };
   const localBot = localBotManagement && project.projectType === 'bot';
   const artifactStore = localBot && descriptor.tools?.some(tool => tool.name === 'bot_files_publish') ? runtimePersistence.botArtifacts?.(botScope) : undefined;
@@ -222,6 +231,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let artifactRemovalRevision: number | undefined;
   const memoryStore = localBot && project.conversation?.engine === 'agent' && descriptor.runtime?.botMemoryManagementVersion === 1
     ? runtimePersistence.botMemory?.(botScope) : undefined;
+  const memoryScope = localBot ? botMemoryDirectoryScope(project, folderBot) : undefined;
+  const memoryDirectories = memoryStore?.manage && memoryScope && descriptor.runtime?.botMemoryDirectoryVersion === 1
+    ? createWebBotMemoryDirectories(memoryScope, { storageDir, runtimeDirectory, projectId: project.id, persistence: runtimePersistence, createPersistence: createLocalRuntimePersistence }) : undefined;
   let storageIdentity = '';
   let storageEpoch = 0;
   let storageReset = Promise.resolve();
@@ -290,9 +302,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project: publicProject, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: platformUi || aiConnection ? { ...account, signInPending: browserLogin.busy || undefined, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } } : undefined,
-    authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision,
+    authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision, botCredentials: !!credentialHost,
     ...(localBot ? { botArtifacts: artifactStore ? 'ready' : 'upgrade', artifactRemovalRevision, workflowDrafts: !!workflowDrafts,
       botMemory: project.conversation?.engine === 'llm' ? 'unsupported' : memoryStore?.manage ? 'ready' : 'upgrade',
+      botMemoryDirectories: memoryScope && { ...memoryScope, selectable: !!memoryDirectories },
       botArtifactScope: { instance: !!folderBot, label: folderBot ? options.host?.localBotArtifactLabel || project.name : project.name } } : {}) });
     // Configuration values are user-owned JSON, including explicitly entered credentials.
     return { ...result, configurations: configurations.state };
@@ -640,7 +653,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!card) { throw new Error(t('This resource no longer exists.')); }
     return { card, reference: source };
   };
-  const handleMessage = async (message: Message, allowDelivery = false): Promise<Message[]> => {
+  const handleMessage = async (message: Message, allowDelivery = false, allowCredentials = false): Promise<Message[]> => {
     const held: Array<() => void> = [];
     try {
     if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
@@ -913,7 +926,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const references = command ? [] : pathReferences(message.references);
         const configurationSelection=await configurations.selection();
         if(revision!==authRevision)throw new Error('Workflow login changed. Send the message again.');
-        await controller.send({ text, params, states, entrypointId, attachments, configurationSelection, ...(allowDelivery && { allowBotArtifactPublish: true }), ...(references.length ? { references } : {}) }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
+        await controller.send({ text, params, states, entrypointId, attachments, configurationSelection, ...(allowDelivery && { allowBotArtifactPublish: true }),
+          ...(allowCredentials && credentialInput && { allowBotCredentialInput: true }), ...(references.length ? { references } : {}) }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
         replies.push(state(message.clientId), { type: command ? 'command-executed' : 'sent', ...(command ? { command: command.command } : {}), projectUri: project.uri, sessionId: current.id, requestId: message.requestId }); break;
       }
       case 'stop': {
@@ -932,8 +946,19 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (message.clientId) rememberSelection(message.clientId, controller.activeId);
         break;
       case 'draft': await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id), undefined, pathReferences(message.references)); break;
-      case 'retry': await controller.retry(String(message.messageId), current, allowDelivery ? true : undefined); break;
+      case 'retry': await controller.retry(String(message.messageId), current, allowDelivery ? true : undefined, allowCredentials && credentialInput ? true : undefined); break;
       case 'resume': await controller.resume(String(message.messageId), String(message.requestId), message.values ?? {}, current); break;
+      case 'bot-credential-input': {
+        if (!allowCredentials || !credentialInput || !credentialHost || !conversationController || !current ||
+          typeof message.messageId !== 'string' || message.messageId.length > 300 || typeof message.requestId !== 'string' || message.requestId.length > 300 ||
+          Object.keys(message).some(key => !['type', 'messageId', 'requestId', 'projectUri', 'sessionId', 'clientId', 'applicationId'].includes(key))) throw credentialUnavailable();
+        await conversationController.captureCredential(message.messageId, message.requestId, credentialHost, current); break;
+      }
+      case 'bot-credentials-manage': {
+        if (!allowCredentials || !credentialHost || !current || current.origin ||
+          Object.keys(message).some(key => !['type', 'projectUri', 'sessionId', 'clientId', 'applicationId'].includes(key))) throw credentialUnavailable();
+        await credentialHost(project.entryId, { action: 'manage' }, credentialLifetime.signal); break;
+      }
       case 'tool-policy': {
         const tools = projectParameters(project, entrypointId).tools ?? [];
         current.toolPermissionPolicies = Object.fromEntries(tools.map(tool => [tool.name, { enabled: typeof message.policies?.[tool.name]?.enabled === 'boolean' ? message.policies[tool.name].enabled : tool.enabled, autoApprove: typeof message.policies?.[tool.name]?.autoApprove === 'boolean' ? message.policies[tool.name].autoApprove : tool.autoApprove }]));
@@ -1073,16 +1098,19 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           try { input = await readBody(request, 96 * 1024); }
           catch { json(response, 400, { code: 'BOT_MEMORY_INVALID_INPUT' }); return; }
           try {
-            const value = await memoryStore.manage(input, { actor: 'user' });
+            const { projectPath, ...fields } = input;
+            if (projectPath !== undefined && (!memoryDirectories || typeof projectPath !== 'string')) throw botMemoryDirectoryError();
+            const value = memoryDirectories ? await memoryDirectories.withStore(botScope, projectPath ?? memoryDirectories.primary,
+              store => store.manage!(fields, { actor: 'user' })) : await memoryStore.manage(fields, { actor: 'user' });
             if (input.action === 'history' && Array.isArray(value.changes)) {
               await refreshHistory();
-              const ids = new Set(controller.sessions.map(session => session.id));
+              const ids = new Set(controller.sessions.filter(session => !session.origin).map(session => session.id));
               value.changes = value.changes.map(change => ({ ...change, sourceAvailable: ids.has(change.source?.conversationId) }));
             }
             json(response, 200, value);
           } catch (error) {
             const code = (error as { code?: string }).code;
-            if (code === 'BOT_MEMORY_INVALID_INPUT') json(response, 400, { code });
+            if (code === 'BOT_MEMORY_INVALID_INPUT' || code === 'BOT_MEMORY_DIRECTORY_UNAVAILABLE') json(response, 400, { code });
             else if (code === 'BOT_MEMORY_NOT_FOUND') json(response, 404, { code });
             else if (['BOT_MEMORY_REVISION_CONFLICT', 'BOT_MEMORY_ALREADY_EXISTS', 'BOT_MEMORY_REFERENCED', 'BOT_MEMORY_UNDO_UNAVAILABLE', 'BOT_MEMORY_STORAGE_BUSY',
               'BOT_MEMORY_RELATION_ALREADY_EXISTS', 'BOT_MEMORY_RELATION_NOT_FOUND'].includes(code ?? '')) json(response, 409, { code });
@@ -1133,9 +1161,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             json(response, 200, { messages: await handleMessage(message) }); return;
           }
           let messages: Message[] = [];
-          const delivery = !!artifactStore && !studioPreviewMount(request) && host.host === new URL(origin).host;
-          const operation = () => handleMessage(message, delivery).then(value => { messages = value; });
-          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'verify', 'logout', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'resource-method-state', 'resource-method-reply', 'resource-method-close', 'resource-kanban-diagnostics', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
+          const local = !studioPreviewMount(request) && host.host === new URL(origin).host;
+          const operation = () => handleMessage(message, local && !!artifactStore, local && !!credentialHost).then(value => { messages = value; });
+          const concurrent = ['stop', 'workflow-stop', 'bot-credential-input', 'bot-credentials-manage', 'navigate', 'resolve', 'ready', 'project-server-check', 'verify', 'logout', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'resource-method-state', 'resource-method-reply', 'resource-method-close', 'resource-kanban-diagnostics', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
             || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
@@ -1386,6 +1414,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await refreshAuth(projectChanged);
     },
     close: () => closing ??= (async () => {
+      credentialLifetime.abort();
       entryObservers.clear();
       projectCreation.close();
       authEpoch++; authCheck?.abort();

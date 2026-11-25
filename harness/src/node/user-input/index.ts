@@ -8,6 +8,7 @@ import type {
 import type { ParamDefinition } from "../../executor/types";
 import { assertProjectParamDefinitions, isProjectDateParamControl } from "../../executor/param-definition";
 import { HarnessError } from "../../workflow/errors";
+import { isBotCredentialStatus, parseBotCredentialSlot, type BotCredentialSlot } from "../../types/bot-credential";
 
 export interface UserInputPayload extends RunPayload {
   requestId: string;
@@ -26,6 +27,7 @@ export interface UserInputRequestDefinition {
   description?: string;
   params: ParamDefinition[];
   defaultValues?: Record<string, unknown>;
+  credential?: BotCredentialSlot;
 }
 
 export type UserInputRequestResolver<Input> = (
@@ -39,6 +41,8 @@ export interface UserInputNodeOptions<Input, Output extends RunPayload = UserInp
   description?: string;
   params: ParamDefinition[];
   defaultValues?: Record<string, unknown>;
+  /** Use empty params. The result contains only the native host's status receipt. */
+  credential?: BotCredentialSlot;
   resolveRequest?: UserInputRequestResolver<Input>;
   createRequestId?: (input: Input, context: NodeContext) => string;
   format?: UserInputFormatter<Input, Output>;
@@ -71,11 +75,19 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
       },
     });
     assertProjectParamDefinitions(options.params);
+    validateCredentialRequest(options.credential, options.params, options.defaultValues);
     this.options = options;
   }
 
   protected async execute(input: Input, context: NodeContext): Promise<Output> {
     const request = await this.createRequest(input, context);
+    if (request.credential) {
+      if (!context.userInput?.waitForCredential) throw new HarnessError({ type: "input_validation", message: "Bot credential input requires a supported local Studio conversation." });
+      const status = await context.userInput.waitForCredential({ ...request, credential: request.credential }, context.abortSignal);
+      if (!isBotCredentialStatus(status)) throw new HarnessError({ type: "input_validation", message: "Invalid Bot credential receipt.", nodeName: request.nodeName });
+      const payload: UserInputPayload = { errCode: 0, errMessage: "", requestId: request.requestId, values: { status }, submittedAt: new Date().toISOString() };
+      return this.options.format === undefined ? payload as unknown as Output : this.options.format(payload, input, context);
+    }
     const resolved = await context.userInput?.getResolvedInput(request.requestId, request);
 
     if (resolved !== undefined) {
@@ -170,6 +182,8 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
       createDefaultRequestId(context, nodeName);
     const params = definition?.params ?? this.options.params;
     assertProjectParamDefinitions(params);
+    const defaults = definition?.defaultValues ?? this.options.defaultValues;
+    const credential = validateCredentialRequest(definition?.credential ?? this.options.credential, params, defaults);
 
     return {
       requestId,
@@ -177,11 +191,18 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
       title: definition?.title?.trim() || this.options.title?.trim() || nodeName,
       description: normalizeOptionalText(definition?.description ?? this.options.description),
       params: params.map(cloneParamDefinition),
-      defaultValues: cloneDefaultValues(definition?.defaultValues ?? this.options.defaultValues),
+      ...(credential && { credential }),
+      defaultValues: cloneDefaultValues(defaults),
       metadata: this.metadata,
       createdAt: new Date(),
     };
   }
+}
+
+function validateCredentialRequest(credential: BotCredentialSlot | undefined, params: ParamDefinition[], defaults: unknown) {
+  if (credential === undefined) return;
+  if (params.length || defaults !== undefined) throw new Error("Bot credential input cannot include ordinary fields or default values.");
+  return parseBotCredentialSlot(credential);
 }
 
 function cloneParamDefinition(param: ParamDefinition): ParamDefinition {

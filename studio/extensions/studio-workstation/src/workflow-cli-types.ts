@@ -27,6 +27,7 @@ export interface WebReady {
   folderBotProtocolVersion?: number;
   botArtifactProtocolVersion?: number;
   botMemoryProtocolVersion?: number;
+  botCredentialProtocolVersion?: number;
   workflowScheduleProtocolVersion?: number;
   folderBotProfileVersion?: number;
   userSettingsProtocolVersion?: number;

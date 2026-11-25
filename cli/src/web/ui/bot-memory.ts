@@ -1,11 +1,13 @@
 import type { BotMemoryChange, BotMemoryEntry, BotMemoryProperties, BotMemorySummary } from 'steamharness/runtime-storage';
 import { locale, t } from '../localization';
+import type { WebBotMemoryDirectoryScope } from '../project-data-directory';
 import { requestAction } from './action-dialog';
 import { requestBotMemory } from './connection';
 import { iconButton } from './ui';
 import './bot-memory.css';
 
 export type MemoryAvailability = 'ready' | 'upgrade' | 'unsupported';
+export type MemoryDirectoryScope = WebBotMemoryDirectoryScope & { selectable: boolean };
 type Relation = { relation: string; memory: BotMemorySummary & { properties: BotMemoryProperties } };
 type Change = BotMemoryChange & { sourceAvailable?: boolean };
 const displayName = (memory: BotMemorySummary) => memory.title || memory.key;
@@ -16,7 +18,7 @@ const text = <K extends keyof HTMLElementTagNameMap>(tag: K, content: string, cl
 const command = (title: string, action: () => void, type: 'button' | 'submit' = 'button') => {
   const button = text('button', title, 'prompt-button'); button.type = type; if (type === 'button') button.onclick = action; return button;
 };
-const grouped = (title: string, input: HTMLInputElement | HTMLTextAreaElement) => {
+const grouped = (title: string, input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => {
   const label = text('label', title); label.append(input); return label;
 };
 const errorLabels: Record<string, string> = {
@@ -29,6 +31,7 @@ const errorLabels: Record<string, string> = {
   BOT_MEMORY_RELATION_ALREADY_EXISTS: 'This link already exists.',
   BOT_MEMORY_RELATION_NOT_FOUND: 'This link no longer exists.',
   BOT_MEMORY_INVALID_INPUT: 'Check the memory fields and filters.',
+  BOT_MEMORY_DIRECTORY_UNAVAILABLE: 'Choose an existing project directory authorized for this Bot.',
 };
 
 export class BotMemoryPanel {
@@ -40,7 +43,11 @@ export class BotMemoryPanel {
   private readonly detail = document.createElement('section');
   private readonly more: HTMLButtonElement;
   private readonly reload: HTMLButtonElement;
+  private readonly directoryControls = document.createElement('fieldset');
   private availability?: MemoryAvailability;
+  private directoryScope?: MemoryDirectoryScope;
+  private projectPath?: string;
+  private newMemory?: HTMLButtonElement;
   private lifetime?: AbortController;
   private listing?: AbortController;
   private reading?: AbortController;
@@ -56,6 +63,7 @@ export class BotMemoryPanel {
     this.reload = iconButton('refresh', t('Refresh'), () => { void this.page(); if (this.selected) void this.openEntry(this.selected); });
     header.append(title, this.reload, iconButton('close', t('Close'), () => this.dialog.close()));
     this.body.className = 'dialog-body'; this.status.setAttribute('role', 'status');
+    this.directoryControls.className = 'bot-memory-directories';
     this.list.className = 'bot-memory-list'; this.detail.className = 'bot-memory-detail';
     this.more = command(t('Load more'), () => { if (this.moreOffset !== undefined) void this.page(this.moreOffset); }); this.more.hidden = true;
     this.dialog.append(header, this.body);
@@ -64,10 +72,14 @@ export class BotMemoryPanel {
     document.body.append(this.dialog);
   }
 
-  configure(availability: MemoryAvailability | undefined, identity: string) { this.availability = availability; this.identity.textContent = identity; }
+  configure(availability: MemoryAvailability | undefined, identity: string, directories?: MemoryDirectoryScope) {
+    const changed = availability !== this.availability || JSON.stringify(directories) !== JSON.stringify(this.directoryScope);
+    this.availability = availability; this.directoryScope = directories; this.identity.textContent = identity;
+    if (changed && this.dialog.open) this.open();
+  }
 
   open() {
-    this.stop(); this.lifetime = new AbortController(); this.filters = {}; this.selected = undefined;
+    this.stop(); this.selected = undefined;
     this.body.replaceChildren(this.identity, this.status); this.status.textContent = ''; this.reload.disabled = this.availability !== 'ready';
     if (!this.dialog.open) this.dialog.showModal();
     if (this.availability !== 'ready') {
@@ -79,8 +91,9 @@ export class BotMemoryPanel {
     const category = document.createElement('input'); category.maxLength = 100; category.setAttribute('list', 'bot-memory-categories');
     const categories = document.createElement('datalist'); categories.id = 'bot-memory-categories';
     const where = document.createElement('input'); where.placeholder = '{"status":"active"}'; where.maxLength = 4000;
+    const newMemory = this.newMemory = command(t('New memory'), () => this.editor());
     filters.append(grouped(t('Search memories'), query), grouped(t('Memory category'), category), grouped(t('Exact properties (JSON)'), where), categories,
-      command(t('Filter memories'), () => {}, 'submit'), command(t('New memory'), () => this.editor()));
+      command(t('Filter memories'), () => {}, 'submit'), newMemory);
     filters.onsubmit = event => {
       event.preventDefault();
       try { this.filters = { query: query.value.trim() || undefined, category: category.value.trim() || undefined, where: where.value.trim() ? JSON.parse(where.value) : undefined }; }
@@ -89,17 +102,59 @@ export class BotMemoryPanel {
     };
     const grid = document.createElement('div'); grid.className = 'bot-memory-grid';
     const index = document.createElement('aside'); index.append(this.list, this.more); grid.append(index, this.detail);
-    this.moreOffset = undefined; this.more.hidden = true;
-    this.list.replaceChildren(); this.detail.replaceChildren(text('p', t('Select a memory.'))); this.body.append(filters, grid);
-    void this.api<{ categories: { category: string }[] }>({ action: 'get', limit: 20 }, this.lifetime.signal)
-      .then(page => { for (const { category: name } of page.categories) { const option = document.createElement('option'); option.value = name; categories.append(option); } }).catch(() => {});
-    void this.page();
+    const activate = (directory?: string) => {
+      if (this.writing) return;
+      this.stop();
+      const { signal } = this.lifetime = new AbortController();
+      this.projectPath = directory;
+      this.selected = undefined; this.moreOffset = undefined; this.more.hidden = true; newMemory.disabled = true;
+      this.filters = {}; filters.reset(); categories.replaceChildren();
+      this.list.replaceChildren(); this.detail.replaceChildren(text('p', t('Select a memory.')));
+      void this.api<{ categories: { category: string }[] }>({ action: 'get', limit: 20 }, signal)
+        .then(page => {
+          if (signal.aborted) return;
+          for (const { category: name } of page.categories) { const option = document.createElement('option'); option.value = name; categories.append(option); }
+        }).catch(() => {});
+      void this.page();
+    };
+    const scope = this.directoryScope;
+    if (scope) this.body.append(this.renderDirectories(scope, activate));
+    this.body.append(filters, grid);
+    activate(scope?.selectable ? scope.primary : undefined);
   }
 
-  private stop() { this.lifetime?.abort(); this.listing?.abort(); this.reading?.abort(); this.writing = false; }
+  private renderDirectories(scope: MemoryDirectoryScope, activate: (directory: string) => void) {
+    const controls = this.directoryControls;
+    controls.replaceChildren();
+    const label = t('Memory project directory');
+    const current = text('p', `${label}: ${scope.primary}`, 'bot-memory-directory');
+    if (!scope.selectable || scope.kind === 'workspace-roots' && scope.roots.length < 2) {
+      controls.append(current);
+      if (!scope.selectable && (scope.kind === 'folder-context' || scope.roots.length > 1)) {
+        controls.append(text('p', t('Update the project runtime to select a different memory directory.'), 'bot-memory-muted'));
+      }
+    } else if (scope.kind === 'workspace-roots') {
+      const select = document.createElement('select');
+      for (const root of scope.roots) { const option = text('option', root); option.value = root; select.append(option); }
+      select.value = scope.primary; select.onchange = () => { select.title = select.value; activate(select.value); }; select.title = select.value;
+      controls.append(grouped(label, select));
+    } else {
+      const form = document.createElement('form'); form.className = 'bot-memory-directory-form';
+      const input = document.createElement('input'); input.maxLength = 4096; input.required = true; input.value = scope.primary; input.spellcheck = false;
+      const onSelect = (directory: string) => { current.textContent = `${label}: ${directory}`; activate(directory); };
+      form.onsubmit = event => { event.preventDefault(); onSelect(input.value); };
+      form.append(grouped(t('Project folder path'), input), command(t('Switch memory directory'), () => {}, 'submit'),
+        command(t('Use default memory directory'), () => { input.value = scope.primary; onSelect(scope.primary); }));
+      controls.append(current, form);
+    }
+    return controls;
+  }
+
+  private stop() { this.lifetime?.abort(); this.listing?.abort(); this.reading?.abort(); this.writing = false; this.directoryControls.disabled = false; }
 
   private async api<T>(request: object, signal?: AbortSignal): Promise<T> {
-    const response = await requestBotMemory(request, signal);
+    signal?.throwIfAborted();
+    const response = await requestBotMemory({ ...request, projectPath: this.projectPath }, signal);
     const result = await response.json();
     if (!response.ok) throw new Error(t(errorLabels[result.code] ?? 'Could not load or change Bot memory.'));
     return result as T;
@@ -121,6 +176,7 @@ export class BotMemoryPanel {
       }
       this.markSelected(); this.moreOffset = result.nextOffset; this.more.hidden = result.nextOffset === undefined;
       this.status.textContent = this.list.children.length ? '' : t('No memories match.');
+      if (this.newMemory) this.newMemory.disabled = false;
     } catch (error) { if (!signal.aborted) this.error(error); }
     finally { if (!signal.aborted) this.more.disabled = false; }
   }
@@ -288,7 +344,7 @@ export class BotMemoryPanel {
 
   private async mutate(request: object, selected?: string) {
     if (this.writing || !this.lifetime || this.lifetime.signal.aborted) return;
-    const { signal } = this.lifetime; const editing = this.selected; this.writing = true;
+    const { signal } = this.lifetime; const editing = this.selected; this.writing = true; this.directoryControls.disabled = true;
     try {
       const result = await this.api<{ memory?: BotMemorySummary; deleted?: boolean }>(request, signal);
       if (signal.aborted) return;
@@ -298,6 +354,6 @@ export class BotMemoryPanel {
       if (result.deleted) { this.reading?.abort(); this.selected = undefined; this.detail.replaceChildren(text('p', t('Memory forgotten.'))); }
       else if (selected || result.memory?.id) void this.openEntry(selected ?? result.memory!.id);
     } catch (error) { if (!signal.aborted) this.error(error); }
-    finally { if (!signal.aborted) this.writing = false; }
+    finally { if (!signal.aborted) { this.writing = false; this.directoryControls.disabled = false; } }
   }
 }

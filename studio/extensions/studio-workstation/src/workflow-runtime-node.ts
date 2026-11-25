@@ -34,6 +34,7 @@ import type { ManagedUsageTarget } from './project-usage-types';
 import { usingStudioWeb, studioPreview } from './remote-access-node';
 import { WorkflowScheduleRuntime } from './workflow-schedule-runtime';
 import { openProjectSchedules } from './workflow-schedule-view';
+import { createBotCredentialInteraction } from './bot-credentials';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -62,6 +63,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const selectedRuntime = () => configuredNodeRuntime(context.globalStorageUri.fsPath);
   const localDesktop = !vscode.env.remoteName && typeof vscode.env.uiKind === 'number' && vscode.env.uiKind === vscode.UIKind.Desktop;
   const desktop = !browser && localDesktop;
+  const botCredentials = createBotCredentialInteraction(context);
   const startSchedules = () => new WorkflowScheduleRuntime(path.join(context.globalStorageUri.fsPath, 'workflow', 'schedules'), webDataDirectory,
     directory => Promise.resolve(vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false)).catch(() => false),
     async (target, workflowScheduleKey, signal) => {
@@ -369,6 +371,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           assistantProjectDir: assistant ? project.folderPath : undefined,
           folderBot: project.folderBot,
           localBotArtifactLabel: localArtifacts ? project.folderBot ? project.name : project.aggregateName || project.name : undefined,
+          botCredentials: localArtifacts ? (entryId, label, action, signal) => botCredentials({ ...project, assistant }, entryId, label, action, AbortSignal.any([runSignal, signal])) : undefined,
           workflowScheduleKey,
           expectedProjectId: project.id,
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,

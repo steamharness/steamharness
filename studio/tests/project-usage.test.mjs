@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -122,6 +122,33 @@ test('corrupt, linked, or busy history never looks like an empty history', async
   await rm(botHistory);
   await symlink(locked.file, botHistory);
   assert.equal((await f.read('runtime')).usage.entries[0].conversation.sessions, undefined);
+});
+
+test('folder Bot memory usage includes the scoped stores but does not read other instances', async t => {
+  const f = await fixture(t);
+  await declare(f.project, [{ ...bot, folderContext: true }]);
+  const fileName = createHash('sha256').update(JSON.stringify([projectId, 'agent'])).digest('hex') + '.sqlite';
+  const locate = (instanceId, folder) => path.join(data(f.storage, 'agent', ['folder-bots', instanceId]), 'runtime',
+    ...(folder ? ['memories-by-directory', createHash('sha256').update(folder).digest('hex')] : []), 'memories', fileName);
+  const create = async (file, count) => {
+    await mkdir(path.dirname(file), { recursive: true });
+    const db = new DatabaseSync(file);
+    try {
+      db.exec('CREATE TABLE bot_memories(project_id TEXT, entry_id TEXT)');
+      const insert = db.prepare('INSERT INTO bot_memories VALUES (?, ?)');
+      for (let i = 0; i < count; i++) insert.run(projectId, 'agent');
+    } finally { db.close(); }
+    return (await stat(file)).size;
+  };
+  const managed = { instanceId: instance1, directory: f.project, projectId, entryId: 'agent', name: 'Folder Bot', projectDirectory: f.project };
+  const scoped = locate(instance1, 'linked-project');
+  const scopedBytes = await create(scoped, 2);
+  await create(locate(instance2, 'linked-project'), 4);
+  assert.deepEqual((await f.read('runtime', { managed })).usage.entries[0].memory,
+    { state: 'ok', location: scoped, created: true, records: 2, bytes: scopedBytes });
+  const primary = locate(instance1), primaryBytes = await create(primary, 1);
+  assert.deepEqual((await f.read('runtime', { managed })).usage.entries[0].memory,
+    { state: 'ok', location: primary, created: true, records: 3, bytes: scopedBytes + primaryBytes });
 });
 
 test('only distinct built Kanban directories are attributed to an entry', async t => {

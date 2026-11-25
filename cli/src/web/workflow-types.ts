@@ -160,6 +160,7 @@ export interface Attachment {
 export interface Upload { name: string; mimeType?: string; data?: string; path?: string }
 export interface InputRequest {
   requestId: string; nodeName: string; title: string; description?: string; params: Field[];
+  credential?: import('steamharness').BotCredentialSlot;
   defaultValues?: Record<string, unknown>; createdAt?: string;
   metadata?: { type?: string; toolName?: string; toolArguments?: unknown; [key: string]: unknown };
 }
@@ -220,6 +221,7 @@ export interface Run {
   toolPermissionPolicies?: ToolPolicies;
   /** Internal host admission; never read from browser or model arguments. */
   allowBotArtifactPublish?: true;
+  allowBotCredentialInput?: true;
   folderBotProfile?: import('steamharness').FolderBotProfile;
 }
 
@@ -250,6 +252,7 @@ export interface ConversationMessage {
   userSettings?: import('steamharness').UserSettings;
   folderBotProfile?: Run['folderBotProfile'];
   allowBotArtifactPublish?: true;
+  allowBotCredentialInput?: true;
   configurationSelection?: Run['configurationSelection'];
   contextEpoch?: number;
   sessionRequestId?: string;
@@ -290,12 +293,12 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues; fileKeys?: string[] }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; allowBotArtifactPublish?: true; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
+export interface ConversationQueuedInput { entrySubmission?: { params: ParamValues; fileKeys?: string[] }; configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; allowBotArtifactPublish?: true; allowBotCredentialInput?: true; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
   origin?: 'host';
   engine?: NonNullable<Project['conversation']>['engine'];
-  agentParameters?: { userSettings?: import('steamharness').UserSettings; folderBotProfile?: Run['folderBotProfile']; allowBotArtifactPublish?: true; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
+  agentParameters?: { userSettings?: import('steamharness').UserSettings; folderBotProfile?: Run['folderBotProfile']; allowBotArtifactPublish?: true; allowBotCredentialInput?: true; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
   agent?: AgentSessionSnapshot;
   agentOwnerId?: string;
   agentConversationId?: number;

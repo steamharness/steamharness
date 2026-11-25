@@ -75,6 +75,7 @@ steamharness.createUserInputNode<Input, Output extends RunPayload>(
 | `description` | `string` |Wait for the form description.|
 | `params` | `ParamDefinition[]` |Form field, field definition is consistent with `params` of the selected Workflow entry;Bot uses `executor.params`.|
 | `defaultValues` | `Record<string, unknown>` |Form default, match by param `name`.|
+| `credential` | `BotCredentialSlot` | Request a Bot credential in local Studio. Set `params: []` and omit defaults. |
 | `resolveRequest` | `(input, context) => UserInputRequestDefinition \| Promise<UserInputRequestDefinition>` |Dynamically generate `title`, `description`, `params`, and `defaultValues` based on the current node input.|
 | `createRequestId` | `(input, context) => string` |The custom request ID. The default contains workflow, runId, and node name.|
 | `format` | `(payload, input, context) => Output` |Convert the default submission payload to the business payload.|
@@ -104,6 +105,20 @@ Default return on successful recovery:
 ```
 
 If `format` is passed in, the return value must still inherit `RunPayload`, using `errCode: 0, errMessage: ""` on success.
+
+## Bot credential input
+
+Trusted Bot project code can set `credential` to request native secure input in a supported local Studio conversation. `name` is an alias of up to 64 characters. Start with a lowercase letter or digit; the remaining characters may also include dots, underscores, or hyphens. Set `kind` to `api-key`, `password`, or `ssh-private-key`.
+
+```ts
+const requestDeployKey = steamharness.createUserInputNode({
+  name: "request-deploy-key",
+  params: [],
+  credential: { name: "deploy-key", kind: "ssh-private-key" },
+});
+```
+
+You can also return `credential` from `resolveRequest`. Do not include ordinary fields or defaults. A credential request waits in the active run, supports cancellation, and does not replay an earlier form response. The default payload's `values` contains only `status` (`saved`, `existing`, or `declined`), never the credential value. Unsupported hosts fail without showing an ordinary form.
 
 ## Runtime behavior
 

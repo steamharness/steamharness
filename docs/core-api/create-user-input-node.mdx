@@ -75,6 +75,7 @@ steamharness.createUserInputNode<Input, Output extends RunPayload>(
 | `description` | `string` | 等待表单说明。 |
 | `params` | `ParamDefinition[]` | 表单字段，字段定义与所选 Workflow 入口的 `params` 一致；Bot 使用 `executor.params`。 |
 | `defaultValues` | `Record<string, unknown>` | 表单默认值，按 param `name` 匹配。 |
+| `credential` | `BotCredentialSlot` | 本地 Bot 凭据请求。使用 `params: []`，不设默认值。 |
 | `resolveRequest` | `(input, context) => UserInputRequestDefinition \| Promise<UserInputRequestDefinition>` | 按本次节点输入动态生成 `title`、`description`、`params` 和 `defaultValues`。 |
 | `createRequestId` | `(input, context) => string` | 自定义请求 ID。默认包含 workflow、runId 和 node name。 |
 | `format` | `(payload, input, context) => Output` | 把默认提交 payload 转为业务 payload。 |
@@ -104,6 +105,20 @@ interface UserInputPayload extends RunPayload {
 ```
 
 如果传入 `format`，返回值仍必须继承 `RunPayload`，成功时使用 `errCode: 0, errMessage: ""`。
+
+## Bot 凭据输入
+
+在支持凭据功能的本地 Studio Bot 对话中，受信任的 Bot 项目代码可以用 `credential` 请求原生安全输入。`name` 是别名，最多 64 个字符；以小写字母或数字开头，之后可用小写字母、数字、点、下划线或连字符。`kind` 可用 `api-key`、`password` 或 `ssh-private-key`。
+
+```ts
+const requestDeployKey = steamharness.createUserInputNode({
+  name: "request-deploy-key",
+  params: [],
+  credential: { name: "deploy-key", kind: "ssh-private-key" },
+});
+```
+
+也可以从 `resolveRequest` 返回 `credential`。不要混用普通字段或默认值。这个模式只在当前运行中等待，可取消；它不会从历史表单重放。默认 payload 的 `values` 只包含 `status`（`saved`、`existing` 或 `declined`），没有凭据内容。不支持安全输入的宿主会报错，不会改用普通表单。
 
 ## Runtime 行为
 

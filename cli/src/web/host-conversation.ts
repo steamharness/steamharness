@@ -154,6 +154,7 @@ export async function hostConversation(
     answer.pendingInput?.requestId === input.pendingId &&
     input.messageId === answer.id
   ) {
+    if (answer.pendingInput?.credential) throw new Error('Bot credentials can only be collected by local Studio.');
     if (isolate && answer.pendingInput?.metadata?.type === 'tool-approval') throw new Error('This tool approval must not be resolved by the background host.');
     await controller.resume(
       answer.id,

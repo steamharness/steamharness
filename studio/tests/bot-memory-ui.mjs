@@ -17,7 +17,9 @@ const workspace = fileURLToPath(new URL('../../', import.meta.url)), core = path
 const { createLocalRuntimePersistence } = await import(pathToFileURL(path.join(core, 'dist/runtime-storage.js')).href);
 const coreVersion = JSON.parse(await readFile(path.join(core, 'package.json'), 'utf8')).version;
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-bot-memory-')));
-const project = path.join(root, 'project'), data = path.join(root, 'data');
+const project = path.join(root, 'project'), data = path.join(root, 'data'), nested = path.join(project, 'subproject');
+const aRoot = path.join(root, 'workspace-a'), bRoot = path.join(root, 'workspace-b');
+const opened = [aRoot, bRoot].map(folderPath => ({ folderPath, uri: pathToFileURL(folderPath).href, name: path.basename(folderPath) }));
 const scope = { projectId: randomUUID(), entryId: 'agent' }, copy = randomUUID();
 const persistence = createLocalRuntimePersistence({ directory: path.join(data, 'folder-bots', copy, 'projects', scope.projectId, 'entries', scope.entryId, 'runtime') });
 const store = persistence.botMemory(scope);
@@ -29,7 +31,7 @@ const server = createServer((request, response) => {
   response.end(projectFrameHtml(target.url, 'Memory fixture', pathToFileURL(project).href, target.language === 'en' ? 'light' : 'dark', randomUUID(), target.language));
 });
 
-async function launch(instance, language = 'en', local = true) {
+async function launch(instance, language = 'en', local = true, assistant) {
   const child = spawn(process.execPath, [path.join(workspace, 'cli/dist/index.js'), 'web', project, '--data-dir', data, '--entry', scope.entryId,
     '--host-stdio', '--no-open', '--json', ...(instance ? ['--folder-context'] : [])], {
     cwd: project, env: { ...process.env, HOME: root, USERPROFILE: root, STEAMHARNESS_CLI_AUTH_DIR: path.join(root, 'auth'),
@@ -50,8 +52,9 @@ async function launch(instance, language = 'en', local = true) {
     lines.on('line', line => { try { const record = JSON.parse(line); if (record.type === 'ready') resolve(record); } catch { /* diagnostics */ } });
     void ended.then(() => reject(new Error(`Fixture CLI stopped: ${diagnostics}`)));
   });
-  child.stdin.write(JSON.stringify({ type: 'configure', surface: 'editor', localBotArtifacts: local, localBotArtifactLabel: instance ? 'Memory copy' : 'Memory fixture',
+  child.stdin.write(JSON.stringify({ type: 'configure', surface: assistant ? 'assistant' : 'editor', localBotArtifacts: local, localBotArtifactLabel: instance ? 'Memory copy' : 'Memory fixture',
     userSettings: { agent: { permissionPolicy: 'workspace' } },
+    ...(assistant ? { assistant, assistantProjectDir: project } : {}),
     ...(instance ? { folderBot: { id: instance, projectId: scope.projectId, directory: project, background: false } } : {}) }) + '\n');
   const timeout = setTimeout(() => child.kill('SIGKILL'), 30_000);
   try {
@@ -77,13 +80,20 @@ try {
   await writeProjectFixture(path.join(project, 'package.json'), JSON.stringify({ id: scope.projectId, name: 'memory-fixture', type: 'module',
     devDependencies: { steamharness: coreVersion }, defaultEntry: scope.entryId,
     entries: [{ entryId: scope.entryId, name: 'Memory fixture', root: '.', type: 'bot', entry: 'index.ts', folderContext: true }] }));
+  await Promise.all([nested, aRoot, bRoot].map(directory => mkdir(directory)));
   await writeFile(path.join(project, 'index.ts'), `
     import * as steamharness from 'steamharness';
     import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from ${JSON.stringify(pathToFileURL(path.join(core, 'node_modules/@earendil-works/pi-ai/dist/index.js')).href)};
     const model = fauxProvider({ models: [{ id: 'fixture', contextWindow: 20000, maxTokens: 800 }] });
     const models = createModels(); models.setProvider(model.provider);
-    model.setResponses([() => fauxAssistantMessage([fauxToolCall('memory_update', ${JSON.stringify({ id: c.id, expectedRevision: c.revision, title: 'C Bot', properties: { status: 'bot-active' } })})], { stopReason: 'toolUse' }),
-      request => request.messages.findLast(message => message.role === 'toolResult')?.isError === false ? fauxAssistantMessage('Fixture turn complete') : fauxAssistantMessage('Fixture memory tool failed')]);
+    const assistant = process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST === 'vscode';
+    const calls = assistant ? [fauxToolCall('memory_save', ${JSON.stringify({ category: 'fixture', key: 'B', title: 'B from assistant A', projectPath: bRoot })})] : [
+      fauxToolCall('memory_update', ${JSON.stringify({ id: c.id, expectedRevision: c.revision, title: 'C Bot', properties: { status: 'bot-active' } })}),
+      fauxToolCall('memory_save', ${JSON.stringify({ category: 'fixture', key: 'A', title: 'Nested project memory', projectPath: nested })})];
+    model.setResponses([() => fauxAssistantMessage(calls, { stopReason: 'toolUse' }), request => {
+      const results = request.messages.filter(message => message.role === 'toolResult');
+      return fauxAssistantMessage(results.length === calls.length && results.every(result => !result.isError) ? 'Fixture turn complete' : 'Fixture memory tool failed');
+    }]);
     export const executor = steamharness.defineBot({ engine: 'agent', agent: { models, resolvedModel: models.getModel('faux', 'fixture'), tools: [], paramOptions: { fields: { provider: false, model: false } } } });
     export default executor;
   `);
@@ -118,6 +128,18 @@ try {
   for (const source of [a, b]) {
     await row(source.id).click(); await detail.getByRole('button', { name: 'C Bot', exact: true }).waitFor(); await detail.getByText('status: "bot-active"').waitFor();
   }
+  await panel.getByLabel('Project folder path').fill(nested);
+  await panel.getByRole('button', { name: 'Switch memory directory' }).click();
+  await panel.getByRole('button', { name: /Nested project memory/ }).click();
+  await detail.getByRole('heading', { name: 'Nested project memory' }).waitFor();
+  assert.equal(await row(a.id).count(), 0);
+  await panel.getByLabel('Project folder path').fill(aRoot);
+  await panel.getByRole('button', { name: 'Switch memory directory' }).click();
+  await panel.getByText('Choose an existing project directory authorized for this Bot.').waitFor();
+  assert.equal(await panel.getByRole('button', { name: 'New memory' }).isDisabled(), true);
+  await panel.getByRole('button', { name: 'Use default memory directory' }).click();
+  await row(a.id).waitFor();
+  assert.equal(await detail.getByRole('heading', { name: 'Nested project memory' }).count(), 0);
   await panel.getByLabel('Search memories').fill('C Bot'); await panel.getByLabel('Exact properties (JSON)').fill('{"status":"bot-active"}');
   await panel.getByRole('button', { name: 'Filter memories' }).click(); await row(a.id).waitFor({ state: 'detached' });
   await row(c.id).click();
@@ -151,10 +173,30 @@ try {
   const zh = await launch(copy, 'zh-CN'); await page.setViewportSize({ width: 390, height: 650 });
   await bringUp(zh); await openPanel();
   assert.equal(await panel.getByRole('heading', { level: 2 }).textContent(), '\u8bb0\u5fc6\u7ba1\u7406');
+  await panel.getByRole('button', { name: '\u5207\u6362\u8bb0\u5fc6\u76ee\u5f55' }).waitFor();
   await row(a.id).waitFor(); assert.equal(await row(c.id).count(), 0);
   assert.ok(await panel.evaluate(element => { const rect = element.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth; }));
+  await page.goto('about:blank'); await zh.close();
+
+  const assistantA = await launch(undefined, 'en', true, { workdir: aRoot, roots: opened });
+  await bringUp(assistantA);
+  await frame.locator('#message').fill('Remember this fact for workspace B'); await frame.locator('#send').click();
+  await frame.getByText('Fixture turn complete').waitFor();
+  await openPanel(); await panel.getByText('No memories match.').waitFor();
+  await panel.getByLabel('Memory project directory').selectOption(bRoot);
+  await panel.getByRole('button', { name: /B from assistant A/ }).click();
+  await detail.getByRole('heading', { name: 'B from assistant A' }).waitFor();
+  await detail.getByRole('button', { name: 'Open source conversation' }).waitFor();
+  await page.goto('about:blank'); await assistantA.close();
+
+  const assistantB = await launch(undefined, 'en', true, { workdir: bRoot, roots: opened.slice(1) });
+  await bringUp(assistantB); await openPanel();
+  await panel.getByRole('button', { name: /B from assistant A/ }).click();
+  await detail.getByRole('heading', { name: 'B from assistant A' }).waitFor();
+  await detail.getByText('Memory changes').waitFor();
+  assert.equal(await detail.getByRole('button', { name: 'Open source conversation' }).count(), 0);
   assert.deepEqual(errors, []);
-  console.log('Bot memory headless smoke passed: real Bot update, shared links, filters, provenance, stale edit, undo, confirmed forget, host/instance isolation, English and Chinese.');
+  console.log('Bot memory headless smoke passed: default and scoped Bot writes, scoped management, assistant cross-root reopen, links, provenance, undo, forget, isolation, English and Chinese.');
 } finally {
   await browser?.close(); await Promise.all([...children].map(close => close()));
   if (server.listening) await new Promise(resolve => server.close(resolve));

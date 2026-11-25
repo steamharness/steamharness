@@ -26,6 +26,7 @@ import { botMemoryDefault, type BotMemoryOptions } from "./memory-configuration"
 import { BOT_MEMORY_TOOL_DEFINITIONS } from "./memory";
 import { BOT_FILE_TOOL_DEFINITIONS, BOT_FILE_TOOL_NAMES } from "./bot-files";
 import { BOT_ARTIFACT_TOOL } from "./bot-artifact";
+import { BOT_CREDENTIAL_TOOL } from "./bot-credential";
 import { BOT_JSON_SUMMARY_DEFINITION } from "./bot-json-summary";
 import { createLLMBot } from "./llm-bot";
 import { applyFolderAgentInput } from "../executor/folder-context";
@@ -118,7 +119,7 @@ export function assertBotLLMOptions(value: unknown): asserts value is BotLLMOpti
 }
 export function botTools(agent: Pick<AgentProjectOptions, "tools" | "session" | "skills"> & { createSession?: unknown } = {}, overrides: ToolPermissionDefinition[] = []): ToolPermissionDefinition[] {
   normalizeToolPermissionDefinitions(overrides);
-  const defaults = [...readAgentToolDefinitions(agent.tools), ...BOT_MEMORY_TOOL_DEFINITIONS, ...BOT_FILE_TOOL_DEFINITIONS, BOT_ARTIFACT_TOOL, BOT_JSON_SUMMARY_DEFINITION,
+  const defaults = [...readAgentToolDefinitions(agent.tools), ...BOT_MEMORY_TOOL_DEFINITIONS, ...BOT_FILE_TOOL_DEFINITIONS, BOT_ARTIFACT_TOOL, BOT_JSON_SUMMARY_DEFINITION, BOT_CREDENTIAL_TOOL,
     { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
     ...(agent.session?.subagents || agent.createSession ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
     ...(agent.skills ? [{ name: "skill", label: "Skills", enabled: true, autoApprove: true }] : []),

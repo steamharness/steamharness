@@ -6,6 +6,7 @@ import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharn
 import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
+import { credentialStatus, credentialUnavailable, type BotCredentialHost } from './bot-credential-host';
 import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
@@ -29,7 +30,7 @@ interface ControllerOptions {
 }
 interface RunTask { sessionId: string; cancelled: boolean; stopping?: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
-const isLiveToolApproval = (request?: InputRequest): boolean => request?.metadata?.type === 'tool-approval' && request.metadata.live === true;
+const isLiveInput = (request?: InputRequest): boolean => !!request?.credential || request?.metadata?.type === 'tool-approval' && request.metadata.live === true;
 type ForkIsolation = { replacements: { from: string; to: string }[]; files: Attachment[] };
 function pendingAgentInput(turn: AgentSessionSnapshot['turns'][number]): boolean {
   // Reports can remain queued after the parent's run has failed. They are saved
@@ -53,6 +54,7 @@ export class ConversationController {
   readonly sessions: ConversationSession[];
   activeId: string;
   private readonly tasks = new Map<string, RunTask>();
+  private readonly credentialPrompts = new Map<string, { runId: string; abort: AbortController }>();
   private disposed = false;
   private readonly reloading = new Map<string, Promise<void>>();
   private readonly removing = new Set<string>();
@@ -101,7 +103,7 @@ export class ConversationController {
         entry.agentCommands = [];
       }
       for (const message of entry.messages) {
-        if (isLiveToolApproval(message.pendingInput)) {
+        if (isLiveInput(message.pendingInput)) {
           delete message.pendingInput; delete message.submittingInput;
           message.status = 'aborted'; message.error = t("Run interrupted");
         }
@@ -311,13 +313,14 @@ export class ConversationController {
     if (this.project.conversation?.durable?.enabled && (entry.agent || entry.activeRunId || entry.agentOwnerId)) {
       const owner = this.owner(entry);
       const folderBotProfile = this.options.folderBotProfile?.();
-      const deliveryChanged = owner.agentParameters?.allowBotArtifactPublish !== input.allowBotArtifactPublish;
+      const capabilitiesChanged = owner.agentParameters?.allowBotArtifactPublish !== input.allowBotArtifactPublish
+        || owner.agentParameters?.allowBotCredentialInput !== input.allowBotCredentialInput;
       if (owner.agentInterrupted) await this.agentCommand(owner.id, { type: 'snapshot', requestId: `interrupt:${id}` });
       if (owner.messages.some(message => message.pendingInput)) throw new Error(t("Awaiting confirmation"));
       if (mode === 'followUp' && (this.agentBusy(entry) || !this.draining.has(entry.id) && entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry)))) {
         if (!this.project.conversation?.inputQueue?.enabled) throw new Error(t('The current session is running.'));
         queued.hostQueued = true;
-        if (owner.agentParameters && (deliveryChanged || this.settingsChanged(owner, folderBotProfile) || owner.agentParameters.configurationRevision !== this.options.configurationRevision?.())) queued.configurationPending = true;
+        if (owner.agentParameters && (capabilitiesChanged || this.settingsChanged(owner, folderBotProfile) || owner.agentParameters.configurationRevision !== this.options.configurationRevision?.())) queued.configurationPending = true;
         const index = editingId ? entry.queuedInputs!.findIndex(item => item.id === editingId) : -1;
         if (index >= 0) { queued.id = entry.queuedInputs![index].id; entry.queuedInputs![index] = queued; }
         else (entry.queuedInputs ??= []).push(queued);
@@ -326,7 +329,7 @@ export class ConversationController {
       }
       const args = projectParamArgs(parameters.fields, input.params, input.states);
       const previous = owner.agentParameters;
-      const configChanged = previous && (deliveryChanged || this.settingsChanged(owner, folderBotProfile) || previous.configurationRevision !== this.options.configurationRevision?.()
+      const configChanged = previous && (capabilitiesChanged || this.settingsChanged(owner, folderBotProfile) || previous.configurationRevision !== this.options.configurationRevision?.()
         || input.configurationSelection && !isDeepStrictEqual(previous.configurationSelection, input.configurationSelection));
       if (configChanged) {
         if (!owner.agent && owner.activeRunId || owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(pendingAgentInput)) {
@@ -355,6 +358,7 @@ export class ConversationController {
         owner.agentParameters.configurationSelection = input.configurationSelection;
         owner.agentParameters.folderBotProfile = folderBotProfile;
         owner.agentParameters.allowBotArtifactPublish = input.allowBotArtifactPublish;
+        owner.agentParameters.allowBotCredentialInput = input.allowBotCredentialInput;
       }
       if (planIndex >= 0 && previous!.args[planIndex + 1] !== 'false' && owner.activeRunId) throw new Error(t("The current session is running."));
       if (attachmentsUnsupported(input.attachments)) throw new Error(t('This session accepts image attachments.'));
@@ -409,10 +413,10 @@ export class ConversationController {
     } else if (input.text) { args.push(...this.rawArgs(input.text)); }
     if (!answer) {
       const folderBotProfile = this.options.folderBotProfile?.();
-      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { userSettings: this.currentUserSettings(), folderBotProfile, allowBotArtifactPublish: input.allowBotArtifactPublish, configurationRevision: this.options.configurationRevision?.(), configurationSelection: input.configurationSelection, args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
+      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { userSettings: this.currentUserSettings(), folderBotProfile, allowBotArtifactPublish: input.allowBotArtifactPublish, allowBotCredentialInput: input.allowBotCredentialInput, configurationRevision: this.options.configurationRevision?.(), configurationSelection: input.configurationSelection, args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
       if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || input.references?.[0]?.name || t("Workflow run")).slice(0, 80); }
       entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, references: input.references, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
-      answer = { userSettings: this.currentUserSettings(), folderBotProfile, allowBotArtifactPublish: input.allowBotArtifactPublish, id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
+      answer = { userSettings: this.currentUserSettings(), folderBotProfile, allowBotArtifactPublish: input.allowBotArtifactPublish, allowBotCredentialInput: input.allowBotCredentialInput, id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
       answer.runId = answer.id;
       answer.configurationSelection = input.configurationSelection;
       entry.messages.push(answer);
@@ -422,6 +426,7 @@ export class ConversationController {
       userSettings: this.project.conversation?.durable?.enabled ? entry.agentParameters?.userSettings ?? answer.userSettings : answer.userSettings,
       folderBotProfile: resumeAgent && entry.agentParameters ? entry.agentParameters.folderBotProfile : answer.folderBotProfile,
       allowBotArtifactPublish: resumeAgent && entry.agentParameters ? entry.agentParameters.allowBotArtifactPublish : answer.allowBotArtifactPublish,
+      allowBotCredentialInput: resumeAgent && entry.agentParameters ? entry.agentParameters.allowBotCredentialInput : answer.allowBotCredentialInput,
       resumeAgent,
       interruptAgent: entry.agentInterrupted === true,
       configurationSelection,
@@ -496,7 +501,7 @@ export class ConversationController {
         if (event.type === 'user_input_resolved') {
           this.confirmInput(entry, answer, event as unknown as ResolvedInput);
           if (answer.pendingInput?.requestId === event.requestId) {
-            if (isLiveToolApproval(answer.pendingInput)) answer.status = 'running';
+            if (isLiveInput(answer.pendingInput)) answer.status = 'running';
             answer.pendingInput = undefined;
           }
           void this.persist().catch(error => this.options.log(`Workflow persistence: ${String(error)}`));
@@ -597,7 +602,8 @@ export class ConversationController {
         this.options.log(`Workflow run: ${answer.error}`);
       }
     } finally {
-      if (isLiveToolApproval(answer.pendingInput)) {
+      if (answer.runId) this.abortCredentialPrompts(answer.runId);
+      if (isLiveInput(answer.pendingInput)) {
         delete answer.pendingInput;
         if (answer.status === 'waiting_for_input') { answer.status = 'aborted'; answer.error = t("Run interrupted"); }
       }
@@ -1139,6 +1145,7 @@ export class ConversationController {
     const task = runId && this.tasks.get(runId);
     if (task) {
       task.cancelled = true; task.stopping = true;
+      this.abortCredentialPrompts(runId!);
       const answer = entry.messages.find(message => message.runId === runId);
       if (answer) answer.cancelRequested = true;
       this.changed();
@@ -1246,6 +1253,7 @@ export class ConversationController {
       target.agentAnchorRequestId = logicalId as string;
       target.runId = owner.runId; target.args = owner.args ? [...owner.args] : undefined;
       target.userSettings = owner.userSettings; target.entrypointId = owner.entrypointId;
+      target.allowBotCredentialInput = owner.allowBotCredentialInput;
       target.configurationSelection = owner.configurationSelection;
       if (owner.pendingInput?.requestId === request.requestId) delete owner.pendingInput;
       if (entry.agent?.turns.some(turn => turn.requestId === owner.sessionRequestId && turn.status === 'done')) owner.status = 'success';
@@ -1259,7 +1267,8 @@ export class ConversationController {
     const answer = entry.messages.find((message) => message.id === messageId && message.pendingInput?.requestId === requestId);
     if (!answer?.pendingInput) { return; }
     const request = answer.pendingInput;
-    const live = isLiveToolApproval(request);
+    if (request.credential) throw credentialUnavailable();
+    const live = isLiveInput(request);
     if (live ? !entry.activeRunId || entry.activeRunId !== answer.runId || !this.runtime.resolveLiveInput
         || this.tasks.get(entry.activeRunId)?.cancelled || !!answer.submittingInput : !!entry.activeRunId) return;
     const allowed = Object.fromEntries(request.params.map((field) => [field.name, values[field.name] ?? request.defaultValues?.[field.name] ?? field.defaultValue ?? '']));
@@ -1276,6 +1285,29 @@ export class ConversationController {
     }
     this.start(entry, { id: messageId, text: '', params: {}, entrypointId: answer.entrypointId, attachments: [], createdAt: Date.now() }, answer);
     await this.persist();
+  }
+
+  private abortCredentialPrompts(runId: string): void {
+    for (const prompt of this.credentialPrompts.values()) if (prompt.runId === runId) prompt.abort.abort();
+  }
+
+  async captureCredential(messageId: string, requestId: string, host: BotCredentialHost, entry: ConversationSession): Promise<void> {
+    const answer = entry.messages.find(message => message.id === messageId && message.pendingInput?.requestId === requestId);
+    const request = answer?.pendingInput, slot = request?.credential, runId = entry.activeRunId;
+    const task = runId ? this.tasks.get(runId) : undefined;
+    const authorized = answer?.allowBotCredentialInput === true || this.owner(entry).agentParameters?.allowBotCredentialInput === true;
+    if (!authorized || !answer || !request || !slot || !runId || answer.runId !== runId || !task || task.cancelled || this.disposed || entry.origin || !this.runtime.resolveLiveInput || answer.submittingInput) throw credentialUnavailable();
+    if (this.credentialPrompts.has(requestId)) throw new Error(t('A secure credential prompt is already open. Try again after closing it.'));
+    const abort = new AbortController();
+    this.credentialPrompts.set(requestId, { runId, abort });
+    try {
+      const status = await host(this.project.entryId, { action: 'capture', slot: { name: slot.name, kind: slot.kind } }, abort.signal);
+      if (abort.signal.aborted || task.cancelled || this.disposed || this.tasks.get(runId) !== task || answer.pendingInput !== request || !credentialStatus(status)) throw credentialUnavailable();
+      const resolved = { requestId, nodeName: request.nodeName, values: { status }, submittedAt: new Date().toISOString(), request };
+      answer.submittingInput = resolved; this.changed();
+      try { await this.runtime.resolveLiveInput(runId, resolved); }
+      catch (error) { if (answer.submittingInput === resolved) delete answer.submittingInput; this.changed(); throw error; }
+    } finally { this.credentialPrompts.delete(requestId); }
   }
   async editQueued(id: string, entry = this.current): Promise<void> {
     const input = entry.queuedInputs?.find((input) => input.id === id);
@@ -1337,7 +1369,7 @@ export class ConversationController {
     const agent = this.owner(entry).agent, conversationId = entry.agentConversationId ?? agent?.conversationId;
     return agent?.turns.find(turn => turn.conversationId === conversationId && turn.requestId === (input.requestId ?? input.id));
   }
-  async retry(id: string, entry = this.current, allowBotArtifactPublish?: true): Promise<void> {
+  async retry(id: string, entry = this.current, allowBotArtifactPublish?: true, allowBotCredentialInput?: true): Promise<void> {
     this.assertCurrentEngine(entry);
     const index = entry.messages.findIndex((message) => message.id === id && message.role === 'assistant');
     if (index < 0) return;
@@ -1348,6 +1380,7 @@ export class ConversationController {
       if (!allowBotArtifactPublish && (anchor?.allowBotArtifactPublish || answer.allowBotArtifactPublish || entry.agentParameters?.allowBotArtifactPublish)) {
         throw new Error(t('Resume this delivery turn from the local Studio conversation.'));
       }
+      if (!allowBotCredentialInput && (anchor?.allowBotCredentialInput || answer.allowBotCredentialInput || entry.agentParameters?.allowBotCredentialInput)) throw credentialUnavailable();
       if (anchor) anchor.recoveryAttempts = 0;
       entry.recoveryPaused = false; answer.recoveryAttempts = 0; answer.status = 'running'; this.recover(); await this.persist(); return;
     }
@@ -1364,17 +1397,18 @@ export class ConversationController {
       catch (error) { Object.assign(answer, prior); throw error; }
       await this.persist(); return;
     }
-    if (user.input) { await this.send({ ...user.input, allowBotArtifactPublish }, entry, true); return; }
+    if (user.input) { await this.send({ ...user.input, allowBotArtifactPublish, allowBotCredentialInput }, entry, true); return; }
     const parameters = projectParameters(this.project, user.entrypointId);
     const params: ParamValues = { ...entry.parameterValues?.[user.entrypointId ?? ''] };
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
-    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references, allowBotArtifactPublish }, entry, true);
+    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references, allowBotArtifactPublish, allowBotCredentialInput }, entry, true);
   }
   private assertCurrentEngine(entry: ConversationSession): void {
     if (archivedConversation(this.project, entry)) throw new Error(t('This conversation belongs to a different Bot engine.'));
   }
   async idle(): Promise<void> { while (this.tasks.size) { await Promise.all([...this.tasks.values()].map((task) => task.finished)); } }
   dispose(): void {
+    for (const prompt of this.credentialPrompts.values()) prompt.abort.abort();
     this.disposed = true;
     clearTimeout(this.agentSave); this.agentSave = undefined;
     void this.persist().catch(error => this.options.log(String(error)));

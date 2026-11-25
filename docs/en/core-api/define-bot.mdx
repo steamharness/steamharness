@@ -112,7 +112,7 @@ Give objects that change independently their own entries. For example, store the
 
 In `memory_get`, `outgoing` lists the entries this memory references, and `incoming` lists the entries that reference it. Results include current properties but not the bodies of linked entries, and expand only one level. The default is 5 links with a maximum of 10 per page. Use `nextOffset` when another page is available. Before deleting a referenced entry, inspect incoming links and remove the links that should no longer exist.
 
-At the start of each turn, Core extracts keywords from the current input and retrieves relevant memories before calling the model. Later model requests refresh the results so edited or deleted excerpts do not remain in context. Follow-up messages, steering inputs and resumed execution also use the current input. Background retrieval runs only when the search tool is enabled and auto-approved; it never opens a confirmation dialog.
+At the start of each turn, Core extracts keywords from the current input and retrieves relevant memories before calling the model. Later model requests refresh the results so edited or deleted excerpts do not remain in context. Follow-up messages, steering inputs and resumed execution also use the current input. Background retrieval runs only when the search tool is enabled and auto-approved; it never opens a confirmation dialog. In a multi-root Assistant workspace or a folder Bot that can select subdirectories, the Bot searches the chosen project directory instead of receiving automatic excerpts from its default store.
 
 `memory_search` returns up to 5 entries by default, with a maximum `limit` of 10. Each excerpt contains at most 240 characters around a matching passage, and the complete search result stays within 6,000 characters. Pass up to 12 keywords, each at most 80 characters and at most 500 characters combined. `any` (the default) matches one or more keywords; `all` requires every keyword. Matching is literal and supports Chinese.
 
@@ -128,15 +128,35 @@ The model decides what to retain from the conversation; it does not copy every m
 
 Memories persist in SQLite on the execution host. Older databases upgrade on first access, keeping their entries and the existing `category` and `key` calls. Memories persist across conversations and restarts on that host, with no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
 
+### Use memory by project directory
+
+Studio's Assistant can use multiple opened workspace roots in one conversation. Selecting folder B from folder A uses the same memory store as opening the Assistant directly in B.
+
+A folder Bot keeps its memory separate from the original Bot and other instances. It can also keep separate stores for subprojects within its bound folder.
+
+Supported local runtimes offer an optional `projectPath` on every `memory_*` tool. Pass the target directory's absolute path, and use the same directory when searching, reading, editing or linking a memory. Omitting the field uses the existing default store. An invalid directory is rejected without falling back to that store. Existing memories are not moved; memory IDs and structured links are local to each store.
+
 ### Manage memory in Studio
 
 In local Studio, open an Agent Bot's **Project details → Bot management → Memory management**. Check that the panel shows the original Bot or the intended instance. Filter by keyword, category, or exact properties such as `{"status":"live"}`. Open an entry to read its body, properties, and incoming and outgoing links, or to edit it and remove links.
+
+In the Assistant's conversation tools, open **Memory management** and select one of the workspace roots. In a folder Bot's panel, enter the absolute path of a subproject inside the bound folder and select **Switch memory directory**. This changes which store the panel reads and writes, not the active conversation or the Bot's working directory.
 
 On supported runtimes, edits by the user and by the Bot record the actor, changes, and revision. Bot edits also record available run and conversation references. Existing memories remain available, but the panel does not invent history from before the upgrade.
 
 Previous values from edits and link changes are kept for 30 days. You can undo a change only while the entry is still at the revision that change produced. Undo creates a new revision. If another window or a Bot has already edited the entry, refresh before resolving the conflict.
 
 An entry with incoming links cannot be forgotten. Inspect those links and remove the ones that are no longer needed. Confirming **Forget memory** removes the entry and its recoverable values from the memory database. Other memories, the original conversation, and external backups are unaffected. The Bot's `memory_delete` also keeps no recoverable old values.
+
+## Bot credentials
+
+In a local Studio Bot conversation, open **Project information → Bot credentials** to add, replace, or delete credentials. Enter an API key, token, or password in a masked native prompt. For SSH, select a local OpenSSH or PEM private key file. The list shows aliases and types, but not values.
+
+An Agent Bot can call `bot_credentials_request` with a `name` (alias) and `kind` (`api-key`, `password`, or `ssh-private-key`). Select **Open secure input** on the conversation card. Studio then takes the value or asks whether to keep an existing credential of that name and type. The Bot receives only the alias, type, and status: `saved`, `existing`, or `declined`.
+
+Studio uses operating-system-protected storage, separate from memory, conversations, project folders, and artifacts. The original Bot and each instance have separate stores. A request does not overwrite an existing credential, and credentials are excluded from templates, project archives, and conversation exports. Studio refuses to save them if protected storage is unavailable.
+
+The built-in request tool is available in supported local Studio Agent Bot conversations, not in Plan, read-only, IM, paired Web, or background runs. This feature saves and manages credentials; it does not reveal plaintext, inject credentials into a shell, or open SSH connections. Project code can use a [credential input node](./create-user-input-node.mdx#bot-credential-input) to receive the same status.
 
 ## Bot files
 

@@ -4,6 +4,7 @@ import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-m
 import { readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { randomUUID } from "node:crypto";
 import { createRuntimeStateStorage } from "../runtime-storage/state";
+import { isBotCredentialStatus, parseBotCredentialSlot } from "../types/bot-credential";
 import type { RuntimePersistence } from "../runtime-storage/history";
 import type { RuntimeWorkspaceInput } from "../runtime-storage/contract";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
@@ -766,15 +767,27 @@ function createLocalUserInputContext(options: {
   return nextContext;
 }
 
-function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "emitUserInputRequested" | "emitUserInputResolved">): Pick<UserInputContext, "waitForInput"> {
-  if (!input.waitForInput) return {};
-  return { async waitForInput(request, signal) {
+function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "emitUserInputRequested" | "emitUserInputResolved">): Pick<UserInputContext, "waitForInput" | "waitForCredential"> {
+  return { ...(input.waitForInput && { async waitForInput(request, signal) {
     signal?.throwIfAborted();
+    if (request.credential) throw new Error("A Bot credential requires the secure input handler.");
     const waiting = input.waitForInput!(request, signal);
     const [resolved] = await Promise.all([waiting, events.emitUserInputRequested(request)]);
     if (resolved.requestId === request.requestId) await events.emitUserInputResolved({ ...resolved, request });
     return resolved;
-  } };
+  } }), ...(input.waitForCredential && { async waitForCredential(request, signal) {
+    signal?.throwIfAborted();
+    const safeRequest = { requestId: request.requestId, nodeName: request.nodeName, title: request.title, description: request.description,
+      createdAt: request.createdAt, params: [], credential: parseBotCredentialSlot(request.credential),
+      metadata: { type: "bot-credential", title: "Bot credential", version: "1.0.0",
+        ...(typeof request.metadata?.botRequestId === "string" && { botRequestId: request.metadata.botRequestId }) } };
+    const waiting = input.waitForCredential!(safeRequest, signal);
+    const [status] = await Promise.all([waiting, events.emitUserInputRequested(safeRequest)]);
+    signal?.throwIfAborted();
+    if (!isBotCredentialStatus(status)) throw new Error("Invalid Bot credential receipt.");
+    await events.emitUserInputResolved({ requestId: safeRequest.requestId, nodeName: safeRequest.nodeName, request: safeRequest, values: { status }, submittedAt: new Date() });
+    return status;
+  } }) };
 }
 
 export async function runLocalProject(

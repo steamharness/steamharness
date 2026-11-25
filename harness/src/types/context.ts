@@ -59,6 +59,7 @@ export interface UserInputRequest {
   title: string;
   description?: string;
   params: ParamDefinition[];
+  credential?: import("./bot-credential").BotCredentialSlot;
   defaultValues?: Record<string, unknown>;
   metadata?: NodeMetadata;
   createdAt: Date;
@@ -80,6 +81,8 @@ export interface UserInputContext {
   requestInput(request: UserInputRequest): Promise<void> | void;
   /** Resume an active run without restarting it. Hosts without live input leave this unset. */
   waitForInput?(request: UserInputRequest, signal?: AbortSignal): Promise<UserInputResolved>;
+  /** Native host interaction. Only its status, never the credential value, crosses this boundary. */
+  waitForCredential?(request: UserInputRequest & { credential: NonNullable<UserInputRequest["credential"]> }, signal?: AbortSignal): Promise<import("./bot-credential").BotCredentialStatus>;
 }
 
 export interface NodeExecutionHooks {

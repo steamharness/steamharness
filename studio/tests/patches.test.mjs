@@ -59,6 +59,7 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindow.ts',
     'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindows.ts', 'src/vs/platform/auxiliaryWindow/electron-main/auxiliaryWindowsMainService.ts',
     'src/vs/workbench/electron-browser/studioChatWindow.ts', 'src/vs/workbench/services/auxiliaryWindow/browser/auxiliaryWindowService.ts',
+    'src/vs/workbench/services/secrets/electron-browser/secretStorageService.ts',
     ...launchpadFocusFiles];
   const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts',
     'src/vs/workbench/contrib/webview/browser/webview.ts', 'src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts',
@@ -86,6 +87,7 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
   assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/electron-browser/studioLaunchpad.ts'), 'utf8'), /!this\.managedWorkspaceUris\.has\(row\.uri\)/u);
   assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/browser/studioLaunchpadLibrary.ts'), 'utf8'), /lp-index-toggle/u);
   assert.match(await fs.readFile(path.join(upstream, 'src/vs/platform/windows/electron-main/studioTray.ts'), 'utf8'), /Clear Read Notifications/u);
+  assert.match(await fs.readFile(path.join(upstream, 'src/vs/workbench/services/secrets/electron-browser/secretStorageService.ts'), 'utf8'), /studio\.internalCanPersistBotCredentials/u);
   const before = await Promise.all(files.map(file => fs.readFile(path.join(upstream, file))));
   await applyPatches(ROOT, upstream);
   assert.deepEqual(await Promise.all(files.map(file => fs.readFile(path.join(upstream, file)))), before);

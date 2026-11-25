@@ -14,6 +14,7 @@ import type { Project } from './workflow-types';
 import type { WebReady, WebSession, WebSessionExit } from './workflow-cli-types';
 import type { StudioUserSettings } from './user-settings';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
+import { parseBotCredentialAction, type BotCredentialAction, type BotCredentialResult } from './bot-credential-vault';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
@@ -114,6 +115,7 @@ export async function startProjectCli(options: {
   authRoot?: string;
   folderBot?: Project['folderBot'];
   localBotArtifactLabel?: string;
+  botCredentials?(entryId: string, label: string, action: BotCredentialAction, signal: AbortSignal): Promise<BotCredentialResult>;
   workflowScheduleKey?: string;
   assistantProjectDir?: string;
   expectedProjectId?: string;
@@ -137,6 +139,8 @@ export async function startProjectCli(options: {
   let finishClose!: () => void;
   const closed = new Promise<void>(resolve => { finishClose = resolve; });
   let closing = false, finished = false, buffer = '', stderr = '';
+  const credentialRequests = new Map<string, AbortController>();
+  const cancelCredentials = () => { for (const request of credentialRequests.values()) request.abort(); credentialRequests.clear(); };
   let webAppFailure: WebAppFailureReason | undefined;
   let activeWebApp: { entryId: string; connection?: Connection; serverUrl?: string } | undefined;
   let webAppLoginBinding: WebAppSession['binding'] | undefined;
@@ -183,7 +187,7 @@ export async function startProjectCli(options: {
   let force: ReturnType<typeof setTimeout> | undefined;
   const close = (): Promise<void> => {
     if (!closing && !finished) {
-      closing = true; clearWebApps();
+      closing = true; clearWebApps(); cancelCredentials();
       child.stdin?.end(`${JSON.stringify({ type: 'close' })}\n`);
       force = setTimeout(() => child.kill('SIGKILL'), 5_000);
       force.unref();
@@ -198,7 +202,7 @@ export async function startProjectCli(options: {
     stderr = (stderr + chunk).slice(-8_000 - overlap);
   });
   child.once('close', (code, signal) => {
-    finished = true; clearWebApps(); clearTimeout(force); exit = { code, signal, stderr: diagnostics() };
+    finished = true; clearWebApps(); cancelCredentials(); clearTimeout(force); exit = { code, signal, stderr: diagnostics() };
     events.emit('exit', exit); finishClose();
   });
   try {
@@ -232,7 +236,8 @@ export async function startProjectCli(options: {
       };
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
       child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, folderBot: options.folderBot && { ...options.folderBot, projectId: options.expectedProjectId }, resourceProjects: options.resourceProjects ?? [],
-        ...(options.localBotArtifactLabel && { localBotArtifacts: true, localBotArtifactLabel: options.localBotArtifactLabel }), workflowScheduleKey: options.workflowScheduleKey })}\n`);
+        ...(options.localBotArtifactLabel && { localBotArtifacts: true, localBotArtifactLabel: options.localBotArtifactLabel }),
+        ...(options.botCredentials && { localBotCredentials: true }), workflowScheduleKey: options.workflowScheduleKey })}\n`);
     });
     webAppConfigurations = ready.webAppConfigurations ?? {};
     readyWebAppLoginVersion = ready.webAppLoginProtocolVersion;
@@ -241,12 +246,29 @@ export async function startProjectCli(options: {
     // The browser session URL does not grant access to private trace details.
     const pendingTrace = new Map<string, (request?: unknown) => void>();
     const pendingTurns = new Map<string, (value?: unknown, failed?: boolean) => void>();
-    if (ready.hostConversationProtocolVersion === 1 || ready.traceModelRequestProtocolVersion === 1 || ready.webAppConfigurationProtocolVersion === 1 || ready.webAppLoginProtocolVersion === 1) {
+    if (ready.hostConversationProtocolVersion === 1 || ready.traceModelRequestProtocolVersion === 1 || ready.webAppConfigurationProtocolVersion === 1 || ready.webAppLoginProtocolVersion === 1 || ready.botCredentialProtocolVersion === 1) {
       const lines = createInterface({ input: child.stdout!, crlfDelay: Infinity });
       lines.on('line', line => {
         if (!line.startsWith('{')) return;
         try {
           const reply = JSON.parse(line);
+          if (ready.botCredentialProtocolVersion === 1 && options.botCredentials && (reply.type === 'bot-credential-request' || reply.type === 'bot-credential-cancel')) {
+            if (closing || finished || typeof reply.id !== 'string' || !/^[a-f0-9-]{36}$/.test(reply.id)) return;
+            if (reply.type === 'bot-credential-cancel') { credentialRequests.get(reply.id)?.abort(); return; }
+            if (credentialRequests.has(reply.id)) return;
+            const respond = (status: BotCredentialResult) => {
+              if (!closing && !finished) child.stdin?.write(`${JSON.stringify({ type: 'bot-credential-result', id: reply.id, status })}\n`);
+            };
+            const entry = ready.project.entries.find(entry => entry.entryId === reply.entryId && entry.type === 'bot');
+            const action = parseBotCredentialAction(reply);
+            if (!entry || !action || (options.assistant || options.folderBot) && entry.entryId !== options.entryId) { respond('unavailable'); return; }
+            const request = new AbortController(); credentialRequests.set(reply.id, request);
+            const label = options.assistant || options.folderBot ? options.localBotArtifactLabel ?? entry.name : `${ready.project.name} / ${entry.name}`;
+            void options.botCredentials(entry.entryId, label, action, request.signal).then(status => {
+              if (!request.signal.aborted) respond(status);
+            }, () => { if (!request.signal.aborted) respond('unavailable'); }).finally(() => credentialRequests.delete(reply.id));
+            return;
+          }
           if (reply.type === 'host-turn') pendingTurns.get(reply.requestId)?.(reply.value, reply.failed === true);
           if (reply.type === 'trace-model-request') pendingTrace.get(reply.requestId)?.(reply.request);
           if (ready.webAppLoginProtocolVersion === 1 && reply.type === 'web-app-login' && reply.entryId === activeWebApp?.entryId) {

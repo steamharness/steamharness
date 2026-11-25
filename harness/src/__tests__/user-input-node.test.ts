@@ -184,6 +184,27 @@ test("createUserInputNode resumes from a resolved answer and returns a standard 
   });
 });
 
+test("credential nodes use only the native status handler and never replay the ordinary form", async () => {
+  const slot = { name: "deploy-key", kind: "ssh-private-key" as const };
+  const node = createUserInputNode({ name: "deploy-credential", params: [], credential: slot });
+  const ordinary = {
+    getResolvedInput() { assert.fail("A credential request must not consult ordinary form history"); },
+    requestInput() { assert.fail("A credential request must not display an ordinary form"); },
+  };
+  await assert.rejects(() => runNode(node, {}, createTestProjectContext(ordinary)), /supported local Studio/);
+  const outcome = await runNode(node, {}, createTestProjectContext({ ...ordinary, async waitForCredential(request) {
+    assert.deepEqual(request.credential, slot);
+    assert.deepEqual(request.params, []);
+    assert.equal(request.defaultValues, undefined);
+    return "saved";
+  } }));
+  assert.deepEqual(outcome.values, { status: "saved" });
+  await assert.rejects(() => runNode(node, {}, createTestProjectContext({ ...ordinary,
+    async waitForCredential() { return { status: "saved", value: "fixture-private-value" } as never; } })), /Invalid Bot credential receipt/);
+  assert.throws(() => createUserInputNode({ credential: slot, params: [], defaultValues: {} }), /cannot include/);
+  assert.throws(() => createUserInputNode({ credential: slot, params: [{ name: "value", type: "string" }] }), /cannot include/);
+});
+
 test("createUserInputNode resolves a dynamic request definition from the current input", async () => {
   const requests: UserInputRequest[] = [];
   const node = createUserInputNode<{ question: string; choices: string[] }>({

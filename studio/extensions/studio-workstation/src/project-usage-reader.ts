@@ -193,12 +193,15 @@ const isDbFile = (relative: string, database: string) => relative === database |
 const isIn = (relative: string, directory: string) => relative.startsWith(directory + path.sep);
 const history = path.join('runtime', 'history.sqlite');
 const agents = path.join('runtime', 'agents');
+const scopedMemories = path.join('runtime', 'memories-by-directory');
 
 async function entryUsage(storage: string, root: string, source: string | undefined, projectId: string, entry: ProjectEntry, entries: readonly ProjectEntry[], total: Footprint, deadline: number): Promise<EntryUsage> {
   const identity = { entryId: entry.entryId, name: entry.name };
   const usage = new Footprint(), memory = new Footprint();
   // The Core memory store is scoped by the project and entry even in a folder Bot namespace.
-  const memoryFile = path.join('runtime', 'memories', `${createHash('sha256').update(JSON.stringify([projectId.toLowerCase(), entry.entryId])).digest('hex')}.sqlite`);
+  const memoryName = `${createHash('sha256').update(JSON.stringify([projectId.toLowerCase(), entry.entryId])).digest('hex')}.sqlite`;
+  const memoryFile = path.join('runtime', 'memories', memoryName);
+  const memoryFiles = new Set([memoryFile]), presentMemoryFiles = new Set<string>();
   if (performance.now() >= deadline) {
     total.partial = true;
     if (entry.type === 'bot') return { ...identity, type: 'bot', conversation: unavailable, memory: unavailable };
@@ -206,7 +209,6 @@ async function entryUsage(storage: string, root: string, source: string | undefi
     return { ...identity, type: 'kanban', kanban: entry.webApp ? { state: 'hosted' } : unavailable };
   }
   let scanState: UsageState = 'ok';
-  let memoryPresent = false;
   try {
     const info = await beneath(storage, root);
     if (info) {
@@ -214,8 +216,16 @@ async function entryUsage(storage: string, root: string, source: string | undefi
       await scan(root, deadline, {
         file(relative, info) {
           total.add(info);
-          if (relative === memoryFile) memoryPresent = true;
-          if (isDbFile(relative, memoryFile)) memory.add(info);
+          if (entry.type === 'bot' && (isDbFile(relative, memoryFile) || isIn(relative, scopedMemories))) {
+            const database = relative.replace(/-(?:wal|shm|journal)$/, '');
+            // Match the additional stores written by CLI project-data-directory.ts.
+            const parts = database.split(path.sep);
+            if (database === memoryFile || parts.length === 5 && parts[0] === 'runtime' && parts[1] === 'memories-by-directory' &&
+              /^[a-f0-9]{64}$/.test(parts[2]) && parts[3] === 'memories' && parts[4] === memoryName) {
+              memory.add(info); memoryFiles.add(database);
+              if (database === relative) presentMemoryFiles.add(database);
+            }
+          }
           if (isDbFile(relative, history) || isIn(relative, agents) || isIn(relative, 'files') || isIn(relative, 'conversation-imports')) usage.add(info);
         },
         incomplete() { total.partial = usage.partial = memory.partial = true; },
@@ -225,8 +235,11 @@ async function entryUsage(storage: string, root: string, source: string | undefi
   const usageSize = scanState === 'ok' ? usage.size() : unavailable;
   const memorySize = scanState === 'ok' ? memory.size() : unavailable;
   if (entry.type === 'bot') {
-    const location = path.join(root, memoryFile);
-    const memoryMetadata = memoryPresent ? { created: true, location } : {};
+    const describe = (files: Set<string>) => {
+      const location = files.has(memoryFile) ? memoryFile : files.size === 1 ? [...files][0] : undefined;
+      return { created: files.size > 0, ...(location && { location: path.join(root, location) }) };
+    };
+    const memoryMetadata = presentMemoryFiles.size ? describe(presentMemoryFiles) : {};
     if (performance.now() >= deadline) return { ...identity, type: 'bot', conversation: usageSize, memory: { ...memorySize, ...memoryMetadata } };
     const conversation = await readDatabase(storage, path.join(root, history), { sessions: 0, messages: 0 }, db => {
       const row = db.prepare(`SELECT count(*) AS sessions,
@@ -235,11 +248,22 @@ async function entryUsage(storage: string, root: string, source: string | undefi
         FROM history WHERE kind='conversation' AND deleted=0`).get()!;
       return { sessions: Number(row.sessions), messages: row.valid === row.sessions ? Number(row.messages ?? 0) : undefined };
     }).then(counts => ({ ...usageSize, ...counts }), () => usageSize);
-    const records = await readDatabase(storage, location, undefined as number | undefined, db =>
-      Number(db.prepare('SELECT count(*) AS records FROM bot_memories WHERE project_id=? AND entry_id=?').get(projectId, entry.entryId)!.records))
-      .then(records => records === undefined ? { ...memorySize, created: false, records: 0 } : { ...memorySize, created: true, records, location },
-        () => ({ ...memorySize, ...memoryMetadata }));
-    return { ...identity, type: 'bot', conversation, memory: records };
+    const readMemory = async () => {
+      const partial = { ...memorySize, ...memoryMetadata };
+      if (memorySize.state !== 'ok') return partial;
+      let records = 0;
+      const countedFiles = new Set<string>();
+      try {
+        for (const file of memoryFiles) {
+          if (performance.now() >= deadline) return partial;
+          const count = await readDatabase(storage, path.join(root, file), undefined as number | undefined, db =>
+            Number(db.prepare('SELECT count(*) AS records FROM bot_memories WHERE project_id=? AND entry_id=?').get(projectId, entry.entryId)!.records));
+          if (count !== undefined) { records += count; countedFiles.add(file); }
+        }
+        return { ...memorySize, ...describe(countedFiles), records };
+      } catch { return partial; }
+    };
+    return { ...identity, type: 'bot', conversation, memory: await readMemory() };
   }
   if (entry.type === 'workflow') {
     if (performance.now() >= deadline) return { ...identity, type: 'workflow', workflow: usageSize };
