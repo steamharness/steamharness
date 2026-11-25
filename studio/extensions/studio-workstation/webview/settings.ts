@@ -442,10 +442,14 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   search.addEventListener('input', () => { closeDropdowns(); restoredScroll = undefined; filter(); main.scrollTop = 0; persist(); });
   search.addEventListener('keydown', event => { if (event.key === 'Escape') { search.value = ''; filter(); persist(); } });
   navigation.addEventListener('keydown', event => {
-    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) { return; }
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight';
+    if (horizontal ? getComputedStyle(navigation).flexDirection !== 'row' : !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
     const buttons = [...navigation.querySelectorAll('button')];
     const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+    if (current < 0) return;
+    const forward = horizontal ? (event.key === 'ArrowRight') === (getComputedStyle(navigation).direction !== 'rtl') : event.key === 'ArrowDown';
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (forward ? 1 : -1) + buttons.length) % buttons.length;
     event.preventDefault(); buttons[next]?.focus(); buttons[next]?.click();
   });
   root.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); search.focus(); search.select(); } });

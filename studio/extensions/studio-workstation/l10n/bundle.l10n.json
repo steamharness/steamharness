@@ -910,6 +910,7 @@
   "Available AI plans": "Available AI plans",
   "View all plans": "View all plans",
   "Unable to load AI plans.": "Unable to load AI plans.",
+  "Unable to refresh AI plans. Showing previous results.": "Unable to refresh AI plans. Showing previous results.",
   "No AI plans are currently available.": "No AI plans are currently available.",
   "Custom models": "Custom models",
   "No custom models configured.": "No custom models configured.",

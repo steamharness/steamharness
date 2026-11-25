@@ -108,6 +108,7 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
   t.after(() => controller.dispose());
   if (connect) await controller.connect();
   return Object.assign(f, { controller, intervals, sessions, vscode, user, workspace, writes, secretReads, saved,
+    secretChanged: key => secretsChanged.fire({ key }),
     focus: focused => { vscode.window.state.focused = focused; focus.fire({ focused }); },
     poll: () => { for (const timer of intervals) { timer.callback(); } },
   });
@@ -160,23 +161,35 @@ test('settings and account commands share one tab and navigate to their requeste
 });
 
 test('selecting Models loads current plan offers when the built-in model catalogue is empty', async t => {
-  const f = await fixture(t);
-  let calls = 0, finish;
+  const f = await fixture(t, { connect: false });
+  let calls = 0, modelReads = 0, finish;
   const url = 'http://127.0.0.1:7126/settings/ai#ai-group-subscriptions';
   const offers = [{ name: 'Offer', price: 'CN¥25.00 / 30 days', url: 'http://127.0.0.1:7126/settings/ai#ai-subscription-25' }];
-  f.controller.registerModelCatalogProvider({ load: async () => ({ entries: [] }), loadPlans: () => { ++calls; return new Promise(resolve => { finish = resolve; }); } });
+  f.controller.registerModelCatalogProvider({ load: async () => { ++modelReads; return { entries: [] }; },
+    loadPlans: () => { ++calls; return new Promise(resolve => { finish = resolve; }); } });
   await f.controller.getSystemModelCatalog(new AbortController().signal);
   f.commands.get('studio.openSettings')({ section: 'general' });
   const panel = f.panel;
   await panel.message({ type: 'ready' });
+  assert.equal(f.requests, 0, 'General settings never restore the account');
   assert.equal(calls, 0);
   await panel.message({ type: 'settings-view-state', state: { section: 'models' } });
   const latest = () => panel.webview.messages.filter(message => message.type === 'settings-models').at(-1)?.state.plans;
+  await until(() => finish);
   assert.equal(calls, 1);
   assert.equal(latest().loading, true);
   finish({ url, offers });
   await until(() => latest()?.catalog);
   assert.deepEqual(latest().catalog, { url, offers });
+  const reads = modelReads;
+  await panel.message({ type: 'retry-model-plans' });
+  await panel.message({ type: 'retry-model-plans' });
+  assert.equal(calls, 2, 'Pending plan retries are deduplicated');
+  assert.equal(modelReads, reads);
+  finish({ url, offers });
+  await until(() => latest()?.catalog && !latest().loading);
+  assert.ok(f.requestUrls.every(url => url.endsWith('/api/auth/me')));
+  assert.equal(f.opened.length, 0);
   assert.ok(!JSON.stringify(panel.webview.messages).includes('test-token'));
 });
 
@@ -637,6 +650,26 @@ test('System AI reuses the signed-in account unless an explicit AI session is co
   assert.equal(f.opened.length, 0);
 });
 
+test('an explicit System AI request shares the cold Studio session restore', async t => {
+  const f = await fixture(t, { connect: false });
+  const [first, second] = await Promise.all([f.controller.connectAi(), f.controller.connectAi()]);
+  assert.equal(first?.accessToken, 'test-token');
+  assert.equal(second?.accessToken, 'test-token');
+  assert.deepEqual(f.requestUrls, ['http://127.0.0.1:7126/api/auth/me']);
+  assert.equal(f.opened.length, 0);
+});
+
+test('Manage AI account only opens settings when there is no saved login', async t => {
+  const f = await fixture(t, { signedIn: false });
+  const section = 'provider:system-ai';
+  f.controller.registerSectionProvider({ id: 'system-ai', title: 'System AI', load: async () => [] });
+  f.controller.open({ section: 'models' }); await f.message({ type: 'ready' });
+  await f.message({ type: 'settings-models-account' });
+  await until(() => f.messages.some(message => message.type === 'settings-navigate' && message.state.section === section));
+  assert.equal(f.requestUrls.some(url => url.endsWith('/device/start')), false);
+  assert.equal(f.opened.length, 0);
+});
+
 for (const entry of ['select', 'open', 'restore']) {
   test(`System AI restores the saved Studio session on ${entry} and loads without another sign-in`, async t => {
     const f = await fixture(t, { connect: false });
@@ -716,6 +749,28 @@ test('System AI silently uses a saved AI-only session and clears it on sign-out'
   assert.doesNotMatch(JSON.stringify(f.messages), /separate-ai-token/);
 });
 
+for (const duringRestore of [false, true]) {
+  test(`System AI clears another window's removed session ${duringRestore ? 'while restoring' : 'after verification'}`, async t => {
+    const f = await fixture(t, { signedIn: false });
+    const serverUrl = 'http://127.0.0.1:7126';
+    const key = 'studio.system-ai.dev.' + encodeURIComponent(serverUrl);
+    f.saved.set(key, JSON.stringify({ serverUrl, accessToken: 'stale-ai-token' }));
+    let finish, loads = 0;
+    if (duringRestore) f.fetch = () => new Promise(resolve => { finish = resolve; });
+    f.controller.registerSectionProvider({ id: 'system-ai', title: 'System AI', load: async () => { ++loads; return [{ id: 'usage', title: 'Usage' }]; } });
+    f.controller.open({ section: 'provider:system-ai' }); await f.message({ type: 'ready' });
+    const latest = type => f.messages.filter(message => message.type === type).at(-1);
+    await until(() => duringRestore ? finish : latest('account-sections')?.states[0]?.sections.length);
+    f.saved.delete(key); f.secretChanged(key);
+    finish?.();
+    await until(() => latest('account') && !latest('account').state.aiConfigured && !latest('account').state.aiRestoring);
+    assert.equal(f.controller.getAiConnection(), undefined);
+    assert.equal(latest('account-sections').states.length, 0);
+    assert.equal(loads, duringRestore ? 0 : 1);
+    assert.equal(f.opened.length, 0);
+  });
+}
+
 test('retry after a temporary account verification failure does not open browser sign-in', async t => {
   const f = await fixture(t, { connect: false });
   f.fetch = async () => { throw new Error('Network unavailable'); };
@@ -734,7 +789,7 @@ test('retry after a temporary account verification failure does not open browser
 });
 
 test('an explicit cached System AI session is validated before it replaces the account connection', async t => {
-  const f = await fixture(t, { connect: false });
+  const f = await fixture(t, { signedIn: false });
   const requests = [];
   f.fetch = async (url, options) => {
     requests.push(url);

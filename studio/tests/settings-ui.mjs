@@ -36,7 +36,7 @@ async function fits() {
 try {
   for (const language of ['en', 'zh-cn']) {
     for (const theme of ['light', 'dark', 'contrast']) {
-      for (const width of theme === 'contrast' ? [640] : [1440, 960, 640, 360, 280]) {
+      for (const width of theme === 'contrast' ? [701, 700, 640] : [1440, 960, 640, 360, 280]) {
         await page.goto('about:blank'); await page.setViewportSize({ width, height: 1000 });
         const bundle = language === 'en' ? {} : JSON.parse(chinese);
         await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(theme)}\n${iconCss}\n${css}</style></head><body data-platform="true"><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle }).replace(/</g, '\\u003c')}</script></body></html>`);
@@ -68,11 +68,20 @@ try {
         if (width > 700) {
           const modelDivider = await category('models').evaluate(button => {
             const previous = button.previousElementSibling.getBoundingClientRect();
-            const style = getComputedStyle(button);
-            return { gap: button.getBoundingClientRect().top - previous.bottom, border: style.borderTopWidth, borderColor: style.borderTopColor, topRadius: style.borderTopLeftRadius };
+            const divider = getComputedStyle(button, '::before');
+            return { gap: button.getBoundingClientRect().top - previous.bottom, border: divider.borderTopWidth, borderColor: divider.borderTopColor };
           });
           assert.ok(modelDivider.gap >= 16, 'The wide sidebar separates the Models category');
-          assert.equal(modelDivider.border, '1px'); assert.equal(modelDivider.topRadius, '0px'); assert.notEqual(modelDivider.borderColor, 'rgba(0, 0, 0, 0)');
+          assert.equal(modelDivider.border, '1px'); assert.notEqual(modelDivider.borderColor, 'rgba(0, 0, 0, 0)');
+          if (theme === 'contrast') {
+            await category('models').click();
+            const borders = await category('models').evaluate(button => {
+              const style = getComputedStyle(button);
+              return [style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor];
+            });
+            assert.deepEqual(borders, Array(4).fill('rgb(243, 133, 24)'), 'The category divider never covers the high-contrast selection border');
+            await category('general').click();
+          }
         } else {
           const provider = { id: 'system-ai', title: language === 'en' ? 'System AI' : '系统 AI', icon: 'sparkle' };
           await send('settings', { state: { ...state, remoteAccess: true, providers: [provider] } });
@@ -86,6 +95,11 @@ try {
           await category('models').click();
           assert.equal(await category('models').getAttribute('aria-current'), 'page');
           assert.deepEqual(await layout(), tabs, 'Selecting Models does not change the tab layout');
+          await category('models').press('ArrowRight');
+          assert.equal(await category('permissions').getAttribute('aria-current'), 'page');
+          assert.equal(await category('permissions').evaluate(button => button === document.activeElement), true);
+          await category('permissions').press('ArrowLeft');
+          assert.equal(await category('models').getAttribute('aria-current'), 'page');
           for (const [index, tab] of tabs.entries()) {
             const previous = tabs[index - 1];
             if (previous && tab.left > previous.left) assert.equal(tab.top, previous.top, `${tab.section} aligns with other tabs on its row`);

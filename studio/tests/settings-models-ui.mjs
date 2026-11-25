@@ -93,6 +93,9 @@ try {
     assert.equal(await plans.getAttribute('aria-busy'), 'true');
     await send({ type: 'settings-models', state: { ...state, plans: { loading: false, failed: true } } });
     assert.equal(await plans.getByRole('status').textContent(), zh ? '暂时无法加载 AI 套餐。' : 'Unable to load AI plans.');
+    const retryPlans = plans.getByRole('button', { name: zh ? '重试' : 'Retry', exact: true });
+    await retryPlans.click();
+    assert.equal(await page.evaluate(() => window.messages.at(-1)?.type), 'retry-model-plans');
     await send({ type: 'settings-models', state: { ...state, plans: { loading: false, failed: false, catalog: { url: `${aiPage}#ai-group-subscriptions`, offers: [] } } } });
     assert.equal(await plans.getByRole('status').textContent(), zh ? '暂无在售的 AI 套餐。' : 'No AI plans are currently available.');
     const planCatalogue = { url: `${aiPage}#ai-group-subscriptions`, offers: [1, 2, 3].map(id => ({
@@ -103,6 +106,15 @@ try {
     await send({ type: 'settings-models', state: withPlans });
     assert.equal(await plans.getByRole('heading', { name: zh ? '在售 AI 套餐' : 'Available AI plans' }).count(), 1);
     assert.equal(await plans.getByRole('listitem').count(), 3);
+    await send({ type: 'settings-models', state: { ...withPlans, plans: { ...withPlans.plans, failed: true } } });
+    assert.equal(await plans.getByRole('status').textContent(), zh ? '暂时无法刷新 AI 套餐，显示上次加载的结果。' : 'Unable to refresh AI plans. Showing previous results.');
+    assert.equal(await plans.getByRole('listitem').count(), 3);
+    await retryPlans.click();
+    await send({ type: 'settings-models', state: { ...withPlans, plans: { ...withPlans.plans, failed: true, loading: true } } });
+    assert.equal(await retryPlans.isDisabled(), true);
+    assert.equal(await plans.getByRole('listitem').count(), 3);
+    await send({ type: 'settings-models', state: withPlans });
+    assert.equal(await retryPlans.count(), 0);
     assert.deepEqual(await plans.getByRole('link').evaluateAll(links => links.map(link => link.href)), [planCatalogue.url, ...planCatalogue.offers.map(offer => offer.url)]);
     assert.equal(await plans.evaluate(section => {
       const viewport = section.closest('.settings-model-table-viewport').getBoundingClientRect();

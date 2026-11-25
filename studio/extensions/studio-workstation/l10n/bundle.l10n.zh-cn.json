@@ -910,6 +910,7 @@
   "Available AI plans": "在售 AI 套餐",
   "View all plans": "查看全部套餐",
   "Unable to load AI plans.": "暂时无法加载 AI 套餐。",
+  "Unable to refresh AI plans. Showing previous results.": "暂时无法刷新 AI 套餐，显示上次加载的结果。",
   "No AI plans are currently available.": "暂无在售的 AI 套餐。",
   "Custom models": "自定义模型",
   "No custom models configured.": "尚未配置自定义模型。",

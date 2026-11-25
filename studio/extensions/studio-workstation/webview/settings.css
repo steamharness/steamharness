@@ -22,7 +22,8 @@
 .settings-nav-item[aria-current="page"] { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-button-secondaryBackground)); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); border-color: var(--vscode-contrastActiveBorder, transparent); }
 .settings-nav-item[aria-current="page"] > .codicon { color: inherit; }
 @media (width > 700px) {
-  .settings-nav-item:is([data-section="models"], :last-child) { margin-top: 16px; border-top: 1px solid var(--vscode-panel-border); border-top-left-radius: 0; border-top-right-radius: 0; }
+  .settings-nav-item:is([data-section="models"], :last-child) { position: relative; margin-top: 16px; }
+  .settings-nav-item:is([data-section="models"], :last-child)::before { content: ''; position: absolute; inset: -12px 0 auto; border-top: 1px solid var(--vscode-panel-border); pointer-events: none; }
 }
 .settings-sidebar-footer { margin: auto 12px 0; padding-top: 24px; font-size: 10px; color: var(--vscode-descriptionForeground); }
 .settings-main { min-width: 0; min-height: 0; padding: 50px 48px 48px 36px; overflow: auto; scroll-behavior: auto; }
@@ -183,7 +184,7 @@
 /* The empty group fits the viewport even when populated model columns need to scroll. */
 .settings-model-built-in-empty { position: sticky; inset-inline-start: 12px; max-width: calc(100cqi - 24px); font-family: var(--vscode-font-family, sans-serif); }
 .settings-model-plans { display: grid; gap: 6px; margin-top: 12px; }
-.settings-model-plans header, .settings-model-plan-title { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; }
+.settings-model-plans header, .settings-model-plan-title, .settings-model-plan-feedback { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; }
 .settings-model-plans h3 { font-size: 12px; }
 .settings-model-plans ul { list-style: none; padding: 0; margin: 0; }
 .settings-model-plans li { padding: 7px 0; border-top: 1px solid var(--vscode-panel-border); }

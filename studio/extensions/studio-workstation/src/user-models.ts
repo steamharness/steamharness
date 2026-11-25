@@ -33,6 +33,7 @@ export class UserModels implements vscode.Disposable {
   private plansAbort?: AbortController;
   private plansCheckedAt?: number;
   private plansValue?: UserModelPlans;
+  private plansFailed = false;
   private connectionIdentity?: string;
   private pending = Promise.resolve();
   private generation = 0;
@@ -77,6 +78,7 @@ export class UserModels implements vscode.Disposable {
   }
   private invalidatePlans(): void {
     this.plansAbort?.abort(); this.plansAbort = undefined; this.plansCheckedAt = undefined;
+    this.plansFailed = false;
   }
   setConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
     const identity = connection ? JSON.stringify([connection.serverUrl, connection.accessToken]) : undefined;
@@ -109,6 +111,7 @@ export class UserModels implements vscode.Disposable {
     }).catch(error => {
       if (!controller.signal.aborted && !this.disposed && this.catalogAbort === controller) {
         this.catalogValue = undefined;
+        this.invalidatePlans();
         this.catalogError = error instanceof Error ? error.message : t('Unable to refresh built-in models.');
       }
       throw error;
@@ -121,18 +124,18 @@ export class UserModels implements vscode.Disposable {
     return !!(this.provider?.loadPlans && this.connectionIdentity && this.catalogValue && !this.catalogValue.value.unavailable && !this.systemModels.length);
   }
   /** The settings surface asks for offers without adding any work to runtime model resolution. */
-  refreshPlans(): Promise<void> | undefined {
+  refreshPlans(force = false): Promise<void> | undefined {
     const provider = this.provider;
     if (!provider?.loadPlans || !this.canShowPlans() || this.catalogPending || this.plansAbort ||
-      this.plansCheckedAt !== undefined && Date.now() - this.plansCheckedAt < 30_000) return;
+      !force && this.plansCheckedAt !== undefined && Date.now() - this.plansCheckedAt < 30_000) return;
     const controller = new AbortController(); this.plansAbort = controller;
     return Promise.resolve().then(() => {
       controller.signal.throwIfAborted();
       return provider.loadPlans!(controller.signal);
     }).then(value => {
-      if (this.plansAbort === controller) this.plansValue = structuredClone(value);
+      if (this.plansAbort === controller) { this.plansValue = structuredClone(value); this.plansFailed = false; }
     }).catch(() => {
-      if (this.plansAbort === controller) this.plansValue = undefined;
+      if (this.plansAbort === controller) this.plansFailed = true;
     }).finally(() => {
       if (this.plansAbort === controller) { this.plansAbort = undefined; this.plansCheckedAt = Date.now(); }
     });
@@ -158,7 +161,7 @@ export class UserModels implements vscode.Disposable {
     return { revision: this.stored.revision, systemAvailable: !!this.provider, error: this.error,
       catalogLoading: !!this.catalogPending, catalogError: this.catalogError, providerNames,
       ...(this.canShowPlans() && (this.plansAbort || this.plansValue || this.plansCheckedAt !== undefined) ? { plans: {
-        loading: !!this.plansAbort, failed: !this.plansAbort && !this.plansValue,
+        loading: !!this.plansAbort, failed: this.plansFailed,
         catalog: this.plansValue && structuredClone(this.plansValue),
       } } : {}),
       entries: this.models().map(model => {

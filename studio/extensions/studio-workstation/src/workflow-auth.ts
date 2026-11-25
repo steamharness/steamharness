@@ -62,6 +62,8 @@ export class AccountController implements vscode.Disposable {
   private aiRestore?: Promise<Connection | undefined>;
   private aiRestoreAbort?: AbortController;
   private aiRestoreFailed = false;
+  private aiSecretRevision = 0;
+  private pendingLogout?: Promise<void>;
   private readonly lifetime = new AbortController();
 
   constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false,
@@ -182,6 +184,10 @@ export class AccountController implements vscode.Disposable {
       }),
       context.secrets.onDidChange((event) => {
         if (this.onlineOpened && event.key === SECRET_KEY) { void this.account.restore().catch(() => undefined); }
+        if (this.platform && event.key === this.aiKey(this.account.getState().serverUrl)) {
+          const revision = ++this.aiSecretRevision;
+          if (this.aiSession) void this.reconcileAiSession(event.key, this.aiSession, revision);
+        }
         if (event.key === USER_MODELS_SECRET) { void this.userModels.reload(); }
       }),
       vscode.workspace.onDidChangeConfiguration(() => this.scheduleSettings()),
@@ -240,7 +246,7 @@ export class AccountController implements vscode.Disposable {
   getState(): AccountState {
     const state = this.account.getState();
     return { ...state, aiServerUrl: this.aiSession?.serverUrl, aiConfigured: !!this.getAiConnection(),
-      aiRestoring: !!this.aiRestore, aiRestoreFailed: this.aiRestoreFailed };
+      aiRestoring: !!(this.aiRestore || this.aiLogin), aiRestoreFailed: this.aiRestoreFailed };
   }
   getAccountScopeKey(): string | undefined {
     const state = this.account.getState();
@@ -248,7 +254,11 @@ export class AccountController implements vscode.Disposable {
   }
   getUserAgentModels() { return this.userModels.models(); }
   getSystemModelCatalog(signal: AbortSignal) { return this.userModels.catalog(signal); }
-  registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable { return this.userModels.registerCatalogProvider(provider); }
+  registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable {
+    const disposable = this.userModels.registerCatalogProvider(provider);
+    this.loadSettingsAi();
+    return disposable;
+  }
   getConnection(): Connection | undefined { return this.account.getConnection(); }
   getAiConnection(): Connection | undefined {
     // Account.getSession() only returns a verified session. A background check
@@ -258,25 +268,47 @@ export class AccountController implements vscode.Disposable {
     return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken } : undefined;
   }
   connectAi(): Promise<Connection | undefined> {
-    if (!this.platform) return Promise.resolve(undefined);
-    if (this.getAiConnection()) return Promise.resolve(this.getAiConnection());
+    if (!this.platform || this.pendingLogout) return Promise.resolve(undefined);
+    const current = this.getAiConnection();
+    if (current) return Promise.resolve(current);
     if (!this.aiLogin) {
       const abort = this.aiLoginAbort = new AbortController();
-      this.aiLogin = this.openAiLogin(AbortSignal.any([abort.signal, this.lifetime.signal])).finally(() => {
+      const signal = AbortSignal.any([abort.signal, this.lifetime.signal]);
+      this.aiLogin = this.restoreAiConnection().then(connection => {
+        if (signal.aborted) return undefined;
+        if (connection) return connection;
+        if (this.aiRestoreFailed || this.account.getState().status === 'error') throw new Error(t('Account verification failed.'));
+        return this.openAiLogin(signal);
+      }).finally(() => {
         this.aiLogin = this.aiLoginAbort = undefined;
+        if (!this.lifetime.signal.aborted) void this.panel?.webview.postMessage({ type: 'account', state: this.getState() });
       });
     }
     return this.aiLogin;
   }
   private aiKey(serverUrl: string): string { return `studio.system-ai.${studioAuthChannel}.${encodeURIComponent(serverUrl)}`; }
+  private parseCachedAiSession(encoded: string | undefined, serverUrl: string): Connection | undefined {
+    try {
+      const saved = encoded ? JSON.parse(encoded) as Partial<Connection> | null : undefined;
+      if (saved?.serverUrl === serverUrl && typeof saved.accessToken === 'string' && saved.accessToken) return { serverUrl, accessToken: saved.accessToken };
+    } catch { /* Ignore malformed credentials. */ }
+  }
+  private async reconcileAiSession(key: string, session: LoginSession, revision: number): Promise<void> {
+    let saved: Connection | undefined;
+    try { saved = this.parseCachedAiSession(await this.context.secrets.get(key), session.serverUrl); } catch { /* Treat an unreadable changed credential as unavailable. */ }
+    if (this.lifetime.signal.aborted || this.aiSession !== session || this.aiSecretRevision !== revision) return;
+    if (saved?.accessToken !== session.accessToken) this.publishAiSession(undefined);
+  }
   private async readCachedAiSession(client: ServerClient, signal: AbortSignal): Promise<LoginSession | undefined> {
     const key = this.aiKey(client.serverUrl);
     const encoded = await this.context.secrets.get(key);
     signal.throwIfAborted();
-    let saved: Connection | undefined;
-    try { saved = encoded ? JSON.parse(encoded) ?? undefined : undefined; } catch { return; }
-    if (saved?.serverUrl !== client.serverUrl || typeof saved.accessToken !== 'string') return;
-    try { return await client.verify(saved, signal); }
+    const saved = this.parseCachedAiSession(encoded, client.serverUrl);
+    if (!saved) return;
+    try {
+      const verified = await client.verify(saved, signal);
+      if (await this.context.secrets.get(key) === encoded) return verified;
+    }
     catch (error) {
       signal.throwIfAborted();
       if (!(error instanceof AuthError) || error.status !== 401) throw error;
@@ -286,7 +318,8 @@ export class AccountController implements vscode.Disposable {
       }
     }
   }
-  private restoreSettingsAi(): Promise<Connection | undefined> {
+  private restoreAiConnection(): Promise<Connection | undefined> {
+    if (!this.platform || this.pendingLogout) return Promise.resolve(undefined);
     const current = this.getAiConnection();
     if (current) return Promise.resolve(current);
     if (this.aiRestore) return this.aiRestore;
@@ -297,10 +330,11 @@ export class AccountController implements vscode.Disposable {
       signal.throwIfAborted();
       await this.connect();
       signal.throwIfAborted();
-      if (!this.getAiConnection() && this.account.getState().status !== 'error' && !this.aiLogin) {
+      if (!this.getAiConnection() && this.account.getState().status !== 'error') {
+        const revision = this.aiSecretRevision;
         const session = await this.readCachedAiSession(new ServerClient(this.configuredServer()), signal);
         signal.throwIfAborted();
-        if (session && !this.getAiConnection() && !this.aiLogin) this.publishAiSession(session);
+        if (session && revision === this.aiSecretRevision && !this.getAiConnection()) this.publishAiSession(session);
       }
       return this.getAiConnection();
     }).catch(() => {
@@ -327,12 +361,7 @@ export class AccountController implements vscode.Disposable {
       if (token.isCancellationRequested) abort.abort();
       let started: DeviceStart | undefined;
       try {
-        const saved = await this.readCachedAiSession(new ServerClient(client.serverUrl), signal);
         signal.throwIfAborted();
-        if (saved) {
-          this.publishAiSession(saved);
-          return this.getAiConnection();
-        }
         const existing = this.getAiConnection();
         if (existing) return existing;
         started = await client.start({ clientName: 'SteamHarness Studio (System AI)', source: 'desktop' }, signal);
@@ -356,16 +385,16 @@ export class AccountController implements vscode.Disposable {
     this.cancelAiRestore();
     this.aiLoginAbort?.abort();
     await this.aiLogin?.catch(() => undefined);
-    const session = this.aiSession;
     this.publishAiSession(undefined);
-    if (session) await this.context.secrets.delete(this.aiKey(session.serverUrl));
+    await this.context.secrets.delete(this.aiKey(this.account.getState().serverUrl));
   }
   private cancelAiRestore(): void {
     this.aiRestoreAbort?.abort();
     this.aiRestore = this.aiRestoreAbort = undefined;
     this.aiRestoreFailed = false;
   }
-  private async logout(): Promise<void> {
+  private logout(): Promise<void> {
+    if (this.pendingLogout) return this.pendingLogout;
     this.cancelLogin();
     // A pending device flow may be finishing a keychain write when sign-out starts.
     this.aiLoginAbort?.abort();
@@ -373,7 +402,9 @@ export class AccountController implements vscode.Disposable {
     this.aiSession = undefined;
     this.expirePlatformConnection();
     const key = this.aiKey(normalizeProjectServerUrl(this.configuredServer()));
-    await Promise.all([this.account.logout(), Promise.resolve(login).catch(() => undefined).then(() => this.context.secrets.delete(key))]);
+    this.pendingLogout = Promise.all([this.account.logout(), Promise.resolve(login).catch(() => undefined).then(() => this.context.secrets.delete(key))])
+      .then(() => undefined).finally(() => { this.pendingLogout = undefined; });
+    return this.pendingLogout;
   }
   private publishAiSession(session?: LoginSession): void {
     this.aiSession = session;
@@ -408,7 +439,7 @@ export class AccountController implements vscode.Disposable {
   registerSectionProvider(provider: AccountSectionProvider): vscode.Disposable {
     const disposable = this.sections.register(provider);
     this.publishSettings();
-    this.loadSettingsProvider();
+    this.loadSettingsAi();
     return { dispose: () => { disposable.dispose(); this.publishSettings(); } };
   }
   invalidate(connection: Connection): Promise<void> { this.expirePlatformConnection(); return this.account.invalidate(connection); }
@@ -442,7 +473,7 @@ export class AccountController implements vscode.Disposable {
   }
 
   private navigateSettings(panel: SettingsSurface): void {
-    this.loadSettingsProvider();
+    this.loadSettingsAi();
     this.publishSettings();
     void panel.webview.postMessage({ type: 'settings-navigate', state: this.viewState });
   }
@@ -451,10 +482,12 @@ export class AccountController implements vscode.Disposable {
     return !!(this.platform && this.panel?.visible && this.sections.getProviders().some(({ id }) => this.viewState.section === `provider:${id}`));
   }
 
-  private loadSettingsProvider(force = false): void {
-    if (!this.hasVisibleProviderSettings()) return;
-    if (this.getAiConnection()) void this.sections.refresh(force);
-    else if (!this.aiLogin) void this.restoreSettingsAi();
+  private loadSettingsAi(force = false): void {
+    if (!this.platform || !this.panel?.visible) return;
+    const provider = this.hasVisibleProviderSettings();
+    if (!provider && !(this.viewState.section === 'models' && this.userModels.state().systemAvailable)) return;
+    if (this.getAiConnection()) { if (provider) void this.sections.refresh(force); }
+    else if (!this.aiLogin) void this.restoreAiConnection();
   }
 
   private openLogin(): void {
@@ -563,10 +596,10 @@ export class AccountController implements vscode.Disposable {
     }, () => undefined);
   }
 
-  private publishModels(): void {
+  private publishModels(forcePlans = false): void {
     const panel = this.panel;
     if (!panel) return;
-    const plans = panel.visible && this.viewState.section === 'models' ? this.userModels.refreshPlans() : undefined;
+    const plans = panel.visible && this.viewState.section === 'models' ? this.userModels.refreshPlans(forcePlans) : undefined;
     const post = () => { void this.panel?.webview.postMessage({ type: 'settings-models', state: this.userModels.state() }); };
     post();
     if (plans) void plans.then(post);
@@ -616,7 +649,7 @@ export class AccountController implements vscode.Disposable {
     const listeners: vscode.Disposable[] = [];
     const onVisible = (): void => {
       if (!panel.visible) return;
-      this.loadSettingsProvider(); this.publishSettings();
+      this.loadSettingsAi(); this.publishSettings();
     };
     listeners.push('reveal' in panel ? panel.onDidChangeViewState(onVisible) : panel.onDidChangeVisibility(onVisible));
     listeners.push(panel.onDidDispose(() => {
@@ -630,7 +663,7 @@ export class AccountController implements vscode.Disposable {
         const generation = ++pageGeneration;
         await this.readLanguagePreference();
         if (this.panel !== panel || pageGeneration !== generation) { return; }
-        this.loadSettingsProvider();
+        this.loadSettingsAi();
         this.publishSettings();
         await panel.webview.postMessage({ type: 'account', state: this.getState() });
         await panel.webview.postMessage({ type: 'account-sections', states: this.sections.getStates() });
@@ -641,7 +674,7 @@ export class AccountController implements vscode.Disposable {
         const previous = this.viewState.section;
         this.viewState = settingsViewState(message.state);
         if (this.platform && previous !== 'account' && this.viewState.section === 'account') void this.connect();
-        if (previous !== this.viewState.section) this.loadSettingsProvider();
+        if (previous !== this.viewState.section) this.loadSettingsAi();
         if (previous !== 'models' && this.viewState.section === 'models') this.publishModels();
         return;
       }
@@ -674,24 +707,26 @@ export class AccountController implements vscode.Disposable {
         }
         return;
       }
-      if (this.platform && (message.type === 'settings-models-account' || message.type === 'connect-system-ai')) {
-        const generation = pageGeneration;
+      if (this.platform && message.type === 'settings-models-account') {
         this.open({ section: 'provider:system-ai', target: 'user' });
+        return;
+      }
+      if (this.platform && message.type === 'connect-system-ai' && this.hasVisibleProviderSettings()) {
         try {
-          const restoring = this.restoreSettingsAi(), signal = this.aiRestoreAbort?.signal;
-          const connection = await restoring;
-          if (signal?.aborted || this.panel !== panel || generation !== pageGeneration || this.viewState.section !== 'provider:system-ai') return;
-          if (connection || !this.aiRestoreFailed && this.account.getState().status !== 'error' && await this.connectAi()) await this.sections.refresh(true);
+          if (await this.connectAi()) await this.sections.refresh();
         }
         catch (error) { void vscode.window.showErrorMessage(error instanceof Error ? error.message : t('Sign-in failed.')); }
         return;
       }
-      if (message.type === 'retry-system-ai') { this.loadSettingsProvider(true); return; }
+      if (message.type === 'retry-system-ai' && this.hasVisibleProviderSettings()) { this.loadSettingsAi(true); return; }
+      if (message.type === 'retry-model-plans' && this.platform && panel.visible && this.viewState.section === 'models') {
+        this.publishModels(true); return;
+      }
       if (message.type === 'settings-models' && typeof message.requestId === 'string' && message.requestId.length <= 100) {
         const generation = pageGeneration, signal = modelsAbort.signal;
         try {
           if (message.action === 'catalog') {
-            if (this.platform) await this.connect();
+            if (this.platform) await this.restoreAiConnection();
             const catalog = await this.userModels.refreshCatalog(true);
             if (this.panel === panel && generation === pageGeneration && !signal.aborted) await panel.webview.postMessage({ type: 'settings-model-catalog', requestId: message.requestId, catalog });
           } else {

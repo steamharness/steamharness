@@ -162,7 +162,7 @@ export class SettingsModels {
     for (const control of this.form.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button')) control.disabled = !!this.pending || !!control.closest('[hidden]');
     this.refresh.disabled = !!this.pending || !!this.catalogRequest || !!this.state.catalogLoading;
     this.form.setAttribute('aria-busy', String(!!this.pending));
-    for (const button of this.list.querySelectorAll('button')) button.disabled = !!this.pending;
+    for (const button of this.list.querySelectorAll('button')) button.disabled = !!this.pending || button.dataset.modelFocus === 'plans:retry' && !!this.state.plans?.loading;
     this.root.setAttribute('aria-busy', String(!!this.pending));
   }
   private planLink(label: string, href: string): HTMLAnchorElement | undefined {
@@ -198,11 +198,19 @@ export class SettingsModels {
       if (plan.description) item.append(node('p', plan.description, 'muted'));
       offers.append(item);
     }
-    if (offers.childElementCount) section.append(offers);
-    else {
-      const status = node('p', plans.loading ? t('Loading...') : plans.failed ? t('Unable to load AI plans.') : t('No AI plans are currently available.'), 'muted');
-      status.setAttribute('role', 'status'); section.append(status);
+    const hasOffers = !!offers.childElementCount;
+    if (plans.failed || !hasOffers) {
+      const status = node('p', plans.loading ? t('Loading...') : plans.failed
+        ? hasOffers ? t('Unable to refresh AI plans. Showing previous results.') : t('Unable to load AI plans.')
+        : t('No AI plans are currently available.'), 'muted');
+      status.setAttribute('role', 'status');
+      if (plans.failed) {
+        const retry = node('button', t('Retry'), 'text-button'); retry.type = 'button'; retry.dataset.modelFocus = 'plans:retry';
+        retry.addEventListener('click', () => this.post({ type: 'retry-model-plans' }));
+        const feedback = node('div', undefined, 'settings-model-plan-feedback'); feedback.append(status, retry); section.append(feedback);
+      } else section.append(status);
     }
+    if (hasOffers) section.append(offers);
   }
   private render(): void {
     const focused = this.list.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.modelFocus : undefined;
