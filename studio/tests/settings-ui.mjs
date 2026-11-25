@@ -208,6 +208,9 @@ try {
         assert.equal(await page.locator('#settings-title').textContent(), language === 'en' ? 'Permissions' : '权限');
         assert.equal(await page.locator('#settings-scope').isVisible(), false);
         assert.equal(await radios.count(), 3);
+        assert.equal(await permissions.getByText(language === 'en'
+          ? 'Sensitive permissions, including the use of saved credentials, require approval.'
+          : '使用已保存的凭据等敏感权限需授权。').isVisible(), true);
         assert.equal(await permissions.locator('.settings-radio-choice').evaluateAll(choices => choices.every(choice => {
           const input = choice.querySelector('input').getBoundingClientRect(), copy = choice.querySelector('.settings-radio-copy').getBoundingClientRect();
           return copy.left > input.right && Math.abs(copy.top - input.top) < 6;

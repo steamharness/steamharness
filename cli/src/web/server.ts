@@ -52,7 +52,7 @@ import { workflowScheduleHandler } from './workflow-schedule';
 import { EntryConversations, conversationProjection, type AggregateEntryCall } from './entry-conversations';
 import { hostConversation } from './host-conversation';
 import { respondToBotArtifacts } from './bot-artifacts';
-import { credentialUnavailable, type BotCredentialHost } from './bot-credential-host';
+import { credentialUnavailable, credentialUseSupported, type BotCredentialHost } from './bot-credential-host';
 import type { EntryConversationSnapshot } from 'steamharness';
 
 import { conversationViewHtml, conversationViewClientId, scopeConversationViewMessage, passiveConversationViewMessage, type OpenConversationView } from './conversation-view';
@@ -187,8 +187,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
     run: (request, emit, onModelRequest) => {
       const settings = hydrateUserSettings(request.userSettings, userSettings);
-      const input = { ...request, allowBotArtifactPublish: artifactStore && request.allowBotArtifactPublish && !isHostConversation(request.conversationId) ? true as const : undefined,
-        allowBotCredentialInput: credentialInput && request.allowBotCredentialInput && !request.readOnly && !request.entryCall && !isHostConversation(request.conversationId) ? true as const : undefined,
+      const hosted = isHostConversation(request.conversationId);
+      const credentialsAllowed = hosted ? backgroundCredentialMode && backgroundCredentialTurns.has(request.conversationId) : credentialInput;
+      const allowBotCredentialInput = credentialsAllowed && request.allowBotCredentialInput && !request.readOnly && !request.entryCall ? true as const : undefined;
+      const allowUse = hosted ? backgroundCredentialMode === 'capture-and-use' : credentialUse;
+      const input = { ...request, allowBotArtifactPublish: artifactStore && request.allowBotArtifactPublish && !hosted ? true as const : undefined,
+        allowBotCredentialInput, allowBotCredentialStructured: allowBotCredentialInput && options.host?.localBotCredentialStructured,
+        allowBotCredentialUse: allowBotCredentialInput && allowUse ? true as const : undefined,
         userSettings: folderBot?.background ? { agent: { ...settings.agent, permissionPolicy: userSettings.agent.permissionPolicy } } : settings };
       return options.host?.surface === 'editor' && onModelRequest ? executor.run(input, emit, onModelRequest) : executor.run(input, emit);
     },
@@ -199,22 +204,33 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const runtime: Runtime = Object.assign(Object.create(executor), runtimeOverrides);
   let inspected;
   try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
-  const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string; botMemoryManagementVersion?: number; botMemoryDirectoryVersion?: number; folderBotProfileVersion?: number; botCredentialInputVersion?: number } };
+  const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string; botMemoryManagementVersion?: number; botMemoryDirectoryVersion?: number; folderBotProfileVersion?: number; botCredentialInputVersion?: number; botCredentialUseVersion?: number } };
   try {
     if (!descriptor) throw new Error(inspected.errors.join('\n') || 'No Workflow project found.');
     if (folderBot?.profileRecord && descriptor.runtime?.folderBotProfileVersion !== 1) throw new Error('Update the project SDK to use this folder Bot profile.');
-    if (!options.runtime) assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion);
+    if (!options.runtime) await assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion);
     if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) throw new Error('Unsupported Workflow project type.');
   } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
-  const credentialHost = hostKind === 'studio' && options.host?.localBotCredentials === true && !folderBot?.background && !projectOnline && project.projectType === 'bot'
+  const credentialHost = hostKind === 'studio' && options.host?.localBotCredentials === true && !options.host?.backgroundBotCredentials && !folderBot?.background && !projectOnline && project.projectType === 'bot'
     ? options.botCredentialHost : undefined;
   const credentialInput = !!credentialHost && project.conversation?.engine === 'agent' && descriptor.runtime?.botCredentialInputVersion === 1;
-  if (!credentialInput) project.tools = project.tools?.filter(tool => tool.name !== 'bot_credentials_request');
+  const credentialUse = credentialInput && credentialUseSupported && options.host?.localBotCredentialUse === true && descriptor.runtime?.botCredentialUseVersion === 1 ? true as const : undefined;
+  const backgroundCredentialHost = hostKind === 'studio' && options.host?.backgroundBotCredentials === true && !projectOnline && project.projectType === 'bot' && folderBot?.background !== false
+    ? options.botCredentialHost : undefined;
+  const backgroundCredentialMode: 'capture' | 'capture-and-use' | undefined = backgroundCredentialHost && project.conversation?.engine === 'agent' && descriptor.runtime?.botCredentialInputVersion === 1
+    ? credentialUseSupported && options.host?.localBotCredentialUse === true && descriptor.runtime?.botCredentialUseVersion === 1 ? 'capture-and-use' : 'capture' : undefined;
+  // A saved receipt cannot authorize a new device lease or a Web client.
+  const backgroundCredentialTurns = new Map<string, string>();
+  const credentialConversationHost = credentialUse && options.host?.localBotCredentialConversationApproval === true ? credentialHost : undefined;
+  const credentialAutomaticHost = credentialUse && options.host?.localBotCredentialPermissionPolicy === true ? credentialHost : undefined;
+  const toolVisible = (tool: { name: string }) => (credentialInput || tool.name !== 'bot_credentials_request') && (credentialUse || tool.name !== 'bot_credentials_use');
+  project.tools = project.tools?.filter(toolVisible);
   const credentialLifetime = new AbortController();
   const applyUserSettings = () => {
     const view = projectWithUserSettings({ ...descriptor, agentModelPolicy: project.agentModelPolicy }, userSettings);
-    project.fields = view.fields; project.entrypoints = view.entrypoints;
+    project.fields = view.fields;
+    project.entrypoints = view.entrypoints?.map(entry => ({ ...entry, tools: entry.tools?.filter(toolVisible) }));
   };
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast(), options.mount?.basePath);
   const activityDirectory = project.assistant ? assistantDataDirectory(storageDir, project.id, project.assistant.workdir)
@@ -390,6 +406,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     canRun: session => (!folderBot || (folderBot.background ? session.origin === 'host' && backgroundAdmissions.has(session.id) : !session.origin)) && (ownership?.execute(session.id) ?? true),
     canStart: () => storageReady,
     canDrain: session => storageReady && !session.origin,
+    credentialConversationHost,
+    credentialAutomaticHost,
+    credentialPermissionCeiling: folderBot?.permissionCeiling,
     configurationRevision: () => configurations.state.revision,
     userSettings: () => userSettings,
     folderBotProfile: folderBot?.profileRecord ? () => readFolderBotProfile(folderBot, project.entryId) : undefined,
@@ -819,6 +838,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'ready': replies.push(state(message.clientId)); break;
       case 'agent-command': {
         if (!message.command || typeof message.command.requestId !== 'string' || message.command.requestId.length > 256) throw new Error('Invalid agent command.');
+        if ((credentialConversationHost || credentialAutomaticHost) && !allowCredentials && message.command.type === 'submit') {
+          // An out-of-band steer must not join a running turn admitted by the local credential UI.
+          const owner = controller.sessions.find(session => session.id === (current.agentOwnerId ?? current.id));
+          if (owner?.activeRunId && owner.agentParameters?.allowBotCredentialInput) throw credentialUnavailable();
+        }
         if (message.agentOwner !== undefined && current.agent?.ownerId !== message.agentOwner) {
           // A stopped process can be replaced while the user's explicit Stop
           // is in flight. Permit it only for the very same run and task set.
@@ -952,7 +976,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (!allowCredentials || !credentialInput || !credentialHost || !conversationController || !current ||
           typeof message.messageId !== 'string' || message.messageId.length > 300 || typeof message.requestId !== 'string' || message.requestId.length > 300 ||
           Object.keys(message).some(key => !['type', 'messageId', 'requestId', 'projectUri', 'sessionId', 'clientId', 'applicationId'].includes(key))) throw credentialUnavailable();
-        await conversationController.captureCredential(message.messageId, message.requestId, credentialHost, current); break;
+        await conversationController.captureCredential(message.messageId, message.requestId, (entryId, action, signal) => {
+          if (action.action === 'use' && !credentialUse || action.action === 'capture' && action.slot.kind === 'structured' && !options.host?.localBotCredentialStructured) throw credentialUnavailable();
+          return credentialHost(entryId, action, signal);
+        }, current); break;
       }
       case 'bot-credentials-manage': {
         if (!allowCredentials || !credentialHost || !current || current.origin ||
@@ -1229,7 +1256,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
     hostTurn: async (input: Record<string, unknown>) => {
       const id = input.conversationId;
-      if (options.host?.surface !== 'editor' || folderBot?.background === false || !entryConversations || !storageReady || typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('Background conversation unavailable.');
+      const requestId = input.requestId;
+      if (options.host?.surface !== 'editor' || folderBot?.background === false || !entryConversations || !storageReady || typeof id !== 'string' || !/^[a-f\d-]{36}$/i.test(id)
+        || typeof requestId !== 'string' || !/^[a-f\d-]{36}$/i.test(requestId)) throw new Error('Background conversation unavailable.');
+      if (input.action === 'credential' && Object.keys(input).some(key => !['action', 'conversationId', 'requestId', 'pendingId', 'allowBotCredentials'].includes(key))) throw credentialUnavailable();
       const restore = folderBot?.background === true || input.action === 'recover';
       const admit = !!folderBot && ['submit', 'resolve', 'recover'].includes(String(input.action));
       if (restore || input.action !== 'turn') await ownership?.assertWritable(id);
@@ -1240,7 +1270,37 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           if (!isHostConversation(id) && (input.action !== 'submit' || controller.sessions.some(session => session.id === id))) throw new Error('Background conversation unavailable.');
           backgroundAdmissions.add(id);
         }
-        return redactProjectData(await hostConversation(controller, entryConversations, runtime, project, input, !!folderBot), [...sensitiveTokens]);
+        const previous = backgroundCredentialTurns.get(id);
+        const credentialAdmission = !!backgroundCredentialMode && input.allowBotCredentials === true;
+        if (input.action === 'submit' || input.action === 'recover') {
+          if (credentialAdmission) backgroundCredentialTurns.set(id, requestId);
+          else backgroundCredentialTurns.delete(id);
+        }
+        if (input.action === 'stop' && previous === requestId) backgroundCredentialTurns.delete(id);
+        const credentials = backgroundCredentialHost && backgroundCredentialMode && {
+          available: backgroundCredentialMode, authorized: credentialAdmission && backgroundCredentialTurns.get(id) === requestId,
+          host: (entryId: string, action: Parameters<BotCredentialHost>[1], signal?: AbortSignal) => {
+            if (backgroundCredentialTurns.get(id) !== requestId || action.action === 'manage' || action.action === 'capture' && action.slot.kind === 'structured' && !options.host?.localBotCredentialStructured) throw credentialUnavailable();
+            return backgroundCredentialHost(entryId, action, signal ? AbortSignal.any([signal, credentialLifetime.signal]) : credentialLifetime.signal,
+              { conversationId: id, requestId });
+          },
+        };
+        try {
+          const result = await hostConversation(controller, entryConversations, runtime, project, input, !!folderBot, credentials);
+          const turn = result as { status?: string; pending?: unknown; recovering?: unknown; stopping?: unknown };
+          if (input.action === 'turn') {
+            if (previous === requestId && !turn.pending && !turn.recovering && !turn.stopping
+              && ['missing', 'success', 'failed', 'aborted', 'cancelled', 'timed_out', 'paused'].includes(turn.status ?? '')) backgroundCredentialTurns.delete(id);
+            return redactProjectData({ ...turn, ...(backgroundCredentialMode && { credentialMode: backgroundCredentialMode, backgroundCredentialProtocolVersion: 1 }) }, [...sensitiveTokens]);
+          }
+          return redactProjectData(result, [...sensitiveTokens]);
+        } catch (error) {
+          if (credentialAdmission && previous !== requestId && (input.action === 'submit' || input.action === 'recover') && backgroundCredentialTurns.get(id) === requestId) {
+            if (previous) backgroundCredentialTurns.set(id, previous);
+            else backgroundCredentialTurns.delete(id);
+          }
+          throw error;
+        }
       } finally {
         if (admit) backgroundAdmissions.delete(id);
         release?.();

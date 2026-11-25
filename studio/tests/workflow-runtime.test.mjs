@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
+import { setTimeout as wait } from 'node:timers/promises';
 import { runInNewContext } from 'node:vm';
 import { register } from 'tsx/esm/api';
 register();
@@ -26,6 +28,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
       console.log(JSON.stringify({projects:[{name:version,folderPath:process.cwd(),projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}],fields:[],entrypoints:[]}],errors:[]}));
     } else {
       const input=createInterface({input:process.stdin});
+      const credentialReplies=[];
       let configuration,effectiveConnection,server,authMessages=0,userSettingsMessages=0;
       const authenticate=message=>{
         if(${systemAiProtocol}!==2 && message.systemAiConnection || message.connection?.aiAccessToken) {
@@ -44,18 +47,22 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
           const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
           server=createServer((request,response)=>{
             response.setHeader('Content-Type','application/json');
+            if(configuration.backgroundBotCredentials && request.url==='/fixture-credential' && request.method==='POST') {
+              let body=''; request.on('data',chunk=>body+=chunk); request.on('end',()=>{console.log(JSON.stringify(JSON.parse(body)));response.end('{}');}); return;
+            }
             if(request.url==='/crash') {
               const token=configuration.connection?.accessToken??'';
               process.stderr.write('x'.repeat(7995)+token.slice(0,5));
               setTimeout(()=>{process.stderr.write(token.slice(5)+' '+(effectiveConnection?.aiAccessToken??'')+' '+(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN??'')+' diagnostic tail');response.end('{}');setTimeout(()=>process.exit(23),10);},10);
               return;
             }
-            response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl,runtimeHost:process.env.STEAMHARNESS_WEB_HOST}));
+            response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl,credentialReplies,runtimeHost:process.env.STEAMHARNESS_WEB_HOST}));
           });
-          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},userSettingsProtocolVersion:${userSettingsProtocol},traceModelRequestProtocolVersion:${modelRequestProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},userSettingsProtocolVersion:${userSettingsProtocol},traceModelRequestProtocolVersion:${modelRequestProtocol},assistantProtocolVersion:${assistantProtocol},botCredentialProtocolVersion:configuration.backgroundBotCredentials?1:undefined,url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;authenticate(message);configuration.connection=message.connection;configuration.systemAiConnection=message.systemAiConnection;}
         else if(message.type==='resource-projects') {configuration.resourceProjects=message.resourceProjects;}
         else if(message.type==='user-settings') {if(${userSettingsProtocol}!==1) process.exit(31);userSettingsMessages++;configuration.userSettings=message.userSettings;}
+        else if(message.type==='bot-credential-result') {credentialReplies.push(message);}
         else if(message.type==='trace-model-request' && ${modelRequestProtocol}===1) {
           const {requestId,entryId,sessionId,messageId,executionId}=message;
           console.log(JSON.stringify({type:'trace-model-request',requestId:'unexpected',request:{unexpected:true}}));
@@ -81,6 +88,49 @@ test('user settings use host stdin, deduplicate updates and respect older CLI ca
     assert.deepEqual(state.configuration.userSettings, protocol === 1 ? next : initial);
     assert.equal(state.userSettingsMessages, protocol === 1 ? 1 : 0);
   }
+});
+
+test('background credential prompts require a current turn and reject a late native result after revocation', { timeout: 5000 }, async t => {
+  const { options } = await fixture(t);
+  const turn = { conversationId: randomUUID(), requestId: randomUUID() }, job = new AbortController(), lease = new AbortController();
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  let interactions = 0;
+  const session = await startProjectCli({ ...options, backgroundBotCredentials: {
+    signal: lease.signal, turnSignal: (conversation, request) => conversation === turn.conversationId && request === turn.requestId ? job.signal : undefined,
+  }, botCredentials: async (_entry, _label, _action, signal) => { interactions++; entered.resolve(signal); return release.promise; } });
+  t.after(async () => { release.resolve('saved'); await session.close(); });
+  const state = async () => (await fetch(session.ready.url)).json();
+  const send = async (scope, action = 'capture') => {
+    const id = randomUUID();
+    const response = await fetch(new URL('/fixture-credential', session.ready.url), { method: 'POST', body: JSON.stringify({
+      type: 'bot-credential-request', entryId: 'main', id, action, turn: scope,
+      ...(action === 'capture' && { slot: { name: 'fixture', kind: 'api-key' } }),
+    }) });
+    assert.equal(response.ok, true);
+    return id;
+  };
+  const receipt = async id => {
+    for (let i = 0; i < 30; i++) {
+      const match = (await state()).credentialReplies.find(row => row.id === id);
+      if (match) return match;
+      await wait(10);
+    }
+    assert.fail('No receipt from Studio for the fixture request');
+  };
+  for (const [scope, action] of [[undefined, 'capture'], [{ ...turn, requestId: randomUUID() }, 'capture'], [turn, 'manage']]) {
+    assert.equal((await receipt(await send(scope, action))).status, 'unavailable');
+  }
+  assert.equal(interactions, 0);
+  const id = await send(turn);
+  const nativeSignal = await entered.promise;
+  job.abort();
+  assert.equal(lease.signal.aborted, false);
+  assert.equal(nativeSignal.aborted, true);
+  assert.equal((await receipt(id)).status, 'unavailable');
+  release.resolve('saved');
+  assert.equal((await receipt(await send(turn))).status, 'unavailable');
+  assert.deepEqual((await state()).credentialReplies.filter(row => row.id === id).map(row => row.status), ['unavailable']);
+  assert.equal(interactions, 1);
 });
 
 test('private trace requests use the negotiated stdio channel and correlate concurrent replies', async t => {

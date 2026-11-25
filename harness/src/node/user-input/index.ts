@@ -8,7 +8,7 @@ import type {
 import type { ParamDefinition } from "../../executor/types";
 import { assertProjectParamDefinitions, isProjectDateParamControl } from "../../executor/param-definition";
 import { HarnessError } from "../../workflow/errors";
-import { isBotCredentialStatus, parseBotCredentialSlot, type BotCredentialSlot } from "../../types/bot-credential";
+import { isBotCredentialStatus, LEGACY_BOT_CREDENTIAL_KINDS, parseBotCredentialSlot, type BotCredentialKind, type BotCredentialSlot } from "../../types/bot-credential";
 
 export interface UserInputPayload extends RunPayload {
   requestId: string;
@@ -83,6 +83,8 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
     const request = await this.createRequest(input, context);
     if (request.credential) {
       if (!context.userInput?.waitForCredential) throw new HarnessError({ type: "input_validation", message: "Bot credential input requires a supported local Studio conversation." });
+      const kinds: readonly BotCredentialKind[] = context.userInput.credentialKinds ?? LEGACY_BOT_CREDENTIAL_KINDS;
+      if (!kinds.includes(request.credential.kind)) throw new HarnessError({ type: "input_validation", message: "This credential type is not supported by the local Studio host." });
       const status = await context.userInput.waitForCredential({ ...request, credential: request.credential }, context.abortSignal);
       if (!isBotCredentialStatus(status)) throw new HarnessError({ type: "input_validation", message: "Invalid Bot credential receipt.", nodeName: request.nodeName });
       const payload: UserInputPayload = { errCode: 0, errMessage: "", requestId: request.requestId, values: { status }, submittedAt: new Date().toISOString() };

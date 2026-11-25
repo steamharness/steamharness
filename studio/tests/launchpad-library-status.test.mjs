@@ -68,6 +68,53 @@ for (const language of ['en', 'zh-cn']) {
     assert.deepEqual(calls, [[bot.uri, 'qa'], [bot.uri, 'ops', 'memory']]);
   });
 
+  test(`the credential list follows the selected Bot entry and ignores late responses (${language})`, async t => {
+    const calls = [], pending = [];
+    const f = fixture(t, language, { readBotCredentials: (p, entry) => new Promise(resolve => { calls.push([p.uri, entry]); pending.push(resolve); }) });
+    const project = f.project('credential-aggregate', { entries: [
+      { type: 'bot', entryId: 'ops', name: 'Ops' }, { type: 'bot', entryId: 'qa', name: 'QA' }, { type: 'workflow', entryId: 'flow', name: 'Flow' },
+    ] });
+    const other = f.project('credential-other', { projectType: 'workflow' });
+    const render = () => new Promise(resolve => setImmediate(resolve));
+    f.library.update([project, other], [], true, '');
+    f.library.show(project.uri);
+    const controls = () => [...f.library.element.querySelectorAll('[data-key^="bot-credentials:"]')];
+    const list = () => f.library.element.querySelector('.lp-detail-secondary .lp-bot-credential-list');
+    const title = language === 'zh-cn' ? '凭据管理' : 'Credential management';
+    assert.deepEqual(controls().map(button => button.textContent.trim()), [`${title} · Ops`, `${title} · QA`]);
+    assert.equal(f.library.element.querySelector('.lp-detail-actions [data-key^="bot-credentials:"]'), null);
+    assert.deepEqual(calls, []);
+    controls()[0].click();
+    assert.equal(controls()[0].getAttribute('aria-expanded'), 'true');
+    assert.ok(list().querySelector('[role="status"]'));
+    await render();
+    controls()[1].click();
+    await render();
+    assert.deepEqual(calls, [[project.uri, 'ops'], [project.uri, 'qa']]);
+    pending[1]({ status: 'ok', rows: [{ name: 'fixture-qa', type: 'SSH private key' }] });
+    pending[0]({ status: 'ok', rows: [{ name: 'fixture-ops', type: 'Password' }] });
+    await render();
+    assert.equal(controls()[1].getAttribute('aria-expanded'), 'true');
+    assert.deepEqual([...list().querySelectorAll('td')].map(cell => cell.textContent), ['fixture-qa', 'SSH private key']);
+    assert.deepEqual([...list().querySelectorAll('th')].map(cell => cell.textContent), language === 'zh-cn' ? ['别名', '类型'] : ['Alias', 'Type']);
+    assert.equal(list().querySelectorAll('button,input,textarea').length, 0);
+    controls()[1].click();
+    assert.equal(list(), null);
+    controls()[0].click();
+    await render();
+    f.library.show(other.uri);
+    pending[2]({ status: 'ok', rows: [{ name: 'fixture-stale', type: 'Password' }] });
+    await render();
+    assert.equal(list(), null);
+    assert.equal(controls().length, 0);
+    f.library.show(project.uri);
+    controls()[0].click();
+    await render();
+    pending[3]({ status: 'ok', rows: [] });
+    await render();
+    assert.equal(list().textContent, language === 'zh-cn' ? '暂无已保存的凭据。' : 'No saved credentials.');
+  });
+
   test(`the library heading opens a localized status guide by hover or activation (${language})`, t => {
     const { library, guide } = fixture(t, language);
     const help = library.element.querySelector('.lp-rail-heading > h2 + button');

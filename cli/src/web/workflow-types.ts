@@ -161,6 +161,7 @@ export interface Upload { name: string; mimeType?: string; data?: string; path?:
 export interface InputRequest {
   requestId: string; nodeName: string; title: string; description?: string; params: Field[];
   credential?: import('steamharness').BotCredentialSlot;
+  credentialUse?: import('steamharness').BotCredentialUse;
   defaultValues?: Record<string, unknown>; createdAt?: string;
   metadata?: { type?: string; toolName?: string; toolArguments?: unknown; [key: string]: unknown };
 }
@@ -222,6 +223,8 @@ export interface Run {
   /** Internal host admission; never read from browser or model arguments. */
   allowBotArtifactPublish?: true;
   allowBotCredentialInput?: true;
+  allowBotCredentialStructured?: true;
+  allowBotCredentialUse?: true;
   folderBotProfile?: import('steamharness').FolderBotProfile;
 }
 

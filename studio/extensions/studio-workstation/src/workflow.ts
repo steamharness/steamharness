@@ -30,6 +30,7 @@ import { ProjectWindowsProvider } from './project-windows-view';
 import { SideResourcePreview } from './workflow-resource-preview';
 import type { ProjectSidebar } from './project-sidebar';
 import { findProjectCandidates, ignoredProjectDirectories } from './project-candidates';
+import { registerRuntimeDependencyIndicators } from './project-runtime-dependency-lenses';
 
 class ProjectCatalog {
   private readonly change = new vscode.EventEmitter<void>();
@@ -56,8 +57,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const resourceBindings = new Map<vscode.WebviewPanel, vscode.Disposable[]>();
   context.subscriptions.push(sideResourcePreview);
   context.subscriptions.push(fileIcons);
-  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 110);
-  status.command = 'studio.openProject';
   const versionStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 109);
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -139,6 +138,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     void info.update(provider.projects, target);
     toolInstances.update(provider.projects, target);
     updateVersionEntry();
+    updateRuntimeDependencyStatus?.();
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
     const workspace = target ? findWorkspace(target) : undefined;
     const windowRoot = vscode.workspace.workspaceFolders?.[0]?.uri.toString();
@@ -148,9 +148,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     const headerWorkspace = releaseProject ? findWorkspace(releaseProject) : workspace;
     if (projectScanReady) { mode.update(!!headerProject && vscode.workspace.isTrusted, headerProject?.uri, !!headerWorkspace?.running && headerWorkspace.loaded, !!releaseProject,
       releaseProject ? { name: releaseProject.aggregateName, avatarUrl: projectAvatarDataUrl(releaseProject.aggregateProjectCard ?? releaseProject.projectCard, releaseProject.projectType) } : undefined); }
-    if (!target) { status.hide(); return; }
-    status.text = t("$(play) Run Project \u00B7 {0}", projectDisplayName(target));
-    status.tooltip = target.folderPath; status.show();
   };
   const updateVersionEntry = (): void => {
     const project = currentProject();
@@ -504,46 +501,50 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   });
   const mode = new StudioModeController(context, output, account.platform);
   const trace = new TraceView(context, openProject, output);
-  const prepareUpgrade = async (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
+  const prepareProjectReplacement = async (uri: string, signal: AbortSignal, save: boolean): Promise<vscode.Disposable> => {
     signal.throwIfAborted();
-    if (!projectAvailable(project) || upgrading.has(project.uri)) { throw new Error(t('The project is no longer available for upgrading.')); }
-    upgrading.add(project.uri);
+    assertNotUpgrading([vscode.Uri.parse(uri).fsPath]);
+    upgrading.add(uri);
     ++scanEpoch;
-    const release = new vscode.Disposable(() => { upgrading.delete(project.uri); scheduleRefresh(); });
+    const release = new vscode.Disposable(() => { upgrading.delete(uri); scheduleRefresh(); });
     try {
-      const inside = (uri: vscode.Uri): boolean => uri.toString().startsWith(`${project.uri}/`);
+      const inside = (file: vscode.Uri): boolean => file.toString().startsWith(`${uri}/`);
       for (const document of vscode.workspace.notebookDocuments.filter(document => document.isDirty && inside(document.uri))) {
         signal.throwIfAborted();
-        if (!await document.save()) { throw new Error(t('Save the project files before upgrading.')); }
+        if (!save || !await document.save()) { throw new Error(t('Save the project files before upgrading.')); }
       }
       for (const document of vscode.workspace.textDocuments.filter(document => document.isDirty && inside(document.uri))) {
         signal.throwIfAborted();
-        if (!await document.save()) { throw new Error(t('Save the project files before upgrading.')); }
+        if (!save || !await document.save()) { throw new Error(t('Save the project files before upgrading.')); }
       }
       const pending: Promise<unknown>[] = [];
       signal.throwIfAborted();
       for (const [controller, entry] of starting) {
-        if (usesProject(startingSources.get(controller) ?? [entry.folderPath], project.uri)) {
+        if (usesProject(startingSources.get(controller) ?? [entry.folderPath], uri)) {
           const done = startingDone.get(controller);
           if (done) { pending.push(done); }
           controller.abort();
         }
       }
       for (const [session, sources] of sessionSources) {
-        if (usesProject(sources, project.uri)) { const stop = sessionStops.get(session); if (stop) { pending.push(stop()); } }
+        if (usesProject(sources, uri)) { const stop = sessionStops.get(session); if (stop) { pending.push(stop()); } }
       }
-      for (const [terminal, uri] of terminals) {
-        if (uri === project.uri || uri.startsWith(`${project.uri}/`)) { terminal.dispose(); terminals.delete(terminal); }
+      for (const [terminal, owner] of terminals) {
+        if (owner === uri || owner.startsWith(`${uri}/`)) { terminal.dispose(); terminals.delete(terminal); }
       }
       await Promise.all(pending);
       signal.throwIfAborted();
-      await settling.get(projectWindowKey(project));
+      await Promise.all([...settling].filter(([key]) => key.startsWith(`${uri}#entry=`)).map(([, pending]) => pending));
       if (vscode.workspace.textDocuments.some(document => document.isDirty && inside(document.uri))
         || vscode.workspace.notebookDocuments.some(document => document.isDirty && inside(document.uri))) {
         throw new Error(t('Save the project files before upgrading.'));
       }
       return release;
     } catch (error) { release.dispose(); throw error; }
+  };
+  const prepareUpgrade = (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
+    if (!projectAvailable(project)) throw new Error(t('The project is no longer available for upgrading.'));
+    return prepareProjectReplacement(project.uri, signal, true);
   };
   const versions = new VersionsView(context, launcher, account, output, prepareUpgrade,
     (projects, replacedRoot) => rememberDownloadedProjects(context, projects, replacedRoot), account.platform);
@@ -616,6 +617,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     try { return await callback(...args); }
     catch (error) { output.appendLine(String(error)); await vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)); }
   });
+  const updateRuntimeDependencyStatus = launcher.runtimeDependencies && registerRuntimeDependencyIndicators(context, launcher.runtimeDependencies,
+    (directory, signal) => prepareProjectReplacement(vscode.Uri.file(directory).toString(), signal, false), output, () => {
+      const project = currentProject();
+      if (!project || lockedWindow || project.assistant || project.builtin || project.distribution === 'release') return;
+      const root = vscode.Uri.parse(project.uri);
+      if (root.scheme === 'file') return vscode.Uri.joinPath(root, 'package.json');
+    });
   const watcher = vscode.workspace.createFileSystemWatcher('**/{steamharness.json,index.ts,config.json,configuration.json}');
   const projectSerializer: vscode.WebviewPanelSerializer = { deserializeWebviewPanel: async (panel, state: { projectUri?: string; entryId?: string } | undefined) => {
     await initialScan;
@@ -641,7 +649,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     opening.set(key, restored);
     try { await restored; } finally { if (opening.get(key) === restored) { opening.delete(key); } }
   } };
-  context.subscriptions.push(launcher, provider, projectWindows, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
+  context.subscriptions.push(launcher, provider, projectWindows, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
     vscode.window.registerTreeDataProvider('studio.projects', projectWindows),
     vscode.window.registerWebviewPanelSerializer('studio.project', projectSerializer),
     vscode.window.registerWebviewPanelSerializer('studio.projectTool', projectSerializer),

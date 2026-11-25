@@ -19,6 +19,11 @@ export interface WebHostConfiguration {
   localBotArtifacts?: true;
   localBotArtifactLabel?: string;
   localBotCredentials?: true;
+  backgroundBotCredentials?: true;
+  localBotCredentialStructured?: true;
+  localBotCredentialUse?: true;
+  localBotCredentialConversationApproval?: true;
+  localBotCredentialPermissionPolicy?: true;
   workflowScheduleKey?: string;
 }
 
@@ -98,12 +103,20 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
   const folderBot = configuration.folderBot === undefined ? undefined : parseFolderBot(configuration.folderBot);
   if (folderBot && configuration.surface !== 'editor') throw new Error('A local folder Bot requires the editor host.');
+  const backgroundBotCredentials = configuration.backgroundBotCredentials === true && configuration.surface === 'editor' && folderBot?.background !== false;
+  const localBotCredentials = !backgroundBotCredentials && configuration.localBotCredentials === true && !folderBot?.background;
   const connections = parseHostAuthentication(configuration);
   return { ...(configuration.webApps === undefined ? {} : { webApps: parseWebAppBindings(configuration.webApps) }), surface: configuration.surface, assistant, assistantProjectDir,
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
     ...(configuration.localBotArtifacts === true && !folderBot?.background ? { localBotArtifacts: true as const,
       localBotArtifactLabel: typeof configuration.localBotArtifactLabel === 'string' ? configuration.localBotArtifactLabel.trim().slice(0, 160) : undefined } : {}),
-    ...(configuration.localBotCredentials === true && !folderBot?.background ? { localBotCredentials: true as const } : {}),
+    ...(backgroundBotCredentials && { backgroundBotCredentials: true as const }),
+    ...(localBotCredentials && { localBotCredentials: true as const }),
+    ...(localBotCredentials || backgroundBotCredentials ? {
+      ...(configuration.localBotCredentialStructured === true && { localBotCredentialStructured: true as const }),
+      ...(configuration.localBotCredentialStructured === true && configuration.localBotCredentialUse === true && { localBotCredentialUse: true as const,
+        ...(configuration.localBotCredentialConversationApproval === true && { localBotCredentialConversationApproval: true as const }),
+        ...(configuration.localBotCredentialPermissionPolicy === true && { localBotCredentialPermissionPolicy: true as const }) }) } : {}),
     ...(configuration.surface === 'editor' && !folderBot && typeof configuration.workflowScheduleKey === 'string' && /^[a-f0-9]{64}$/u.test(configuration.workflowScheduleKey)
       ? { workflowScheduleKey: configuration.workflowScheduleKey } : {}),
     connection: connections.project, systemAiConnection: connections.ai, platform: configuration.platform === true, folderBot,

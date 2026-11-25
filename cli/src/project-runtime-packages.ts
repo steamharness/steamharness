@@ -22,7 +22,8 @@ export async function readProjectRuntimeArchives(directory: string) {
   try {
     if (!path.isAbsolute(directory)) throw new Error('Expected an absolute package directory.');
     const manifest = JSON.parse(await readFile(path.join(directory, 'runtime-packages.json'), 'utf8'));
-    if (manifest.schemaVersion !== 1) throw new Error('Unsupported runtime package bundle.');
+    // Version 1 may contain a CLI that still requires a separate project runtime version field.
+    if (manifest.schemaVersion !== 2) throw new Error('Update the bundled Core and CLI packages before creating or updating a project.');
     const version: unknown = manifest.packages.core.version;
     if (typeof version !== 'string' || !versionPattern.test(version) || manifest.packages.cli.version !== version) {
       throw new Error('The bundled Core and CLI versions do not match.');

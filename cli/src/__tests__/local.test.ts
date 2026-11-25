@@ -233,21 +233,21 @@ it("local commands require an exact project Core version and allow patch changes
   try {
     manifest.devDependencies["steamharness"] = projectRequiredCoreVersion;
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-    assert.deepEqual(assertLocalCliCoreCompatible(projectDir, hostCoreVersion), {
+    assert.deepEqual(await assertLocalCliCoreCompatible(projectDir, hostCoreVersion), {
       cliRequiredCoreVersion,
       projectRequiredCoreVersion,
     });
 
     manifest.devDependencies["steamharness"] = incompatibleVersion;
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-    assert.throws(
+    await assert.rejects(
       () => assertLocalCliCoreCompatible(projectDir, hostCoreVersion),
       /requires exact Core.*compatibility line.*provides Core/,
     );
 
     manifest.devDependencies["steamharness"] = `^${hostCoreVersion}`;
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-    assert.throws(() => assertLocalCliCoreCompatible(projectDir, hostCoreVersion), /exact SemVer/);
+    await assert.rejects(() => assertLocalCliCoreCompatible(projectDir, hostCoreVersion), /exact SemVer/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -264,11 +264,11 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
   await writeProjectFixture(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version }));
   await writeFile(packagePath, JSON.stringify(manifest));
   try {
-    assert.equal(assertLocalCliCoreCompatible(directory, version, { mode: "dev" }).projectRequiredCoreVersion, version);
-    assert.throws(() => assertLocalCliCoreCompatible(directory, version, { mode: "main" }), /exact published version/);
+    assert.equal((await assertLocalCliCoreCompatible(directory, version, { mode: "dev" })).projectRequiredCoreVersion, version);
+    await assert.rejects(() => assertLocalCliCoreCompatible(directory, version, { mode: "main" }), /exact published version/);
     manifest.devDependencies["steamharness"] = "link:../../../core";
     await writeFile(packagePath, JSON.stringify(manifest));
-    assert.throws(() => assertLocalCliCoreCompatible(directory, version, { mode: "dev" }), /inside the workspace root/);
+    await assert.rejects(() => assertLocalCliCoreCompatible(directory, version, { mode: "dev" }), /inside the workspace root/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

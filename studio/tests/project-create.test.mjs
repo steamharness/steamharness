@@ -173,13 +173,24 @@ test('the shipped template runtime uses the host locale and exact bundled versio
     await writeFile(path.join(bundled, file), file);
     packages[key] = { version: '9.8.7', sha256: createHash('sha256').update(file).digest('hex') };
   }
-  await writeFile(path.join(bundled, 'runtime-packages.json'), JSON.stringify({ schemaVersion: 1, packages }));
+  const bundleMetadata = path.join(bundled, 'runtime-packages.json');
+  await writeFile(bundleMetadata, JSON.stringify({ schemaVersion: 1, packages }));
+  await assert.rejects(local.create(localInput), { code: 'runtime-packages-unavailable' });
+  await writeFile(bundleMetadata, JSON.stringify({ schemaVersion: 2, packages }));
   const portable = await local.create(localInput);
-  const portableManifest = JSON.parse(await readFile(path.join(portable.directory, 'package.json'), 'utf8'));
   const [portableEntry] = await readSidebarProjectEntries(portable.directory);
   assert.equal(portableEntry.folderContext, true);
-  assert.deepEqual(portableManifest.steamharnessRuntime, { version: '9.8.7' });
-  assert.deepEqual(portableManifest.devDependencies, { steamharness: 'file:./vendor/steamharness/steamharness.tgz', '@steamharness/cli': 'file:./vendor/steamharness/steamharness-cli.tgz' });
+  const verifyPortableDependencies = async ({ directory }) => {
+    const portableManifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
+    assert.equal(Object.hasOwn(portableManifest, 'steamharnessRuntime'), false);
+    assert.equal(portableManifest.devDependencies.steamharness, 'file:./vendor/steamharness/steamharness.tgz');
+    assert.equal(portableManifest.devDependencies['@steamharness/cli'], 'file:./vendor/steamharness/steamharness-cli.tgz');
+  };
+  await verifyPortableDependencies(portable);
+  for (const { id } of await local.templates()) {
+    await verifyPortableDependencies(await local.create({ ...localInput, templateId: id, name: `Portable ${id}` }));
+  }
+  await verifyPortableDependencies(await local.createRunDraft({ name: 'Portable draft', parentDirectory: directory, options: { outputName: 'summary.json' } }));
   await writeFile(path.join(bundled, 'steamharness-cli.tgz'), 'damaged');
   await assert.rejects(local.create({ ...localInput, name: 'Damaged' }, undefined,
     async () => { assert.fail('Validation must precede Server id allocation'); }), { code: 'runtime-packages-unavailable' });

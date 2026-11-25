@@ -110,7 +110,7 @@ Give objects that change independently their own entries. For example, store the
 
 `properties` is a JSON object with a limit of 4,000 serialized characters per entry. Updates replace individual top-level values and leave other keys alone. Use `removeProperties` to remove keys. A property can store `null`; for `title`, `summary` and `content`, passing `null` clears the field. `where` requires an exact match on every supplied top-level key. It accepts strings, numbers, booleans and `null`; a missing key does not match `null`.
 
-In `memory_get`, `outgoing` lists the entries this memory references, and `incoming` lists the entries that reference it. Results include current properties but not the bodies of linked entries, and expand only one level. The default is 5 links with a maximum of 10 per page. Use `nextOffset` when another page is available. Before deleting a referenced entry, inspect incoming links and remove the links that should no longer exist.
+In `memory_get`, `outgoing` lists the entries this memory references, and `incoming` lists the entries that reference it. Results include the latest saved properties but not the bodies of linked entries, and expand only one level. The default is 5 links with a maximum of 10 per page. Use `nextOffset` when another page is available. Before deleting a referenced entry, inspect incoming links and remove the links that should no longer exist.
 
 At the start of each turn, Core extracts keywords from the current input and retrieves relevant memories before calling the model. Later model requests refresh the results so edited or deleted excerpts do not remain in context. Follow-up messages, steering inputs and resumed execution also use the current input. Background retrieval runs only when the search tool is enabled and auto-approved; it never opens a confirmation dialog. In a multi-root Assistant workspace or a folder Bot that can select subdirectories, the Bot searches the chosen project directory instead of receiving automatic excerpts from its default store.
 
@@ -125,6 +125,8 @@ Before updating, deleting or changing a link, read the entry being modified and 
 Core's built-in guidance tells the Bot to maintain memory silently. It judges whether confirmed project facts, decisions, procedures or preferences will help future conversations and saves them without waiting for a request to remember. It checks for duplicates, updates changed facts and deletes facts confirmed obsolete or explicitly forgotten, without routine confirmation or memory announcements.
 
 The model decides what to retain from the conversation; it does not copy every message. Stored content is reference data and cannot override current instructions. Credentials, full transcripts, transient progress, guesses and information the user explicitly asks not to retain should not be stored.
+
+A service's deploy location, status, or configuration can change. Core's guidance tells the Bot to use memory as a lead, check the intended environment with authorized read-only tools, and base current-state answers on what it finds. If it lacks permission or cannot confirm the answer, it must label remembered information as last known and unverified. The guidance does not grant any additional permissions.
 
 Memories persist in SQLite on the execution host. Older databases upgrade on first access, keeping their entries and the existing `category` and `key` calls. Memories persist across conversations and restarts on that host, with no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
 
@@ -150,13 +152,37 @@ An entry with incoming links cannot be forgotten. Inspect those links and remove
 
 ## Bot credentials
 
+In local Studio, open **Project details → Bot management → Credential management** to see saved credentials. The list shows only aliases and types for the selected Bot entry or instance. It does not show secret values or start a conversation.
+
 In a local Studio Bot conversation, open **Project information → Bot credentials** to add, replace, or delete credentials. Enter an API key, token, or password in a masked native prompt. For SSH, select a local OpenSSH or PEM private key file. The list shows aliases and types, but not values.
 
-An Agent Bot can call `bot_credentials_request` with a `name` (alias) and `kind` (`api-key`, `password`, or `ssh-private-key`). Select **Open secure input** on the conversation card. Studio then takes the value or asks whether to keep an existing credential of that name and type. The Bot receives only the alias, type, and status: `saved`, `existing`, or `declined`.
+An Agent Bot can call `bot_credentials_request` with a `name` (alias) and `kind` (`api-key`, `password`, `ssh-private-key`, or `structured`). Select **Open secure input** on the conversation card to enter the credential in Studio or confirm an existing one. The Bot receives only the alias, type, and status: `saved`, `existing`, or `declined`.
+
+To save several values together, choose **Structured credential** (`structured`). The Bot can specify field names in `fields`, such as `['tenant', 'clientId', 'clientSecret']`, and Studio will show those keys in the placeholder. If `fields` is omitted, the user can paste JSON with their own keys.
+
+Enter a single-line JSON object in the secure prompt, with up to 16 fields, non-empty string values, and a total size of at most 16 KiB. When the request names fields, the keys must match exactly. Studio does not reuse or overwrite an existing entry with a different set of keys. You can still replace or delete legacy entries in Bot credentials.
 
 Studio uses operating-system-protected storage, separate from memory, conversations, project folders, and artifacts. The original Bot and each instance have separate stores. A request does not overwrite an existing credential, and credentials are excluded from templates, project archives, and conversation exports. Studio refuses to save them if protected storage is unavailable.
 
-The built-in request tool is available in supported local Studio Agent Bot conversations, not in Plan, read-only, IM, paired Web, or background runs. This feature saves and manages credentials; it does not reveal plaintext, inject credentials into a shell, or open SSH connections. Project code can use a [credential input node](./create-user-input-node.mdx#bot-credential-input) to receive the same status.
+Credential tools require a local Studio Agent Bot that supports secure input. They are unavailable in Plan and paired Web. A background conversation can use them only if the local host explicitly authorizes it. Project code can use a [credential input node](./create-user-input-node.mdx#bot-credential-input) to receive the save status.
+
+### Use a saved credential
+
+`saved` means Studio stored the credential; it does not mean a query succeeded. With a supported Studio and project runtime, ask the original Bot, instance, or assistant in the same working directory to list Alibaba Cloud DNS domains or records using the saved alias. You do not need to enter the secret again.
+
+The Bot calls `bot_credentials_use` with `name`, `connector: "alibaba-cloud-dns"`, and `operation` (`list-domains` or `list-records`). In `fields`, map `accessKeyId`, `accessKeySecret`, and optional `securityToken` to the keys in the saved JSON. For `list-records`, supply the ASCII domain as `domain`. `page` starts at `1`, with 20 results per page.
+
+For a legacy access key pair, map the fields to `AccessKeyId` and `AccessKeySecret` and omit `securityToken`. If a structured credential has the same alias, Studio uses that entry and leaves the legacy entry unchanged.
+
+Credential queries follow **Settings → Permissions → Agent permissions**. If the Bot's current run has a stricter policy, the stricter policy applies:
+
+- **Read only**: Credential queries are unavailable, even with a previous conversation approval.
+- **Workspace**: Select **Review credential use** and check the alias, destination, and operation. **Allow once** approves the current request only. **Allow for this conversation** covers later lookups and pagination in that conversation with the same credential and field mapping.
+- **Auto approve**: Eligible queries run without an approval prompt. Adding or replacing a credential still requires a user action.
+
+In Workspace mode, Studio keeps conversation approvals in local memory and never exports them. New or forked conversations, a different credential or mapping, and a Studio restart require approval again. Older runtimes may still require manual approval.
+
+Studio signs the request locally and returns only the query data or a failure status to the Bot. Credential values do not reach the chat, shell, or scripts. Arbitrary HTTP requests, DNS changes, and SSH connections are not supported.
 
 ## Bot files
 

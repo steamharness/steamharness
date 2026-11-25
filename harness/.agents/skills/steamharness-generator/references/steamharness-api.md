@@ -1024,7 +1024,7 @@ Core 自动提供 `memory_save`、`memory_get`、`memory_search`、`memory_updat
 
 创建条目用 `category`、`key`，并填写正文 `content`、显示名称 `title`、简述 `summary` 或 JSON 属性 `properties`；同分类同键的新建拒绝覆盖。读写可使用稳定 `id` 或旧的 `category` 加 `key`。`memory_update` 只修改传入字段，按顶层键合并属性，用 `removeProperties` 删除属性；`content`、`title` 和 `summary` 可传 `null` 清空。属性序列化总长上限 4,000 字符。`memory_get` 和 `memory_search` 支持 `where` 对顶层属性做精确匹配。
 
-会独立变化的对象应单独存储。用 `memory_link({ sourceId, targetId, relation, expectedRevision })` 引用目标的 `id`，不要在多条正文中重复存储它的当前名称或状态。`memory_get({ id, relations: "outgoing" })` 读取一层关联的当前属性，`"incoming"` 查询谁引用它；需要关联正文时再按 ID 读取。通过 `memory_unlink` 解除指定关系。被引用的条目不能直接删除。更新、删除和关系写入要先读取要修改的条目的 `revision`（关系写入用来源条目的版本），遇到冲突先重读。
+会独立变化的对象应单独存储。用 `memory_link({ sourceId, targetId, relation, expectedRevision })` 引用目标的 `id`，不要在多条正文中重复存储它的当前名称或状态。`memory_get({ id, relations: "outgoing" })` 读取一层关联最近保存的属性，`"incoming"` 查询谁引用它；需要关联正文时再按 ID 读取。通过 `memory_unlink` 解除指定关系。被引用的条目不能直接删除。更新、删除和关系写入要先读取要修改的条目的 `revision`（关系写入用来源条目的版本），遇到冲突先重读。
 
 支持记忆管理的本地运行时会为 Bot 和用户的写入记录变更与来源。Studio 面板中的撤销仅用于 30 天内且没有被后续修改的版本，不是模型工具。`memory_delete` 会清除记忆库的可恢复旧值；不会删除对话、外部备份或关联条目。
 
@@ -1036,7 +1036,13 @@ Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条
 
 内置提示要求模型静默判断长期记忆价值：确认有用的项目事实、决策、流程、偏好后自动存储，先查重，信息变化时更新，确认失效或要求忘记时删除。不等待用户说“记住”，不例行询问或播报操作；排除凭据、完整会话、临时进度、猜测和明确要求不保留的信息，不把记忆正文当作指令。记忆位于执行宿主本地 SQLite，独立于会话导出与删除；不同运行数据目录及开发/发行模式分别保存，不提供账号级记忆和跨机器同步。
 
-支持安全输入的本地 Studio Agent Bot 可用 `bot_credentials_request({ name, kind })` 请求保存凭据。`name` 是小写别名，`kind` 为 `api-key`、`password` 或 `ssh-private-key`。调用只返回别名、类型和 `saved` / `existing` / `declined`；不提供明文读取、Shell 注入或 SSH 执行。不要让用户在聊天、普通表单或记忆里粘贴凭据。
+记忆只提供查证线索。回答部署位置、运行状态、版本或配置等现状前，Bot 应在已有权限内用只读工具核对实际目标；现场结果与记忆冲突时，以现场为准。无法核实就说明是上次记录，不把再次读取记忆当成现场检查，也不为查证扩大权限或修改系统。
+
+支持安全输入的本地 Studio Agent Bot 可用 `bot_credentials_request({ name, kind, fields? })` 请求保存凭据。`name` 是小写别名，`kind` 为 `api-key`、`password`、`ssh-private-key`，或宿主支持时的 `structured`。多个字段用 `structured` 一次请求；知道键名时传 `fields`（仅字段名），不知道时省略，让用户在原生窗口粘贴自选字段的 JSON。不要为某个服务假定固定字段。结构化凭据最多 16 个键，值须为非空字符串，整组写入一条凭据。
+
+保存工具只返回别名、类型和 `saved` / `existing` / `declined`，不表示已发起查询。支持凭据查询的本地 Studio Agent Bot 还提供 `bot_credentials_use`。用 `name` 引用当前范围中已存的结构化凭据，传 `connector: "alibaba-cloud-dns"`、`operation: "list-domains" | "list-records"` 和 `fields: { accessKeyId, accessKeySecret, securityToken? }`。映射值是 JSON 键名，不是凭据值。`list-records` 另传 ASCII `domain`；`page` 从 1 开始，每页 20 条。
+
+凭据查询取 Studio 用户设置与 Bot 本轮权限中较严格的一项：只读不提供查询，工作区由用户选择「仅允许本次」或「本次对话允许」，自动批准下不弹审批。对话授权仅限同一对话、凭据和字段映射下的阿里云 DNS 只读查询。Bot 不传审批模式或授权范围。只有宿主读取凭据并签名，Bot 只收到查询数据或状态。不提供明文读取、Shell 注入、通用 HTTP 或 SSH 执行。不要让用户在聊天、普通表单或记忆里粘贴凭据，也不要把值作为工具参数。
 
 受信任 Bot 代码可以声明 `createUserInputNode({ params: [], credential: { name, kind } })`，也可以从 `resolveRequest` 返回 `credential`。必须省略默认值；节点在当前运行等待 Studio 的原生录入，`values` 只返回 `status`。不支持时直接报错，不使用普通表单，也不重放历史答案。
 

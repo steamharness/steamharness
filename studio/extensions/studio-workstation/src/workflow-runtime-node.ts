@@ -20,6 +20,8 @@ import { createStudioControlHandler, STUDIO_CONTROL_ENTRY_ID, studioControlWorks
 import { startStudioControlBridge, type StudioControlBridge } from './studio-control-bridge';
 import { createStudioAnalysisHandler, studioAnalysisProjects } from './studio-analysis';
 import { projectTemplatesRuntime, installProjectDependencies, defaultProjectParentDirectory } from './project-create-node';
+import { inspectRuntimeDependencies, replaceRuntimeDependencies } from './project-runtime-dependencies-node';
+import { createRuntimeNpmLatest } from './project-runtime-npm-node';
 import { configuredNodeRuntime } from './node-runtime-configuration';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 import type { ProjectType } from './projects';
@@ -34,7 +36,8 @@ import type { ManagedUsageTarget } from './project-usage-types';
 import { usingStudioWeb, studioPreview } from './remote-access-node';
 import { WorkflowScheduleRuntime } from './workflow-schedule-runtime';
 import { openProjectSchedules } from './workflow-schedule-view';
-import { createBotCredentialInteraction } from './bot-credentials';
+import { canAccessBotCredentialStorage, createBotCredentialInteraction } from './bot-credentials';
+import { createBotCredentialListReader } from './bot-credential-list';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -106,7 +109,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return new ProjectServerClient(connection).configurations(String(input.projectId), String(input.entryId), String(input.target ?? 'draft'), signal, input.call as Record<string, unknown>);
     },
   };
-  const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language, process.env.STEAMHARNESS_PROJECT_PACKAGE_DIR);
+  const runtimePackageDirectory = process.env.STEAMHARNESS_PROJECT_PACKAGE_DIR;
+  const runtimeNpmLatest = desktop ? createRuntimeNpmLatest(controller.signal) : undefined;
+  const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language, runtimePackageDirectory);
   const releaseStorageDir = path.join(context.globalStorageUri.fsPath, 'workflow', 'builtin-apps');
   const isBuiltinProjectDirectory = (directory: string): boolean => {
     const relative = path.relative(releaseStorageDir, directory);
@@ -196,6 +201,19 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   };
   return {
     available: true,
+    runtimeDependencies: !desktop ? undefined : {
+      bundleDirectory: runtimePackageDirectory && path.isAbsolute(runtimePackageDirectory) ? runtimePackageDirectory : undefined,
+      inspect: (candidate, signal) => inspectRuntimeDependencies(candidate, runtimePackageDirectory, AbortSignal.any([signal, controller.signal]), runtimeNpmLatest),
+      async replace(candidate, revision, signal, beforeReplace, log) {
+        assertAvailable();
+        if (!runtimePackageDirectory) throw new Error(t('This Studio build does not have a valid Core and CLI bundle.'));
+        const combined = AbortSignal.any([signal, controller.signal]);
+        const runtime = await selectedRuntime();
+        return replaceRuntimeDependencies({ candidate, bundle: runtimePackageDirectory, revision, signal: combined,
+          beforeReplace: directory => { assertAvailable(); return beforeReplace(directory); },
+          install: (directory, manager) => installProjectDependencies({ directory, signal: combined, log, runtime, runtimeReplacement: manager }) });
+      },
+    },
     startLegacyLocalFrame,
     downloadDirectory: path.join(homedir(), 'Downloads'),
     nodeRuntime: async () => {
@@ -304,6 +322,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     localAssistantDirectory: assistantDirectory,
     listBuiltinProjectDirectories: localDesktop ? listBuiltinProjectDirectories : undefined,
     isBuiltinProjectDirectory,
+    readBotCredentialList: desktop ? createBotCredentialListReader(context, { isBuiltinProjectDirectory, localAssistantDirectory: assistantDirectory,
+      resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
+      signal: controller.signal }) : undefined,
     inspectAssistant: async (target, folders) => {
       assertAvailable();
       const assistant = { standalone: true, workdir: target.folderPath, roots: [target, ...folders.filter(folder => folder.uri !== target.uri)] };
@@ -327,9 +348,13 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const runtime = await selectedRuntime();
       const embeddedAccount = account.platform && options?.embedded === true && !project.entries.some(entry => entry.webApp);
       const localArtifacts = options?.embedded === true && desktop && !project.folderBot?.background;
+      const backgroundCredentials = options?.backgroundBotCredentials;
+      const backgroundCredentialHost = backgroundCredentials && !backgroundCredentials.signal.aborted && desktop && !options?.embedded && surface === 'editor'
+        && !project.assistant && project.folderBot?.background !== false && await canAccessBotCredentialStorage(context) ? backgroundCredentials : undefined;
       const lease = await hosts.acquire(
       // A headless caller must not lease the CLI that received the embedded page's account.
-      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null, localArtifacts]), project,
+      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null, localArtifacts,
+        backgroundCredentialHost ? randomUUID() : null]), project,
       async (port, hostSignal) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
@@ -371,7 +396,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           assistantProjectDir: assistant ? project.folderPath : undefined,
           folderBot: project.folderBot,
           localBotArtifactLabel: localArtifacts ? project.folderBot ? project.name : project.aggregateName || project.name : undefined,
-          botCredentials: localArtifacts ? (entryId, label, action, signal) => botCredentials({ ...project, assistant }, entryId, label, action, AbortSignal.any([runSignal, signal])) : undefined,
+          backgroundBotCredentials: backgroundCredentialHost,
+          botCredentials: localArtifacts || backgroundCredentialHost ? (entryId, label, action, signal) => {
+            // Approval reuse is keyed to the lease, not to a newly constructed request signal.
+            return botCredentials({ ...project, assistant }, entryId, backgroundCredentialHost ? t('Background Bot: {0}', project.folderBot ? project.name : label) : label,
+              action, AbortSignal.any([runSignal, signal]), backgroundCredentialHost?.signal ?? runSignal);
+          } : undefined,
           workflowScheduleKey,
           expectedProjectId: project.id,
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,

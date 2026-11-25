@@ -203,6 +203,20 @@ test("credential nodes use only the native status handler and never replay the o
     async waitForCredential() { return { status: "saved", value: "fixture-private-value" } as never; } })), /Invalid Bot credential receipt/);
   assert.throws(() => createUserInputNode({ credential: slot, params: [], defaultValues: {} }), /cannot include/);
   assert.throws(() => createUserInputNode({ credential: slot, params: [{ name: "value", type: "string" }] }), /cannot include/);
+
+  const structured = { name: "fixture-login", kind: "structured" as const, fields: ["account", "client.secret", "realm"] };
+  const structuredNode = createUserInputNode({ params: [], credential: structured });
+  await assert.rejects(() => runNode(structuredNode, {}, createTestProjectContext({ ...ordinary,
+    async waitForCredential() { assert.fail("The old host must not receive a new kind"); } })), /not supported/);
+  const provided = await runNode(structuredNode, {}, createTestProjectContext({ ...ordinary, credentialKinds: [structured.kind], async waitForCredential(request) {
+    assert.deepEqual(request.credential, structured);
+    return "existing";
+  } }));
+  assert.deepEqual(provided.values, { status: "existing" });
+  for (const fields of [[], ["account", "account"], ["__proto__"], [" "], [{ name: "token", value: "fixture-value" }], Array.from({ length: 17 }, (_, index) => `field-${index}`)]) {
+    assert.throws(() => createUserInputNode({ params: [], credential: { ...structured, fields: fields as string[] } }), /Invalid Bot credential field names/);
+  }
+  assert.throws(() => createUserInputNode({ params: [], credential: { ...slot, fields: ["token"] } }), /Invalid Bot credential field names/);
 });
 
 test("createUserInputNode resolves a dynamic request definition from the current input", async () => {

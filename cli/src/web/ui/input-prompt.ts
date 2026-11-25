@@ -22,16 +22,17 @@ export class InputPrompt {
   private error = '';
 
   constructor(readonly request: InputRequest, private readonly options: PromptOptions) {
-    const fields = request.credential ? [] : request.params;
+    const secure = request.credential || request.credentialUse;
+    const fields = secure ? [] : request.params;
     this.steps = [...new Set(fields.map((field) => field.step ?? 1))].sort((a, b) => a - b);
     for (const field of fields) {
       const value = request.defaultValues?.[field.name] ?? field.defaultValue ?? '';
       this.values[field.name] = projectFormValue(field, value);
     }
     this.root.className = 'input-prompt';
-    const title = document.createElement('h2'); title.textContent = request.credential ? t('Bot credential') : request.title;
+    const title = document.createElement('h2'); title.textContent = request.credentialUse ? t('Use a saved Bot credential') : request.credential ? t('Bot credential') : request.title;
     const header = document.createElement('header'); header.append(title, iconButton('close', t("End run"), this.options.stop)); this.root.append(header);
-    if (!request.credential && request.description) { const description = document.createElement('p'); description.textContent = request.description; this.root.append(description); }
+    if (!secure && request.description) { const description = document.createElement('p'); description.textContent = request.description; this.root.append(description); }
     this.root.append(this.form);
     this.form.addEventListener('submit', (event) => { event.preventDefault(); });
     this.render();
@@ -50,6 +51,13 @@ export class InputPrompt {
   private submit(values = this.values): void {
     try { validateProjectValues(this.request.params, values); this.busy = true; this.error = ''; this.render(); this.options.submit(values); }
     catch (error) { this.error = String(error instanceof Error ? error.message : error); this.render(); }
+  }
+
+  private securePromptButton(label: string, waitingLabel = label): HTMLButtonElement {
+    const open = this.button(this.openingCredential ? waitingLabel : label, () => { this.openingCredential = true; this.error = ''; this.render(); this.options.credential?.(); });
+    open.disabled ||= this.openingCredential || !this.options.credential;
+    if (this.openingCredential) open.setAttribute('aria-busy', 'true');
+    return open;
   }
 
   private renderPlan(): void {
@@ -124,14 +132,25 @@ export class InputPrompt {
     const active = document.activeElement;
     const focusName = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.id : '';
     this.form.replaceChildren();
-    if (this.request.credential) {
+    if (this.request.credentialUse) {
+      const use = this.request.credentialUse;
+      const operation = use.operation === 'list-domains' ? t('List Alibaba Cloud DNS domains') : t('List Alibaba Cloud DNS records for {0}', use.domain);
+      const summary = document.createElement('p'); summary.textContent = t('Credential: {0} · {1} · Page {2}', use.name, operation, use.page);
+      summary.style.overflowWrap = 'anywhere';
+      this.form.append(summary, this.securePromptButton(t('Review credential use'), t('Waiting for Studio…')));
+    } else if (this.request.credential) {
       const { name, kind } = this.request.credential;
       const alias = document.createElement('p');
-      alias.textContent = t('{0}: {1}', t(kind === 'ssh-private-key' ? 'SSH private key' : kind === 'password' ? 'Password' : 'API key or token'), name);
+      alias.textContent = t('{0}: {1}', t(kind === 'ssh-private-key' ? 'SSH private key' : kind === 'password' ? 'Password'
+        : kind === 'structured' ? 'Structured credential' : 'API key or token'), name);
       alias.style.overflowWrap = 'anywhere';
-      const open = this.button(t('Open secure input'), () => { this.openingCredential = true; this.error = ''; this.render(); this.options.credential?.(); });
-      open.disabled ||= this.openingCredential || !this.options.credential;
-      this.form.append(alias, open);
+      this.form.append(alias);
+      if (this.request.credential.fields?.length) {
+        const fields = document.createElement('p');
+        fields.textContent = t('Fields: {0}', this.request.credential.fields.join(', '));
+        fields.style.overflowWrap = 'anywhere'; this.form.append(fields);
+      }
+      this.form.append(this.securePromptButton(t('Open secure input')));
     } else if (this.request.metadata?.type === 'agent-plan-approval') { this.renderPlan(); }
     else if (this.request.metadata?.type === 'tool-approval') {
       if (this.request.metadata.toolArguments !== undefined) { const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = t("Tool input"); const pre = document.createElement('pre'); pre.textContent = JSON.stringify(this.request.metadata.toolArguments, null, 2); details.append(summary, pre); this.form.append(details); }

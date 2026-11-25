@@ -108,7 +108,9 @@ interface UserInputPayload extends RunPayload {
 
 ## Bot 凭据输入
 
-在支持凭据功能的本地 Studio Bot 对话中，受信任的 Bot 项目代码可以用 `credential` 请求原生安全输入。`name` 是别名，最多 64 个字符；以小写字母或数字开头，之后可用小写字母、数字、点、下划线或连字符。`kind` 可用 `api-key`、`password` 或 `ssh-private-key`。
+在支持凭据功能的本地 Studio Bot 对话中，受信任的 Bot 项目代码可以用 `credential` 请求原生安全输入。`name` 是别名，最多 64 个字符；以小写字母或数字开头，之后可以用小写字母、数字、点、下划线或连字符。
+
+`kind` 可用 `api-key`、`password`、`ssh-private-key` 或 `structured`。`structured` 要求宿主支持结构化凭据。可以在 `credential.fields` 中传 1 到 16 个互不重复的字段名，每个匹配 `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`。省略 `fields` 时，用户可自选键名；不要在请求里传实际值或默认值。
 
 ```ts
 const requestDeployKey = steamharness.createUserInputNode({

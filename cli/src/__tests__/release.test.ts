@@ -4,6 +4,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { buildProjectRelease, prepareReleaseRun, resolveProjectDistribution } from "../release/build";
 import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
 import { createMemoryRuntimePersistence } from "steamharness/runtime-storage";
@@ -13,6 +15,7 @@ import { materializeAggregateDownload, packProject } from "../workspace";
 import { createProjectUploadPlan } from "@steamharness/project-upload/node";
 import { initI18n } from "@steamharness/i18n";
 import { BUNDLED_PROJECT_RUNTIME_FILES } from "@steamharness/runtime-compatibility";
+import { assertLocalCliCoreCompatible } from "../local";
 
 const folders: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true }); });
@@ -38,19 +41,32 @@ async function expectCompactRelease(directory: string) {
     expect(await readFile(path.join(directory, file), "utf8"), file).not.toMatch(/[\r\n]/);
   }
 }
-it("preserves the bundled runtime when compiling a portable project release", async () => {
+it("preserves the archive pair and omits the legacy declaration when compiling a portable release", async () => {
   const { directory } = await fixture();
   const [core, cli] = BUNDLED_PROJECT_RUNTIME_FILES;
-  const manifest = { name: "portable", type: "module", steamharnessRuntime: { version: "0.2.0" },
+  const manifest = { name: "portable", type: "module", steamharnessRuntime: { version: "0.1.0" },
     devDependencies: { steamharness: `file:./${core}`, "@steamharness/cli": `file:./${cli}` } };
   await writeFile(path.join(directory, "package.json"), JSON.stringify(manifest));
   await mkdir(path.join(directory, path.dirname(core)), { recursive: true });
-  await writeFile(path.join(directory, core), "core bytes");
-  await writeFile(path.join(directory, cli), "cli bytes");
+  const staging = await mkdtemp(path.join(os.tmpdir(), "local-runtime-archive-")); folders.push(staging);
+  await mkdir(path.join(staging, "package"));
+  const version = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")).version;
+  const pack = async (file: string, name: string, compatible = false) => {
+    await writeFile(path.join(staging, "package/package.json"), JSON.stringify({ name, version, ...(compatible && { steamharnessProjectRuntime: "archive-manifest" }) }));
+    await promisify(execFile)("tar", ["-czf", path.join(directory, file), "-C", staging, "package"]);
+  };
+  await pack(core, "steamharness");
+  await pack(cli, "@steamharness/cli");
+  expect((await assertLocalCliCoreCompatible(directory, version)).projectRequiredCoreVersion).toBe(version);
+  await expect(buildProjectRelease(directory)).rejects.toThrow(/Update the project's bundled CLI and Core/);
+  await pack(cli, "@steamharness/cli", true);
   const release = await buildProjectRelease(directory);
-  expect(JSON.parse(await readFile(path.join(release.directory, "package.json"), "utf8"))).toMatchObject(manifest);
-  expect(await readFile(path.join(release.directory, core), "utf8")).toBe("core bytes");
-  expect(await readFile(path.join(release.directory, cli), "utf8")).toBe("cli bytes");
+  const releasedManifest = JSON.parse(await readFile(path.join(release.directory, "package.json"), "utf8"));
+  expect(releasedManifest).toMatchObject({ name: manifest.name, devDependencies: manifest.devDependencies });
+  expect(releasedManifest).not.toHaveProperty("steamharnessRuntime");
+  expect((await assertLocalCliCoreCompatible(release.directory, version)).projectRequiredCoreVersion).toBe(version);
+  expect(await readFile(path.join(release.directory, core))).toEqual(await readFile(path.join(directory, core)));
+  expect(await readFile(path.join(release.directory, cli))).toEqual(await readFile(path.join(directory, cli)));
   expect(readProjectReleaseSync(release.directory)?.files.map(entry => entry.path)).toEqual(expect.arrayContaining([core, cli]));
   await rm(path.join(directory, cli));
   await expect(buildProjectRelease(directory)).rejects.toThrow(/steamharness-cli\.tgz/);

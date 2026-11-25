@@ -71,7 +71,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   const initialPlatform = await resolveOnlineConnections(options.online);
   const publishWebAppConfigurations = Boolean(input && host?.platform === true);
-  const credentials = input && host?.localBotCredentials && process.env.STEAMHARNESS_WEB_HOST === 'studio'
+  const credentials = input && (host?.localBotCredentials || host?.backgroundBotCredentials) && process.env.STEAMHARNESS_WEB_HOST === 'studio'
     ? createBotCredentialHost(message => console.log(JSON.stringify(message))) : undefined;
   const app = await startWebServer({ ...options, initialPlatform, host, botCredentialHost: credentials?.open, onWebAppConfigurationChanged: publishWebAppConfigurations ? (entryId, configuration) => {
     console.log(JSON.stringify({ type: 'web-app-configuration', entryId, configuration }));

@@ -8,7 +8,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { startWebServer, temporaryRuntimePersistence } from './web-test-storage';
 import { encodeSession } from '../web/conversation-history';
-import type { ConversationSession, Project, Report, Runtime } from '../web/workflow-types';
+import type { ConversationSession, InputRequest, Project, Report, ResolvedInput, Run, Runtime } from '../web/workflow-types';
+import type { BotCredentialHost } from '../web/bot-credential-host';
+import { parseBotCredentialUse } from 'steamharness';
 
 const apps: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => {
@@ -26,12 +28,14 @@ async function fixture(options: {
   restrictedEntry?: string;
   folderHistory?: ConversationSession[];
   recovery?: 'manual' | 'automatic';
+  credentials?: { host: BotCredentialHost; policy?: 'read-only' | 'workspace' | 'auto'; ceiling?: 'read-only' | 'workspace' | 'auto'; legacy?: boolean };
 } = {}) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   const history = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-history-'))); folders.push(history);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
+  if (options.credentials) vi.stubEnv('STEAMHARNESS_WEB_HOST', 'studio');
   if (options.savedServer) {
     await mkdir(path.join(directory, 'auth'));
     await writeFile(path.join(directory, 'auth/workflow-auth-dev.json'), JSON.stringify({ serverUrl: options.savedServer, apiKey: 'cached-token' }));
@@ -74,16 +78,26 @@ async function fixture(options: {
     try { await lease.write(encodeSession(session, 0)); } finally { await lease.close(); }
   }
   if (options.recovery) projects[0].conversation = { recovery: { enabled: true, startup: options.recovery } };
-  const active = new Map<string, { runId?: string; finish(report: Report): void }>();
+  if (options.credentials) {
+    projects[0].conversation = { ...projects[0].conversation, engine: 'agent' };
+    if (!options.credentials.legacy) Object.assign(projects[0], { runtime: { botCredentialInputVersion: 1, botCredentialUseVersion: 1 } });
+  }
+  const active = new Map<string, { runId?: string; emit(event: Record<string, unknown>): void; finish(report: Report): void }>();
+  const resolveLiveInput = vi.fn(async (runId: string, input: ResolvedInput) => {
+    const target = [...active.values()].find(operation => operation.runId === runId);
+    target?.emit({ type: 'user_input_resolved', ...input, values: { status: input.values.status } });
+  });
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => options.fail ? ({ projects: [], errors: ['Runtime unavailable'] }) : ({ projects, errors: [] })), resolveParams: vi.fn(async () => ({})),
-    run: vi.fn(async request => new Promise<Report>(finish => active.set(request.project.entryId, { runId: request.runId, finish }))),
+    run: vi.fn(async (request: Run, emit: (event: Record<string, unknown>) => void) => new Promise<Report>(finish => active.set(request.project.entryId, { runId: request.runId, emit, finish }))),
+    resolveLiveInput,
     cancel: vi.fn(runId => { for (const operation of active.values()) if (operation.runId === runId) operation.finish({ status: 'aborted' }); }),
     dispose: vi.fn(() => { for (const operation of active.values()) operation.finish({ status: 'aborted' }); }),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(), deleteConversation: vi.fn(),
   };
-  const folderBot = options.folderHistory && { id: randomUUID(), directory, projectId: id, background: true, permissionCeiling: 'read-only' as const };
-  const host = folderBot || options.connection || options.platform !== undefined ? { surface: 'editor' as const, platform: options.platform, connection: options.connection, folderBot } : undefined;
-  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, onWebAppConfigurationChanged: options.configurationChanged, host }); apps.push(app); return app; };
+  const folderBot = options.folderHistory && { id: randomUUID(), directory, projectId: id, background: true, permissionCeiling: options.credentials?.ceiling ?? 'read-only' };
+  const host = folderBot || options.connection || options.credentials || options.platform !== undefined ? { surface: 'editor' as const, platform: options.platform, connection: options.connection, folderBot,
+    ...(options.credentials && { backgroundBotCredentials: true as const, localBotCredentialStructured: true as const, localBotCredentialUse: true as const, userSettings: { agent: { permissionPolicy: options.credentials.policy ?? 'workspace' } } }) } : undefined;
+  const open = async () => { const app = await startWebServer({ projectDir: directory, dataDir: history, runtime, onWebAppConfigurationChanged: options.configurationChanged, host, botCredentialHost: options.credentials?.host }); apps.push(app); return app; };
   let app = await open();
   const post = (entryId: string, message: object) => fetch(`${app.origin}/entries/${entryId}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const call = async (entryId: string, message: object) => {
@@ -94,7 +108,7 @@ async function fixture(options: {
     }
     const body = await response.json(); expect(response.status, JSON.stringify(body)).toBe(200); return body.messages[0];
   };
-  return { directory, entries, runtime, active, storage, post, call, state: (entryId: string) => call(entryId, { type: 'ready' }), get app() { return app; }, async reopen() { await app.close(); apps.splice(apps.indexOf(app), 1); app = await open(); } };
+  return { directory, entries, runtime, active, storage, post, call, resolveLiveInput, state: (entryId: string) => call(entryId, { type: 'ready' }), get app() { return app; }, async reopen() { await app.close(); apps.splice(apps.indexOf(app), 1); app = await open(); } };
 }
 
 it.each(['disabled', 'manual', 'automatic'] as const)('settles interrupted IM history using %s recovery without replaying from a history read', async recovery => {
@@ -148,6 +162,87 @@ it('keeps a standard hosted Bot conversation read-only for Web clients across re
   expect(history.sessions.find((session: ConversationSession) => session.id === conversationId)).toMatchObject({
     origin: 'host', messages: [expect.objectContaining({ role: 'user', content: 'sent via IM' }), expect.objectContaining({ role: 'assistant', status: 'success' })],
   });
+});
+
+it.each([false, true])('offers non-blocking, turn-bound credential capture (folder Bot: %s)', async folder => {
+  let save!: (status: 'saved') => void, cancel!: () => void;
+  const nativeResult = new Promise<'saved'>(resolve => { save = resolve; });
+  const cancelled = new Promise<void>(resolve => { cancel = resolve; });
+  const native = vi.fn<BotCredentialHost>(async (_entry, _action, signal) => {
+    signal?.addEventListener('abort', cancel, { once: true });
+    return nativeResult;
+  });
+  const f = await fixture({ ...(folder && { folderHistory: [] }), credentials: { host: native } });
+  const conversationId = randomUUID(), requestId = randomUUID(), pendingId = 'capture:fixture';
+  const call = (action: string, input: object = {}) => f.app.hostTurn('agent', { action, conversationId, requestId, ...input });
+  expect(await call('turn')).toMatchObject({ status: 'missing', credentialMode: 'capture-and-use', backgroundCredentialProtocolVersion: 1 });
+  if (!folder) expect(await f.state('agent')).toMatchObject({ botCredentials: false });
+  await call('submit', { text: 'Please save the fixture credential', allowBotCredentials: true });
+  await vi.waitFor(() => expect(f.active.has('agent')).toBe(true));
+  expect(f.runtime.run).toHaveBeenCalledWith(expect.objectContaining({ allowBotCredentialInput: true, allowBotCredentialStructured: true, allowBotCredentialUse: true }), expect.any(Function));
+
+  const request: InputRequest = { requestId: pendingId, nodeName: 'credential-input-node', title: 'fixture-only-desc', params: [],
+    credential: { kind: 'structured', name: 'fixture-alias', fields: ['fieldA', 'fieldB'] } };
+  f.active.get('agent')!.emit({ type: 'user_input_requested', ...request });
+  const turn = await call('turn');
+  expect(turn).toMatchObject({ messageId: requestId, pending: { id: pendingId, kind: 'bot-credential' } });
+  expect(JSON.stringify(turn)).not.toMatch(/fixture-only-desc|fixture-alias|fieldA|fieldB/);
+  await expect(call('resolve', { messageId: requestId, pendingId, values: { status: 'saved', value: 'should-not-pass' } })).rejects.toThrow(/local Studio/);
+  await expect(call('credential', { pendingId, allowBotCredentials: true, values: { status: 'saved' } })).rejects.toThrow();
+  const response = await f.post('agent', { type: 'bot-credential-input', sessionId: conversationId, messageId: requestId, requestId: pendingId });
+  expect(response.status).toBe(folder ? 404 : 400);
+  expect(await call('credential', { pendingId })).toEqual({ status: 'unavailable' });
+  expect(await call('credential', { pendingId: 'other', allowBotCredentials: true })).toEqual({ status: 'changed' });
+  expect(native).not.toHaveBeenCalled();
+
+  const ask = () => call('credential', { pendingId, allowBotCredentials: true });
+  expect(await ask()).toEqual({ status: 'waiting' });
+  expect(await ask()).toEqual({ status: 'waiting' });
+  expect(native).toHaveBeenCalledExactlyOnceWith('agent', { action: 'capture', slot: request.credential }, expect.any(AbortSignal), { conversationId, requestId });
+  if (folder) {
+    expect(await call('stop')).toEqual({ status: 'stopped' });
+    await cancelled;
+  }
+  save('saved');
+  if (folder) {
+    expect(await ask()).toEqual({ status: 'unavailable' });
+    expect(f.resolveLiveInput).not.toHaveBeenCalled();
+  } else {
+    await vi.waitFor(() => expect(f.resolveLiveInput).toHaveBeenCalledExactlyOnceWith(requestId, expect.objectContaining({ requestId: pendingId, values: { status: 'saved' } })));
+    expect(await ask()).toEqual({ status: 'changed' });
+  }
+});
+
+it.each(['read-only', 'workspace', 'auto', 'folder-ceiling'] as const)('applies %s policy to hosted credential queries', async mode => {
+  const native = vi.fn<BotCredentialHost>(async (_entry, action) => action.action === 'use' && action.approval?.mode === 'reuse'
+    ? 'approval-required' : { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.com' }] });
+  const f = await fixture({ ...(mode === 'folder-ceiling' && { folderHistory: [] }), credentials: {
+    host: native, policy: mode === 'folder-ceiling' ? 'auto' : mode, ceiling: 'workspace',
+  } });
+  const conversationId = randomUUID(), requestId = randomUUID(), pendingId = 'use:fixture';
+  const call = (action: string, input: object = {}) => f.app.hostTurn('agent', { action, conversationId, requestId, ...input });
+  await call('submit', { text: 'Query the fixture', allowBotCredentials: true });
+  await vi.waitFor(() => expect(f.active.has('agent')).toBe(true));
+  const use = parseBotCredentialUse({ name: 'fixture-alias', connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'keyId', accessKeySecret: 'keySecret' } });
+  f.active.get('agent')!.emit({ type: 'user_input_requested', requestId: pendingId, nodeName: 'fixture', title: 'fixture', params: [], credentialUse: use, metadata: { credentialUsePolicy: 'auto' } });
+  expect(await call('credential', { pendingId, allowBotCredentials: true })).toEqual({ status: 'processing' });
+  await vi.waitFor(() => expect(f.resolveLiveInput).toHaveBeenCalledExactlyOnceWith(requestId, expect.objectContaining({ values: mode === 'read-only'
+    ? { status: 'failed' } : { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.com' }] } })));
+  expect(native.mock.calls.map(([, action]) => action.action === 'use' && action.approval?.mode)).toEqual(mode === 'read-only' ? [] : mode === 'auto' ? ['auto'] : ['reuse', 'prompt']);
+  expect(JSON.stringify(await call('turn'))).not.toMatch(/fixture-alias|keySecret|example\.com/);
+});
+
+it.each([false, true])('does not derive secure turn authority from a late request or an older SDK (legacy: %s)', async legacy => {
+  const native = vi.fn<BotCredentialHost>(async () => 'saved');
+  const f = await fixture({ credentials: { host: native, legacy } });
+  const conversationId = randomUUID(), requestId = randomUUID(), pendingId = 'capture:fixture';
+  const call = (action: string, input: object = {}) => f.app.hostTurn('agent', { action, conversationId, requestId, ...input });
+  await call('submit', { text: 'A regular IM turn', ...(legacy && { allowBotCredentials: true }) });
+  await vi.waitFor(() => expect(f.active.has('agent')).toBe(true));
+  expect(vi.mocked(f.runtime.run).mock.calls[0][0].allowBotCredentialInput).toBeUndefined();
+  f.active.get('agent')!.emit({ type: 'user_input_requested', requestId: pendingId, nodeName: 'fixture', title: 'fixture', params: [], credential: { name: 'fixture', kind: 'api-key' } });
+  expect(await call('credential', { pendingId, allowBotCredentials: true })).toEqual({ status: 'unavailable' });
+  expect(native).not.toHaveBeenCalled();
 });
 
 it('announces restricted entries before account connection and restores Build only after a verified role', async () => {

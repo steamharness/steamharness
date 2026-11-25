@@ -27,7 +27,8 @@
     "onWebviewPanel:studio.projectTool",
     "onCommand:studio.internalStartPageVisibility",
     "onCommand:studio.internalRunProjectEntry",
-    "onCommand:studio.internalProjectUsage"
+    "onCommand:studio.internalProjectUsage",
+    "onCommand:studio.internalReadBotCredentialList"
   ],
   "extensionKind": [
     "workspace"

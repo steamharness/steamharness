@@ -1,5 +1,6 @@
 import type { EntryConversations } from './entry-conversations';
 import type { ConversationController } from './conversation-controller';
+import type { BotCredentialHost } from './bot-credential-host';
 import { sessionRunning, type ConversationSession, type Project, type Runtime } from './workflow-types';
 
 const uuid = (s: unknown): s is string =>
@@ -13,6 +14,7 @@ export async function hostConversation(
   project: Project,
   input: Record<string, unknown>,
   isolate = false,
+  credentials?: { available: 'capture' | 'capture-and-use'; authorized: boolean; host: BotCredentialHost },
 ) {
   const { conversationId, requestId, action } = input;
   if (!uuid(conversationId) || !uuid(requestId)) throw new Error('Invalid background turn.');
@@ -76,7 +78,9 @@ export async function hostConversation(
             : undefined,
         complete: ['success', 'completed', 'done', 'failed'].includes(String(metadata?.status)),
       })),
-      pending: pending && {
+      pending: pending && (pending.credential || pending.credentialUse ? {
+        id: pending.requestId, kind: 'bot-credential', state: controller.hostCredentialState(answer, pending),
+      } : {
         id: pending.requestId,
         title: pending.title,
         kind: pending.metadata?.type,
@@ -95,8 +99,15 @@ export async function hostConversation(
             options: options?.map((o) => o.value),
           }),
         ),
-      },
+      }),
     };
+  }
+  if (action === 'credential') {
+    if (!hosted || !credentials?.authorized) return { status: 'unavailable' };
+    const pending = answer?.pendingInput;
+    if (!answer || !pending || pending.requestId !== input.pendingId) return { status: 'changed' };
+    if (pending.credentialUse && credentials.available !== 'capture-and-use') return { status: 'unavailable' };
+    return { status: controller.processHostCredential(session, answer, pending, credentials.host) };
   }
   if (hosted && action === 'recover' && (answer?.recovering && !session.recoveryPaused && !answer.pendingInput || queued)) {
     if (queued && !answer) await controller.runQueued(session);
@@ -146,6 +157,7 @@ export async function hostConversation(
       { conversationId, requestId, text: input.text, params: input.params },
       undefined,
       files,
+      credentials?.authorized ? true : undefined,
     );
   }
   if (
@@ -154,7 +166,7 @@ export async function hostConversation(
     answer.pendingInput?.requestId === input.pendingId &&
     input.messageId === answer.id
   ) {
-    if (answer.pendingInput?.credential) throw new Error('Bot credentials can only be collected by local Studio.');
+    if (answer.pendingInput?.credential || answer.pendingInput?.credentialUse) throw new Error('Bot credentials can only be handled by local Studio.');
     if (isolate && answer.pendingInput?.metadata?.type === 'tool-approval') throw new Error('This tool approval must not be resolved by the background host.');
     await controller.resume(
       answer.id,

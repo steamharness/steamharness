@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 import type { Connection } from './workflow-auth-client';
 import { sanitizeProjectEnvironment } from './workflow-auth-client';
 import type { Project } from './workflow-types';
-import type { WebReady, WebSession, WebSessionExit } from './workflow-cli-types';
+import type { BackgroundBotCredentialAccess, WebReady, WebSession, WebSessionExit } from './workflow-cli-types';
 import type { StudioUserSettings } from './user-settings';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 import { parseBotCredentialAction, type BotCredentialAction, type BotCredentialResult } from './bot-credential-vault';
@@ -116,6 +116,7 @@ export async function startProjectCli(options: {
   folderBot?: Project['folderBot'];
   localBotArtifactLabel?: string;
   botCredentials?(entryId: string, label: string, action: BotCredentialAction, signal: AbortSignal): Promise<BotCredentialResult>;
+  backgroundBotCredentials?: BackgroundBotCredentialAccess;
   workflowScheduleKey?: string;
   assistantProjectDir?: string;
   expectedProjectId?: string;
@@ -237,7 +238,8 @@ export async function startProjectCli(options: {
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
       child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, folderBot: options.folderBot && { ...options.folderBot, projectId: options.expectedProjectId }, resourceProjects: options.resourceProjects ?? [],
         ...(options.localBotArtifactLabel && { localBotArtifacts: true, localBotArtifactLabel: options.localBotArtifactLabel }),
-        ...(options.botCredentials && { localBotCredentials: true }), workflowScheduleKey: options.workflowScheduleKey })}\n`);
+        ...(options.botCredentials && { ...(options.backgroundBotCredentials ? { backgroundBotCredentials: true } : { localBotCredentials: true }), localBotCredentialStructured: true, localBotCredentialUse: true,
+          localBotCredentialConversationApproval: true, localBotCredentialPermissionPolicy: true }), workflowScheduleKey: options.workflowScheduleKey })}\n`);
     });
     webAppConfigurations = ready.webAppConfigurations ?? {};
     readyWebAppLoginVersion = ready.webAppLoginProtocolVersion;
@@ -256,17 +258,37 @@ export async function startProjectCli(options: {
             if (closing || finished || typeof reply.id !== 'string' || !/^[a-f0-9-]{36}$/.test(reply.id)) return;
             if (reply.type === 'bot-credential-cancel') { credentialRequests.get(reply.id)?.abort(); return; }
             if (credentialRequests.has(reply.id)) return;
-            const respond = (status: BotCredentialResult) => {
-              if (!closing && !finished) child.stdin?.write(`${JSON.stringify({ type: 'bot-credential-result', id: reply.id, status })}\n`);
+            const respond = (result: BotCredentialResult) => {
+              if (!closing && !finished && child.stdin?.writable) child.stdin.write(`${JSON.stringify({ type: 'bot-credential-result', id: reply.id, ...(typeof result === 'string' ? { status: result } : { result }) })}\n`);
             };
             const entry = ready.project.entries.find(entry => entry.entryId === reply.entryId && entry.type === 'bot');
-            const action = parseBotCredentialAction(reply);
-            if (!entry || !action || (options.assistant || options.folderBot) && entry.entryId !== options.entryId) { respond('unavailable'); return; }
+            const background = options.backgroundBotCredentials;
+            const { turn, ...payload } = reply;
+            const action = parseBotCredentialAction(background ? payload : reply);
+            if (!entry || !action || (options.assistant || options.folderBot || background) && entry.entryId !== options.entryId) { respond('unavailable'); return; }
+            let job: AbortSignal | undefined;
+            if (background) {
+              const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(value);
+              if (action.action === 'manage' || !turn || typeof turn !== 'object' || Array.isArray(turn)
+                || Object.keys(turn).some(key => key !== 'conversationId' && key !== 'requestId') || !uuid(turn.conversationId) || !uuid(turn.requestId)
+                || background.signal.aborted || !(job = background.turnSignal(turn.conversationId, turn.requestId)) || job.aborted) { respond('unavailable'); return; }
+            }
             const request = new AbortController(); credentialRequests.set(reply.id, request);
+            const signal = background && job ? AbortSignal.any([request.signal, background.signal, job]) : request.signal;
+            const revoke = () => {
+              if (request.signal.aborted) return;
+              request.abort();
+              respond('unavailable');
+            };
+            signal.addEventListener('abort', revoke, { once: true });
             const label = options.assistant || options.folderBot ? options.localBotArtifactLabel ?? entry.name : `${ready.project.name} / ${entry.name}`;
-            void options.botCredentials(entry.entryId, label, action, request.signal).then(status => {
+            const handle = options.botCredentials;
+            void Promise.resolve().then(() => { signal.throwIfAborted(); return handle(entry.entryId, label, action, signal); }).then(status => {
               if (!request.signal.aborted) respond(status);
-            }, () => { if (!request.signal.aborted) respond('unavailable'); }).finally(() => credentialRequests.delete(reply.id));
+            }, () => { if (!request.signal.aborted) respond('unavailable'); }).finally(() => {
+              signal.removeEventListener('abort', revoke);
+              credentialRequests.delete(reply.id);
+            });
             return;
           }
           if (reply.type === 'host-turn') pendingTurns.get(reply.requestId)?.(reply.value, reply.failed === true);

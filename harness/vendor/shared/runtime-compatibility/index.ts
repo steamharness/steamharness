@@ -20,11 +20,8 @@ export interface CoreCompatibilityResult {
 }
 
 /**
- * 发布态引用：只接受精确 SemVer。
- *
- * 这是下载/发布制品的契约，走这条路的清单（内置项目发布产物、正式版本）
- * 永远不应该出现相对路径，所以这里的错误信息保持不变，由 `resolveRequiredCoreVersion`
- * 负责开发分支上的本地引用。
+ * 读取从 npm 安装的 Core 的精确 SemVer。随项目附带的归档由 Node 入口读取；
+ * 开发分支上的同级源码链接由 `resolveRequiredCoreVersion` 解析。
  */
 export function readRequiredCoreVersion(manifest: unknown): string {
   if (!isRecord(manifest)) {
@@ -47,16 +44,15 @@ export function readRequiredCoreVersion(manifest: unknown): string {
 export const BUNDLED_PROJECT_RUNTIME_FILES = ['vendor/steamharness/steamharness.tgz', 'vendor/steamharness/steamharness-cli.tgz'] as const;
 
 /** A project-local pair is portable, not a link to a development checkout. */
-export function readBundledProjectRuntimeVersion(manifest: unknown): string | undefined {
-  if (!isRecord(manifest) || !isRecord(manifest.devDependencies)) return undefined;
+export function projectBundlesRuntime(manifest: unknown): boolean {
+  if (!isRecord(manifest) || !isRecord(manifest.devDependencies)) return false;
   const core = manifest.devDependencies[STEAMHARNESS_HARNESS_PACKAGE_NAME];
   const cli = manifest.devDependencies[STEAMHARNESS_CLI_PACKAGE_NAME];
-  const [coreFile, cliFile] = BUNDLED_PROJECT_RUNTIME_FILES.map(file => `file:./${file}`);
-  if (core !== coreFile && cli !== cliFile) return undefined;
-  if (core !== coreFile || cli !== cliFile || !isRecord(manifest.steamharnessRuntime) || typeof manifest.steamharnessRuntime.version !== 'string') {
-    throw new Error('Bundled projects must declare both runtime archives and their exact version in steamharnessRuntime.version.');
-  }
-  return normalizeExactVersion(manifest.steamharnessRuntime.version, 'Bundled project runtime version');
+  const [coreFile, cliFile] = BUNDLED_PROJECT_RUNTIME_FILES;
+  const references = (spec: unknown, file: string) => spec === `file:./${file}` || spec === `file:${file}`;
+  const bundledCore = references(core, coreFile), bundledCli = references(cli, cliFile);
+  if (bundledCore !== bundledCli) throw new Error('Bundled projects must declare both runtime archives.');
+  return bundledCore;
 }
 
 /** 读取任意依赖段里的精确版本，供 CLI 与内置项目发布校验复用。 */
@@ -165,8 +161,6 @@ export function resolveRequiredCoreVersion(
     section?: "devDependencies";
   },
 ): string {
-  const bundled = readBundledProjectRuntimeVersion(manifest);
-  if (bundled !== undefined) return bundled;
   const reference = classifyVersionReference(manifest, STEAMHARNESS_HARNESS_PACKAGE_NAME, {
     section: options.section ?? "devDependencies",
   });

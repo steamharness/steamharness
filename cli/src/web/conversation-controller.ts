@@ -2,11 +2,11 @@ import { t } from './localization';
 import { hydrateUserSettings } from './user-settings';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
+import { getUserSettings, parseBotCredentialSlot, parseUserSettings, type UserSettings } from 'steamharness';
 import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
-import { credentialStatus, credentialUnavailable, type BotCredentialHost } from './bot-credential-host';
+import { credentialStatus, credentialUnavailable, credentialUseSupported, parseBotCredentialUse, parseBotCredentialUseResult, type BotCredentialApproval, type BotCredentialHost } from './bot-credential-host';
 import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
@@ -22,15 +22,19 @@ interface ControllerOptions {
   configurationRevision?(): number;
   userSettings?(): UserSettings;
   folderBotProfile?(): Run['folderBotProfile'];
+  credentialConversationHost?: BotCredentialHost;
+  credentialAutomaticHost?: BotCredentialHost;
+  credentialPermissionCeiling?: CredentialPolicy;
   independent?(session: ConversationSession): (() => void) | Promise<() => void>;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
   log(message: string): void;
 }
-interface RunTask { sessionId: string; cancelled: boolean; stopping?: boolean; finished: Promise<void> }
+type CredentialPolicy = UserSettings['agent']['permissionPolicy'];
+interface RunTask { sessionId: string; credentialInput?: true; credentialPolicy?: CredentialPolicy; cancelled: boolean; stopping?: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
-const isLiveInput = (request?: InputRequest): boolean => !!request?.credential || request?.metadata?.type === 'tool-approval' && request.metadata.live === true;
+const isLiveInput = (request?: InputRequest): boolean => !!(request?.credential || request?.credentialUse) || request?.metadata?.type === 'tool-approval' && request.metadata.live === true;
 type ForkIsolation = { replacements: { from: string; to: string }[]; files: Attachment[] };
 function pendingAgentInput(turn: AgentSessionSnapshot['turns'][number]): boolean {
   // Reports can remain queued after the parent's run has failed. They are saved
@@ -54,7 +58,9 @@ export class ConversationController {
   readonly sessions: ConversationSession[];
   activeId: string;
   private readonly tasks = new Map<string, RunTask>();
-  private readonly credentialPrompts = new Map<string, { runId: string; abort: AbortController }>();
+  private readonly credentialPrompts = new Map<string, { runId: string; answer: ConversationMessage; request: InputRequest; abort: AbortController }>();
+  private readonly credentialScopes = new Map<string, string>();
+  private readonly hostCredentialStates = new WeakMap<InputRequest, 'processing' | 'waiting' | 'unavailable'>();
   private disposed = false;
   private readonly reloading = new Map<string, Promise<void>>();
   private readonly removing = new Set<string>();
@@ -103,9 +109,8 @@ export class ConversationController {
         entry.agentCommands = [];
       }
       for (const message of entry.messages) {
-        if (isLiveInput(message.pendingInput)) {
-          delete message.pendingInput; delete message.submittingInput;
-          message.status = 'aborted'; message.error = t("Run interrupted");
+        if (this.clearLiveInput(message) && !message.pendingInput && ['waiting_for_input', 'running'].includes(message.status ?? '')) {
+          message.status = 'aborted'; message.recovering = false; message.error = t("Run interrupted");
         }
         if (message.status === 'running') {
           if (interrupted) { message.status = 'aborted'; message.recovering = false; message.error = t('Run interrupted'); continue; }
@@ -125,6 +130,7 @@ export class ConversationController {
   replace(saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }): void {
     if (this.tasks.size) throw new Error('Stop executions before replacing runtime history.');
     const restored = new ConversationController(this.project, this.runtime, saved, this.options);
+    this.credentialScopes.clear();
     this.sessions.splice(0, this.sessions.length, ...restored.sessions); this.activeId = restored.activeId;
   }
   get current(): ConversationSession { return this.sessions.find((entry) => entry.id === this.activeId)!; }
@@ -242,6 +248,7 @@ export class ConversationController {
     const index = this.sessions.findIndex((entry) => entry.id === id);
     if (index < 0) { return; }
     const entry = this.sessions[index];
+    this.credentialScopes.delete(id);
     this.removing.add(id);
     try {
       // Upgrade old fork views before deleting either end of their shared host.
@@ -444,7 +451,8 @@ export class ConversationController {
     if (!answer.submittingInput) { answer.pendingInput = undefined; }
     entry.updatedAt = Date.now();
     entry.activeRunId = answer.runId;
-    const task: RunTask = { sessionId: entry.id, cancelled: false, finished: Promise.resolve() };
+    const task: RunTask = { sessionId: entry.id, credentialInput: request.allowBotCredentialInput,
+      credentialPolicy: request.userSettings?.agent.permissionPolicy, cancelled: false, finished: Promise.resolve() };
     this.tasks.set(answer.runId!, task);
     this.changed();
     // Reattaching the durable owner is a control operation. Its bootstrap answer
@@ -497,13 +505,9 @@ export class ConversationController {
         if (event.type === 'token_usage_updated' && !this.project.conversation?.durable?.enabled) {
           answer.tokenUsage = { enabled: true, display: true, run: event.usage as Record<string, unknown> };
         }
-        if (event.type === 'user_input_requested') { this.bindUserInput(entry, answer, event as unknown as NonNullable<ConversationMessage['pendingInput']>); }
+        if (event.type === 'user_input_requested') this.receiveUserInput(entry, answer, event as unknown as InputRequest);
         if (event.type === 'user_input_resolved') {
-          this.confirmInput(entry, answer, event as unknown as ResolvedInput);
-          if (answer.pendingInput?.requestId === event.requestId) {
-            if (isLiveInput(answer.pendingInput)) answer.status = 'running';
-            answer.pendingInput = undefined;
-          }
+          this.resolveUserInput(entry, answer, event as unknown as ResolvedInput);
           void this.persist().catch(error => this.options.log(`Workflow persistence: ${String(error)}`));
         }
         if (event.type === 'file_created') { (answer.files ??= []).push(event.file as unknown as Attachment); }
@@ -522,6 +526,7 @@ export class ConversationController {
         this.changed();
       }) : this.runtime.run(request, onEvent));
       if (task.cancelled || this.disposed) { throw new Error(t("Stopped")); }
+      for (const resolved of report.resolvedUserInputs ?? []) this.resolveUserInput(entry, answer, resolved);
       if (report.status === 'waiting_for_input' && report.pendingUserInput) {
         const target = this.bindUserInput(entry, answer, report.pendingUserInput);
         if (target !== answer) { target.report = report; entry.queuePaused = true; return; }
@@ -552,7 +557,6 @@ export class ConversationController {
         answer.content = outputText(answer.items);
       }
       answer.pendingInput = report.status === 'waiting_for_input' ? report.pendingUserInput : undefined;
-      for (const resolved of report.resolvedUserInputs ?? []) { this.confirmInput(entry, answer, resolved); }
       if (answer.submittingInput && report.status === 'success') { this.confirmInput(entry, answer, answer.submittingInput); }
       answer.files = [...new Map([...(answer.files ?? []), ...(report.files ?? [])].map((file) => [file.id, file])).values()];
       if (!this.project.conversation?.durable?.enabled) answer.tokenUsage = report.tokenUsage ?? answer.tokenUsage;
@@ -603,9 +607,12 @@ export class ConversationController {
       }
     } finally {
       if (answer.runId) this.abortCredentialPrompts(answer.runId);
-      if (isLiveInput(answer.pendingInput)) {
-        delete answer.pendingInput;
-        if (answer.status === 'waiting_for_input') { answer.status = 'aborted'; answer.error = t("Run interrupted"); }
+      for (const reply of entry.messages) {
+        if (reply !== answer && (!answer.runId || reply.runId !== answer.runId)) continue;
+        if (this.clearLiveInput(reply) && !reply.pendingInput && reply.status === 'waiting_for_input') {
+          reply.status = 'aborted'; reply.recovering = false; reply.error = task.stopping ? t('Stopped') : t('Run interrupted');
+          this.finishDuration(reply);
+        }
       }
       if (!historical) {
         if (!this.project.conversation?.durable?.enabled) {
@@ -868,9 +875,14 @@ export class ConversationController {
           ].includes(answer.error ?? '');
         if (configurationFailure) { delete answer.report; delete answer.durationMs; answer.recovering = false; }
         const terminal = turn.status === 'done' || turn.status === 'unanswered';
-        if (configurationFailure || answer.status !== 'failed' && (!restore || answer.status === undefined || terminal && answer.status === 'running')) {
+        // A completed worker anchor can still host a later unscoped approval.
+        // Retire input only when it belongs to the completed turn, or on restore.
+        const inputTurn = (answer.pendingInput ?? answer.submittingInput?.request ?? this.activeCredentialPrompt(answer)?.request)?.metadata?.botRequestId;
+        const clearedLiveInput = terminal && (restore || outputTurns.some(part => part.requestId === inputTurn)) && this.clearLiveInput(answer);
+        if (configurationFailure || answer.status !== 'failed' && (!restore || answer.status === undefined || terminal && (answer.status === 'running' || clearedLiveInput))) {
           const stopped = turn.reason === 'aborted';
-          answer.status = turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? stopped ? 'aborted' : 'failed' : 'running';
+          answer.status = isLiveInput(answer.pendingInput) ? 'waiting_for_input'
+            : turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? stopped ? 'aborted' : 'failed' : 'running';
           answer.error = turn.detail ?? (turn.status === 'unanswered' ? stopped ? t('Stopped') : turn.reason : undefined);
           if (terminal) answer.recovering = false;
           // Only live transitions can establish elapsed time. Replaying an old
@@ -1070,12 +1082,42 @@ export class ConversationController {
     if (answer.durationMs === undefined && answer.createdAt !== undefined) answer.durationMs = Math.max(0, Date.now() - answer.createdAt);
   }
   private async retireAgentOwner(owner: ConversationSession): Promise<void> {
-    const task = owner.activeRunId && this.tasks.get(owner.activeRunId);
+    const runId = owner.activeRunId;
+    if (!runId) return;
+    const task = this.tasks.get(runId);
     if (!task) return;
     task.cancelled = true;
-    this.runtime.cancel(owner.activeRunId);
+    this.abortCredentialPrompts(runId);
+    this.runtime.cancel(runId);
     await task.finished;
   }
+  private resolveUserInput(entry: ConversationSession, anchor: ConversationMessage, receipt: ResolvedInput): void {
+    // The worker keeps its original reply as an anchor, but later turns own
+    // their own cards and submit state. Match the request, not the worker's reply.
+    const replies = entry.messages.filter(reply => reply === anchor || !!anchor.runId && reply.runId === anchor.runId);
+    const logicalId = receipt.request?.metadata?.botRequestId;
+    const target = replies.find(reply => reply.pendingInput?.requestId === receipt.requestId || reply.submittingInput?.requestId === receipt.requestId)
+      ?? replies.find(reply => reply.resolvedInputs?.some(input => input.requestId === receipt.requestId))
+      ?? (typeof logicalId === 'string' ? replies.find(reply => reply.role === 'assistant' && (reply.sessionRequestId === logicalId || reply.id === logicalId)) : undefined)
+      ?? anchor;
+    this.confirmInput(entry, target, receipt);
+    if (target.pendingInput?.requestId !== receipt.requestId) return;
+    if (isLiveInput(target.pendingInput) && target.status === 'waiting_for_input') target.status = 'running';
+    delete target.pendingInput;
+  }
+
+  private clearLiveInput(reply: ConversationMessage): boolean {
+    const pending = isLiveInput(reply.pendingInput) ? reply.pendingInput : undefined;
+    const submitting = reply.submittingInput;
+    const credential = this.activeCredentialPrompt(reply);
+    credential?.abort.abort();
+    if (pending) {
+      delete reply.pendingInput;
+    }
+    if (submitting && (submitting.requestId === pending?.requestId || isLiveInput(submitting.request))) { delete reply.submittingInput; return true; }
+    return !!(pending || credential);
+  }
+
   private confirmInput(entry: ConversationSession, answer: ConversationMessage, resolved: ResolvedInput): void {
     const existing = answer.resolvedInputs?.find((input) => input.requestId === resolved.requestId);
     const previous = existing
@@ -1234,7 +1276,7 @@ export class ConversationController {
     }
     if (controlError) throw controlError;
   }
-  private bindUserInput(entry: ConversationSession, owner: ConversationMessage, request: NonNullable<ConversationMessage['pendingInput']>): ConversationMessage {
+  private bindUserInput(entry: ConversationSession, owner: ConversationMessage, request: InputRequest, visible = true): ConversationMessage {
     const logicalId = request.metadata?.botRequestId;
     let target = typeof logicalId === 'string' && this.project.conversation?.durable?.enabled
       ? entry.messages.find(message => message.role === 'assistant' && (message.sessionRequestId === logicalId || message.id === logicalId)) : undefined;
@@ -1258,8 +1300,66 @@ export class ConversationController {
       if (owner.pendingInput?.requestId === request.requestId) delete owner.pendingInput;
       if (entry.agent?.turns.some(turn => turn.requestId === owner.sessionRequestId && turn.status === 'done')) owner.status = 'success';
     }
-    target.pendingInput = request; target.status = 'waiting_for_input'; target.recovering = false; delete target.error;
+    if (visible) { target.pendingInput = request; target.status = 'waiting_for_input'; target.recovering = false; delete target.error; }
     return target;
+  }
+
+  private credentialUsePolicy(request: InputRequest, task: RunTask): CredentialPolicy {
+    const current = this.currentUserSettings().agent.permissionPolicy;
+    const ceiling = this.options.credentialPermissionCeiling;
+    if (current === 'read-only' || task.credentialPolicy === 'read-only' || ceiling === 'read-only') return 'read-only';
+    return ceiling !== 'workspace' && current === 'auto' && task.credentialPolicy === 'auto' && request.metadata?.credentialUsePolicy === 'auto' ? 'auto' : 'workspace';
+  }
+
+  private localCredentialTurn(entry: ConversationSession, request: InputRequest, runId: string): boolean {
+    if (!request.credentialUse || request.credential || entry.origin || entry.agentOwnerId
+      || this.removing.has(entry.id) || !this.tasks.get(runId)?.credentialInput) return false;
+    if (this.project.conversation?.durable?.enabled) {
+      // A background child or another entry can share a worker, but not a locally admitted chat turn.
+      const logicalId = request.metadata?.botRequestId;
+      if (typeof logicalId !== 'string') return false;
+      const turn = entry.agent?.turns.find(item => item.requestId === logicalId);
+      if (turn && (turn.conversationId !== (entry.agentConversationId ?? entry.agent?.conversationId) || turn.hiddenInput || turn.mode === 'report'
+        || turn.status === 'done' || turn.status === 'unanswered')) return false;
+      const initial = logicalId === runId || logicalId === `${runId}:agent:build`;
+      const input = Object.hasOwn(entry.agentInputs ?? {}, logicalId) ? entry.agentInputs![logicalId] : undefined;
+      if (!initial && !input?.allowBotCredentialInput && !entry.messages.some(message => message.role === 'user' && message.input?.allowBotCredentialInput
+        && (message.input.requestId === logicalId || message.sessionRequestId === logicalId))) return false;
+    }
+    return true;
+  }
+
+  private conversationCredentialScope(entry: ConversationSession, request: InputRequest, runId: string, create: boolean): string | undefined {
+    if (!this.options.credentialConversationHost || !this.localCredentialTurn(entry, request, runId)) return;
+    return this.credentialScope(entry.id, create);
+  }
+
+  private credentialScope(id: string, create: boolean): string | undefined {
+    let scope = this.credentialScopes.get(id);
+    if (!scope && create) this.credentialScopes.set(id, scope = globalThis.crypto.randomUUID());
+    return scope;
+  }
+
+  private receiveUserInput(entry: ConversationSession, anchor: ConversationMessage, request: InputRequest): void {
+    const runId = entry.activeRunId;
+    if (runId && this.credentialPrompts.has(JSON.stringify([runId, request.requestId]))) return;
+    const task = runId && this.tasks.get(runId);
+    if (entry.origin === 'host' || !request.credentialUse || !runId || !task || anchor.runId !== runId) { this.bindUserInput(entry, anchor, request); return; }
+    const policy = this.credentialUsePolicy(request, task);
+    const automatic = policy === 'auto' && this.options.credentialAutomaticHost && this.localCredentialTurn(entry, request, runId);
+    const scopeId = policy !== 'read-only' && !automatic && this.conversationCredentialScope(entry, request, runId, false);
+    const host: BotCredentialHost | undefined = policy === 'read-only' ? async () => ({ status: 'failed' })
+      : automatic ? this.options.credentialAutomaticHost : scopeId ? this.options.credentialConversationHost : undefined;
+    if (!host) { this.bindUserInput(entry, anchor, request); return; }
+    const target = this.bindUserInput(entry, anchor, request, false);
+    const fallback = () => {
+      if (entry.activeRunId !== runId || !task || task.cancelled || this.disposed || this.tasks.get(runId) !== task || this.removing.has(entry.id)
+        || target.status === 'aborted' || target.status === 'failed' || target.status === 'success' || target.submittingInput || target.pendingInput) return;
+      this.bindUserInput(entry, anchor, request); this.changed();
+    };
+    const approval: BotCredentialApproval | undefined = automatic ? { mode: 'auto' } : scopeId ? { scopeId, mode: 'reuse' } : undefined;
+    void this.resolveCredential(target, request, host, entry, approval, true)
+      .then(applied => { if (!applied) fallback(); }, fallback);
   }
   async resume(messageId: string, requestId: string, values: Record<string, unknown>, entry = this.current): Promise<void> {
     this.assertCurrentEngine(entry);
@@ -1267,7 +1367,7 @@ export class ConversationController {
     const answer = entry.messages.find((message) => message.id === messageId && message.pendingInput?.requestId === requestId);
     if (!answer?.pendingInput) { return; }
     const request = answer.pendingInput;
-    if (request.credential) throw credentialUnavailable();
+    if (request.credential || request.credentialUse) throw credentialUnavailable();
     const live = isLiveInput(request);
     if (live ? !entry.activeRunId || entry.activeRunId !== answer.runId || !this.runtime.resolveLiveInput
         || this.tasks.get(entry.activeRunId)?.cancelled || !!answer.submittingInput : !!entry.activeRunId) return;
@@ -1290,24 +1390,93 @@ export class ConversationController {
   private abortCredentialPrompts(runId: string): void {
     for (const prompt of this.credentialPrompts.values()) if (prompt.runId === runId) prompt.abort.abort();
   }
+  private activeCredentialPrompt(answer: ConversationMessage) {
+    return [...this.credentialPrompts.values()].find(prompt => prompt.answer === answer);
+  }
 
   async captureCredential(messageId: string, requestId: string, host: BotCredentialHost, entry: ConversationSession): Promise<void> {
     const answer = entry.messages.find(message => message.id === messageId && message.pendingInput?.requestId === requestId);
-    const request = answer?.pendingInput, slot = request?.credential, runId = entry.activeRunId;
+    const request = answer?.pendingInput;
+    if (!request || !answer || !entry.activeRunId || answer.runId !== entry.activeRunId) throw credentialUnavailable();
+    const scopeId = this.conversationCredentialScope(entry, request, entry.activeRunId, true);
+    await this.resolveCredential(answer, request, host, entry, scopeId ? { scopeId, mode: 'prompt' } : undefined);
+  }
+
+  /** Start at most one native interaction without blocking the private host control pipe. */
+  processHostCredential(entry: ConversationSession, answer: ConversationMessage, request: InputRequest, host: BotCredentialHost) {
+    const runId = entry.activeRunId, task = runId && this.tasks.get(runId);
+    if (entry.origin !== 'host' || entry.agentOwnerId || !task || !task.credentialInput || task.cancelled || answer.runId !== runId
+      || answer.pendingInput !== request || !!request.credential === !!request.credentialUse) return 'unavailable';
+    if (this.project.conversation?.durable?.enabled) {
+      const id = answer.sessionRequestId ?? answer.id;
+      const logicalId = request.metadata?.botRequestId;
+      if (typeof logicalId === 'string') {
+        if (logicalId !== id && !(id === runId && logicalId === `${runId}:agent:build`)) return 'unavailable';
+        const turn = entry.agent?.turns.find(item => item.requestId === logicalId);
+        if (turn && (turn.conversationId !== (entry.agentConversationId ?? entry.agent?.conversationId) || turn.hiddenInput || turn.mode === 'report'
+          || turn.status === 'done' || turn.status === 'unanswered')) return 'unavailable';
+      } else if (!request.credential || id !== runId || entry.agent) {
+        // A root input node can run before the durable session is created. Unattributed agent input cannot.
+        return 'unavailable';
+      }
+    }
+    if (answer.submittingInput) return 'processing';
+    const state = this.hostCredentialStates.get(request);
+    if (state) return state;
+
+    this.hostCredentialStates.set(request, 'processing');
+    const resolve = (approval?: BotCredentialApproval) => this.resolveCredential(answer, request, host, entry, approval, false, true);
+    void (async () => {
+      const policy = request.credentialUse && this.credentialUsePolicy(request, task);
+      if (policy === 'read-only') { await resolve(); return; }
+      const scopeId = policy && this.credentialScope(entry.id, true);
+      if (policy === 'auto' && await resolve({ mode: 'auto' })) return;
+      if (scopeId && await resolve({ scopeId, mode: 'reuse' })) return;
+      this.hostCredentialStates.set(request, 'waiting');
+      await resolve(scopeId ? { scopeId, mode: 'prompt' } : undefined);
+    })().catch(() => { this.hostCredentialStates.set(request, 'unavailable'); });
+    return this.hostCredentialStates.get(request)!;
+  }
+
+  hostCredentialState(answer: ConversationMessage, request: InputRequest) {
+    return answer.submittingInput?.requestId === request.requestId ? 'processing' : this.hostCredentialStates.get(request);
+  }
+
+  private async resolveCredential(answer: ConversationMessage, request: InputRequest, host: BotCredentialHost, entry: ConversationSession, approval?: BotCredentialApproval, silent = false, hosted = false): Promise<boolean> {
+    const { requestId, credential: slot, credentialUse: use } = request;
+    const runId = entry.activeRunId;
     const task = runId ? this.tasks.get(runId) : undefined;
-    const authorized = answer?.allowBotCredentialInput === true || this.owner(entry).agentParameters?.allowBotCredentialInput === true;
-    if (!authorized || !answer || !request || !slot || !runId || answer.runId !== runId || !task || task.cancelled || this.disposed || entry.origin || !this.runtime.resolveLiveInput || answer.submittingInput) throw credentialUnavailable();
-    if (this.credentialPrompts.has(requestId)) throw new Error(t('A secure credential prompt is already open. Try again after closing it.'));
+    const authorized = answer.allowBotCredentialInput === true || this.owner(entry).agentParameters?.allowBotCredentialInput === true;
+    if (!authorized || !!slot === !!use || use && !credentialUseSupported || !runId || answer.runId !== runId || !task || task.cancelled
+      || this.disposed || (hosted ? entry.origin !== 'host' : !!entry.origin) || !this.runtime.resolveLiveInput || answer.submittingInput || (silent ? answer.pendingInput : answer.pendingInput !== request)) throw credentialUnavailable();
+    const promptKey = JSON.stringify([runId, requestId]);
+    if (this.credentialPrompts.has(promptKey)) throw new Error(t('A secure credential prompt is already open. Try again after closing it.'));
     const abort = new AbortController();
-    this.credentialPrompts.set(requestId, { runId, abort });
+    this.credentialPrompts.set(promptKey, { runId, answer, request, abort });
     try {
-      const status = await host(this.project.entryId, { action: 'capture', slot: { name: slot.name, kind: slot.kind } }, abort.signal);
-      if (abort.signal.aborted || task.cancelled || this.disposed || this.tasks.get(runId) !== task || answer.pendingInput !== request || !credentialStatus(status)) throw credentialUnavailable();
-      const resolved = { requestId, nodeName: request.nodeName, values: { status }, submittedAt: new Date().toISOString(), request };
+      const operation = use && parseBotCredentialUse(use);
+      const policy = operation && this.credentialUsePolicy(request, task);
+      let reply: Awaited<ReturnType<BotCredentialHost>>;
+      if (policy === 'read-only') reply = { status: 'failed' };
+      else if (approval?.mode === 'auto' && policy !== 'auto') return false;
+      else {
+        try { reply = await host(this.project.entryId, operation ? { action: 'use', use: operation, ...(approval && { approval }) } : { action: 'capture', slot: parseBotCredentialSlot(slot) }, abort.signal); }
+        catch (error) {
+          if (approval?.mode !== 'auto') throw error;
+          reply = { status: 'failed' };
+        }
+      }
+      if (abort.signal.aborted || task.cancelled || this.disposed || this.tasks.get(runId) !== task || entry.activeRunId !== runId
+        || (silent ? answer.pendingInput : answer.pendingInput !== request)) throw credentialUnavailable();
+      if ((approval?.mode === 'auto' || approval?.mode === 'reuse') && reply === 'approval-required') return false;
+      const receipt = operation ? parseBotCredentialUseResult(reply, operation) : credentialStatus(reply) ? { status: reply } : undefined;
+      if (!receipt) throw credentialUnavailable();
+      const resolved = { requestId, nodeName: request.nodeName, values: { status: receipt.status }, submittedAt: new Date().toISOString(), request };
       answer.submittingInput = resolved; this.changed();
-      try { await this.runtime.resolveLiveInput(runId, resolved); }
+      try { await this.runtime.resolveLiveInput(runId, { ...resolved, values: receipt }); }
       catch (error) { if (answer.submittingInput === resolved) delete answer.submittingInput; this.changed(); throw error; }
-    } finally { this.credentialPrompts.delete(requestId); }
+      return true;
+    } finally { this.credentialPrompts.delete(promptKey); }
   }
   async editQueued(id: string, entry = this.current): Promise<void> {
     const input = entry.queuedInputs?.find((input) => input.id === id);
@@ -1409,6 +1578,7 @@ export class ConversationController {
   async idle(): Promise<void> { while (this.tasks.size) { await Promise.all([...this.tasks.values()].map((task) => task.finished)); } }
   dispose(): void {
     for (const prompt of this.credentialPrompts.values()) prompt.abort.abort();
+    this.credentialScopes.clear();
     this.disposed = true;
     clearTimeout(this.agentSave); this.agentSave = undefined;
     void this.persist().catch(error => this.options.log(String(error)));

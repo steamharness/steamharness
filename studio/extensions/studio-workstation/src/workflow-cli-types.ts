@@ -35,6 +35,10 @@ export interface WebReady {
   runtime?: { harnessVersion: string; harnessPath: string };
 }
 export interface WebSessionExit { code: number | null; signal: NodeJS.Signals | null; stderr: string }
+export interface BackgroundBotCredentialAccess {
+  signal: AbortSignal;
+  turnSignal(conversationId: string, requestId: string): AbortSignal | undefined;
+}
 export interface WebSession {
   ready: WebReady;
   closed: Promise<void>;
@@ -55,6 +59,12 @@ export interface WebSession {
 }
 export interface Launcher {
   available: boolean;
+  runtimeDependencies?: {
+    bundleDirectory?: string;
+    inspect(candidate: import('./project-runtime-dependencies-node').RuntimeDependencyCandidate, signal: AbortSignal): Promise<import('./project-runtime-dependencies-node').RuntimeDependencyInspection | undefined>;
+    replace(candidate: import('./project-runtime-dependencies-node').RuntimeDependencyCandidate, revision: string, signal: AbortSignal,
+      beforeReplace: (directory: string) => Promise<void>, log: (message: string) => void): Promise<string>;
+  };
   downloadDirectory?: string;
   projectCreationDirectory?: string;
   templates?(): Promise<StartTemplate[]>;
@@ -76,6 +86,7 @@ export interface Launcher {
   inspect(paths: string[], options?: { validationDetails?: boolean; signal?: AbortSignal }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   readSidebarEntries?(directory: string): Promise<SidebarProjectEntry[]>;
   readLibraryActivity?(projects: unknown): Promise<string[]>;
+  readBotCredentialList?(target: unknown): Promise<import('./bot-credential-list').BotCredentialListResult>;
   readProjectUsage?(input: unknown): Promise<ProjectUsageSnapshot | undefined> | undefined;
   openHostedSidebar?: OpenHostedSidebar;
   previewWeb?: (url: string, kind: 'project' | 'hosted') => Promise<{ url: URL; mount: string; dispose(): Promise<void> }>;
@@ -85,7 +96,7 @@ export interface Launcher {
   isBuiltinProjectDirectory?(directory: string): boolean;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;
-  start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, options?: { resourceProjects?: string[]; embedded?: boolean }): Promise<WebSession>;
+  start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, options?: { resourceProjects?: string[]; embedded?: boolean; backgroundBotCredentials?: BackgroundBotCredentialAccess }): Promise<WebSession>;
   startLegacyLocalFrame?(origin: URL): Promise<{ port: number; dispose(): void }>;
   cliEntry(projectDir: string): Promise<string>;
   dispose(): void;

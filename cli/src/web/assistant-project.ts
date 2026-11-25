@@ -11,7 +11,7 @@ export function isLocalBuiltinAssistant(project: Project): boolean {
     && project.projectType === 'bot';
 }
 
-const assistantTools = new Set(['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls', 'skill', 'bot_credentials_request',
+const assistantTools = new Set(['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls', 'skill', 'bot_credentials_request', 'bot_credentials_use',
   'workflow-ui_present_card',
   'workflow-studio_studio_state', 'workflow-studio_get_diagnostics', 'workflow-studio_get_kanban_diagnostics', 'workflow-studio_open_file',
   'workflow-studio_set_theme', 'workflow-studio_open_terminal', 'workflow-studio_show_view']);

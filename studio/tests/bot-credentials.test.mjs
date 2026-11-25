@@ -1,19 +1,25 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { setImmediate as tick } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 
 const source = new URL('../extensions/studio-workstation/src/bot-credential-vault.ts', import.meta.url);
 const { outputFiles } = await build({ entryPoints: [fileURLToPath(source)], bundle: true, format: 'esm', platform: 'node', write: false });
-const { botCredentialNamespace, createBotCredentialVault, parseBotCredentialAction, readPickedSshKey } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+const { botCredentialNamespace, createBotCredentialVault, parseBotCredentialAction, parseStructuredCredential, readPickedSshKey } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+
+function memoryStore(values) {
+  return { async keys() { return [...values.keys()]; }, async get(key) { return values.get(key); }, async store(key, value) { values.set(key, value); }, async delete(key) { values.delete(key); } };
+}
 
 test('the native store isolates entries, projects, assistants, and folder Bot instances, with explicit rotation and deletion', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const values = new Map(), storage = { async keys() { return [...values.keys()]; }, async store(key, value) { values.set(key, value); }, async delete(key) { values.delete(key); } };
+  const values = new Map(), storage = memoryStore(values);
   let protectedStorage = true;
   const vault = (entry = 'main', instance, folder, sourcePath = path.join(root, 'project')) => createBotCredentialVault(storage, root, botCredentialNamespace(root, 'project-id', entry, sourcePath, instance, folder), async () => protectedStorage);
   const slot = { name: 'deploy', kind: 'api-key' };
@@ -23,7 +29,7 @@ test('the native store isolates entries, projects, assistants, and folder Bot in
   const bound = path.join(root, 'target');
   for (const other of [vault('other'), vault('main', 'copy-1', bound), vault('main', 'copy-2', bound), vault('main', undefined, bound), vault('main', undefined, undefined, path.join(root, 'other-project'))]) {
     assert.deepEqual(await other.list(), []);
-    assert.equal(await other.exists(slot), false);
+    assert.equal(await other.inspect(slot), 'missing');
   }
   assert.deepEqual(await vault().list(), [slot]);
   await vault().write(slot, 'fixture-rotated', true);
@@ -35,6 +41,31 @@ test('the native store isolates entries, projects, assistants, and folder Bot in
   assert.deepEqual([...values.values()], ['fixture-rotated']);
   protectedStorage = true;
   await vault().remove(slot); assert.equal(values.size, 0);
+});
+
+test('concurrent vault writes wait without overwriting; a cancelled waiter never edits storage', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-concurrency-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const values = new Map(), storage = memoryStore(values), prefix = botCredentialNamespace(root, 'fixture-project', 'main', root);
+  const acquired = Promise.withResolvers(), release = Promise.withResolvers();
+  const first = createBotCredentialVault({ ...storage, async store(key, value) { acquired.resolve(); await release.promise; await storage.store(key, value); } }, root, prefix, async () => true);
+  const second = createBotCredentialVault(storage, root, prefix, async () => true);
+  const slot = { name: 'shared-fixture', kind: 'api-key' };
+  const writing = first.write(slot, 'first-fixture', false);
+  try {
+    await acquired.promise;
+    const concurrent = second.write(slot, 'second-fixture', false);
+    const showedNoError = assert.doesNotReject(concurrent);
+    const abort = new AbortController();
+    const cancelled = assert.rejects(second.remove(slot, abort.signal), { name: 'AbortError' });
+    await tick();
+    abort.abort();
+    await cancelled;
+    release.resolve();
+    await showedNoError;
+    assert.equal(await concurrent, 'existing');
+    assert.deepEqual([...values.values()], ['first-fixture']);
+  } finally { release.resolve(); await writing; }
 });
 
 test('SSH entry reads only a bounded selected private-key file and the pipe accepts no value or file path', async t => {
@@ -56,4 +87,198 @@ test('SSH entry reads only a bounded selected private-key file and the pipe acce
   const host = { type: 'bot-credential-request', id: 'id', entryId: 'agent', action: 'capture', slot };
   assert.deepEqual(parseBotCredentialAction(host), { action: 'capture', slot });
   for (const input of [{ ...host, file }, { ...host, value: fixture }, { ...host, slot: { ...slot, name: '../other' } }]) assert.equal(parseBotCredentialAction(input), undefined);
+});
+
+test('structured credentials validate arbitrary fields and write the entire object to one vault entry', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-pair-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const values = new Map(), prefix = botCredentialNamespace(root, 'project-id', 'main', root);
+  const vault = createBotCredentialVault(memoryStore(values), root, prefix, async () => true);
+  const slot = { name: 'fixture-sso', kind: 'structured', fields: ['tenant', 'client-id', 'client.secret'] };
+  const first = { tenant: 'fixture-tenant', 'client-id': 'fixture-id', 'client.secret': 'fixture-secret' };
+  const invalid = [
+    '{"tenant":', '{}', JSON.stringify({ tenant: first.tenant }),
+    JSON.stringify({ ...first, tenant: 123 }), JSON.stringify({ ...first, 'client.secret': ' ' }),
+    JSON.stringify({ ...first, 'client.secret': 'broken\nvalue' }), JSON.stringify({ ...first, extra: 'extra' }), JSON.stringify([first]),
+    JSON.stringify({ ...first, 'client.secret': 'x'.repeat(16 * 1024) }),
+  ];
+  const capture = { type: 'bot-credential-request', action: 'capture', slot };
+  assert.deepEqual(parseBotCredentialAction(capture), { action: 'capture', slot });
+  for (const fields of [['tenant', 'tenant'], ['__proto__'], ['constructor'], [{ name: 'secret', value: 'fixture-value' }], { tenant: 'fixture-value' }, ['secret\n']]) {
+    assert.equal(parseBotCredentialAction({ ...capture, slot: { ...slot, fields } }), undefined);
+  }
+  assert.equal(parseBotCredentialAction({ ...capture, slot: { ...slot, kind: 'api-key' } }), undefined);
+  for (const value of invalid) await assert.rejects(vault.write(slot, value, false), { message: 'Invalid Bot credential.' });
+  assert.equal(values.size, 0);
+  assert.equal(await vault.write(slot, JSON.stringify(first), false), 'saved');
+  assert.deepEqual(await vault.list(), [{ name: slot.name, kind: slot.kind }]);
+  assert.equal(values.size, 1);
+  const next = { ...first, 'client.secret': 'next-fixture-secret' };
+  assert.equal(await vault.inspect({ ...slot, fields: [...slot.fields].reverse() }), 'existing');
+  assert.equal(await vault.inspect({ ...slot, fields: ['user', 'password'] }), 'different-fields');
+  assert.equal(await vault.write({ ...slot, fields: ['token'] }, '{"token":"fixture-another"}', false), 'different-fields');
+  assert.equal(await vault.write(slot, JSON.stringify(next), false), 'existing');
+  await assert.rejects(vault.write(slot, invalid[0], true), { message: 'Invalid Bot credential.' });
+  assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [first]);
+  assert.equal(await vault.write(slot, JSON.stringify(next), true), 'saved');
+  assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [next]);
+  await vault.remove(slot);
+  assert.deepEqual(await vault.list(), []);
+  const untyped = { name: 'fixture-document', kind: 'structured' };
+  const pair = { AccessKeyId: 'fixture-id', AccessKeySecret: 'fixture-secret' };
+  assert.equal(await vault.write(untyped, JSON.stringify(pair), false), 'saved');
+  assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [pair]);
+  assert.equal(parseStructuredCredential('{"__proto__":"invalid"}'), undefined);
+  assert.equal(parseStructuredCredential('{"token":{"nested":"unsupported"}}'), undefined);
+  assert.equal(parseStructuredCredential(JSON.stringify(Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`field-${index}`, 'fixture'])))), undefined);
+  await vault.remove(untyped);
+  // Old entries stay in the original key space. Only the user can replace or delete them.
+  const legacy = { name: 'fixture-legacy', kind: 'access-key-pair' };
+  const legacyKey = `${prefix}${legacy.kind}:${legacy.name}`;
+  values.set(legacyKey, JSON.stringify(pair));
+  assert.deepEqual(await vault.list(), [legacy]);
+  const signal = new AbortController().signal;
+  assert.equal(await vault.readStructured(legacy.name, signal), undefined);
+  assert.deepEqual(await vault.readStructured(legacy.name, signal, true), pair);
+  const sameAlias = { name: legacy.name, kind: 'structured' };
+  await vault.write(sameAlias, '{"otherField":"fixture"}', false);
+  assert.deepEqual(await vault.readStructured(legacy.name, signal, true), { otherField: 'fixture' });
+  await vault.remove(sameAlias);
+  assert.equal(values.size, 1, 'reading the legacy alias does not migrate it');
+  assert.equal(parseBotCredentialAction({ ...capture, slot: legacy }), undefined);
+  assert.equal(await vault.write(legacy, JSON.stringify({ ...pair, AccessKeySecret: 'rotated-fixture' }), true), 'saved');
+  assert.equal(JSON.parse(values.get(legacyKey)).AccessKeySecret, 'rotated-fixture');
+  await vault.remove(legacy);
+  assert.equal(values.size, 0);
+});
+
+test('native Studio prompts derive a masked JSON placeholder from each request, without showing stored values', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-prompts-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const native = new URL('../extensions/studio-workstation/src/bot-credentials.ts', import.meta.url);
+  const { outputFiles } = await build({ entryPoints: [fileURLToPath(native)], bundle: true, format: 'esm', platform: 'node', write: false,
+    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(process.cwd() + '/package.json');" },
+    plugins: [{ name: 'credentials-vscode', setup(build) {
+      build.onResolve({ filter: /^vscode$/ }, () => ({ path: 'vscode', namespace: 'fixture' }));
+      build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `
+        export const workspace = { isTrusted: true, getConfiguration: () => ({ inspect: () => ({ globalValue: globalThis.botCredentialTest.policy() }) }) }, UIKind = { Desktop: 1 }, env = { uiKind: 1 };
+        export const commands = { executeCommand: () => true };
+        export class CancellationTokenSource { token = {}; cancel() {} dispose() {} }
+        export const window = {
+          showInputBox: options => globalThis.botCredentialTest.input(options),
+          showQuickPick: (items, options) => globalThis.botCredentialTest.pick(items, options),
+          showWarningMessage: message => globalThis.botCredentialTest.warn(message),
+        };
+      ` }));
+    } }] });
+  const { createBotCredentialInteraction } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString('base64')}`);
+  const values = new Map(), prompts = [], warnings = [];
+  let typed, approve = true, policy = 'workspace';
+  const approvals = [], calls = [];
+  globalThis.botCredentialTest = { policy: () => policy, input: options => { prompts.push(options); return typed; },
+    pick: (items, options) => { approvals.push({ items, options }); return approve === 'conversation' ? items[1] : approve ? items[0] : undefined; }, warn: message => warnings.push(message) };
+  t.after(() => { delete globalThis.botCredentialTest; });
+  const store = memoryStore(values);
+  let reads = 0;
+  const interaction = createBotCredentialInteraction({ globalStorageUri: { fsPath: root }, secrets: { ...store, get: key => { reads++; return store.get(key); } } },
+    async (use, fields) => { calls.push({ use, fields }); return { status: 'ok', page: use.page, total: 1, rows: [{ domain: 'example.com' }] }; });
+  const capture = slot => interaction({ folderPath: root, id: 'fixture-project' }, 'main', 'Fixture Bot', { action: 'capture', slot }, new AbortController().signal);
+  const slot = { name: 'fixture-sso', kind: 'structured', fields: ['tenant', 'clientId', 'clientSecret'] };
+  typed = '{"tenant":"fixture-tenant","clientId":"fixture-id","clientSecret":"fixture-secret"}';
+  assert.equal(await capture(slot), 'saved');
+  assert.deepEqual(JSON.parse(prompts[0].placeHolder), { tenant: '', clientId: '', clientSecret: '' });
+  assert.equal(prompts[0].password, true);
+  assert.equal(prompts[0].value, undefined);
+  assert.equal(prompts[0].validateInput(typed), undefined);
+  assert.doesNotMatch(prompts[0].validateInput('{"tenant":"fixture-secret"}'), /fixture-secret/);
+  assert.equal(await capture({ ...slot, fields: ['user', 'password'] }), 'declined');
+  assert.equal(warnings.length, 1);
+  assert.equal(await capture(slot), 'existing');
+  assert.equal(prompts.length, 1);
+  assert.deepEqual([...values.values()], [typed]);
+  typed = '{"username":"fixture-user","password":"fixture-secret"}';
+  assert.equal(await capture({ name: 'fixture-unspecified', kind: 'structured' }), 'saved');
+  assert.deepEqual(JSON.parse(prompts[1].placeHolder), { field: '' });
+  assert.equal(prompts[1].validateInput(typed), undefined);
+  assert.equal(values.size, 2);
+
+  const parsed = parseBotCredentialAction({ type: 'bot-credential-request', id: 'id', entryId: 'main', action: 'use', use: {
+    name: slot.name, connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'clientId', accessKeySecret: 'clientSecret' },
+  } });
+  assert.equal(parsed.action, 'use');
+  const use = (entryId = 'main', instanceId, signal = new AbortController().signal) => interaction({ folderPath: root, id: 'fixture-project',
+    ...(instanceId && { folderBot: { id: instanceId, directory: root } }) }, entryId, 'Fixture Bot', parsed, signal);
+  const readsBeforeUse = reads;
+  approve = false;
+  assert.deepEqual(await use(), { status: 'declined' });
+  assert.equal(reads, readsBeforeUse, 'declining never reads the vault');
+  assert.equal(calls.length, 0);
+  assert.equal(approvals.at(-1).items[0].description, 'alidns.aliyuncs.com');
+  assert.equal(approvals.at(-1).items[0].label, 'Allow once');
+  assert.match(approvals.at(-1).options.title, /fixture-sso.*Fixture Bot/);
+  approve = true;
+  assert.deepEqual(await use('other'), { status: 'missing' });
+  assert.deepEqual(await use('main', 'another-instance'), { status: 'missing' });
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await use(), { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.com' }] });
+  assert.deepEqual(Object.keys(calls[0].fields), ['tenant', 'clientId', 'clientSecret']);
+  await use('main', undefined, AbortSignal.abort());
+  assert.equal(calls.length, 1);
+  assert.equal(approvals.some(item => JSON.stringify(item).includes('fixture-secret')), false);
+
+  const profile = new AbortController(), scopeId = randomUUID(), project = { folderPath: root, id: 'fixture-project' };
+  const ask = (mode, { scope = scopeId, lifetime = profile.signal, entry = 'main', target = project, operation = parsed.use } = {}) => {
+    const action = parseBotCredentialAction({ type: 'bot-credential-request', id: 'id', entryId: entry, action: 'use', use: operation, approval: mode === 'auto' ? { mode } : { scopeId: scope, mode } });
+    assert.ok(action);
+    return interaction(target, entry, 'Fixture Bot', action, lifetime, lifetime);
+  };
+  assert.equal(parseBotCredentialAction({ ...parsed, approval: { scopeId, mode: 'reuse', granted: true } }), undefined);
+  const before = reads;
+  assert.equal(await ask('reuse'), 'approval-required');
+  assert.equal(reads, before, 'no matching authorization does not read the credential');
+  assert.equal((await ask('prompt')).status, 'ok'); // Allow once
+  assert.equal(await ask('reuse'), 'approval-required');
+  approve = 'conversation';
+  assert.equal((await ask('prompt')).status, 'ok');
+  assert.deepEqual(approvals.at(-1).items.map(item => item.label), ['Allow once', 'Allow for this conversation']);
+  const pickCount = approvals.length;
+  assert.equal((await ask('reuse', { operation: { ...parsed.use, operation: 'list-records', domain: 'example.com', page: 2 } })).status, 'ok');
+  assert.equal(approvals.length, pickCount, 'same conversation can switch read operations and paginate without prompting');
+  const beforePolicyChange = reads;
+  assert.equal(await ask('auto'), 'approval-required', 'workspace does not accept a silent auto-approval request');
+  policy = 'read-only';
+  for (const mode of ['auto', 'reuse', 'prompt']) assert.deepEqual(await ask(mode), { status: 'failed' });
+  assert.equal(reads, beforePolicyChange, 'read-only never touches the vault even with an existing grant');
+  policy = 'auto';
+  assert.equal((await ask('auto')).status, 'ok');
+  assert.equal(approvals.length, pickCount, 'matching auto approval needs no native prompt');
+  const withCeiling = permissionCeiling => ({ ...project, folderBot: { id: 'im-fixture', directory: root, background: true, permissionCeiling } });
+  const beforeCeiling = reads;
+  assert.equal(await ask('auto', { target: withCeiling('workspace') }), 'approval-required');
+  for (const mode of ['auto', 'reuse', 'prompt']) assert.deepEqual(await ask(mode, { target: withCeiling('read-only') }), { status: 'failed' });
+  assert.equal(reads, beforeCeiling, 'the instance ceiling cannot be raised by the global auto setting');
+  assert.equal(parseBotCredentialAction({ ...parsed, approval: { mode: 'auto', scopeId } }), undefined);
+  policy = 'workspace';
+  const afterReuse = calls.length, afterReads = reads;
+  assert.equal(await ask('reuse', { scope: randomUUID() }), 'approval-required');
+  assert.equal(await ask('reuse', { lifetime: new AbortController().signal }), 'approval-required');
+  assert.equal(await ask('reuse', { entry: 'other' }), 'approval-required');
+  assert.equal(await ask('reuse', { target: { ...project, folderBot: { id: 'different-instance', directory: root } } }), 'approval-required');
+  assert.equal(await ask('reuse', { operation: { ...parsed.use, fields: { accessKeyId: 'tenant', accessKeySecret: 'clientSecret' } } }), 'approval-required');
+  assert.equal(await ask('reuse', { operation: { ...parsed.use, name: 'fixture-unspecified' } }), 'approval-required');
+  assert.equal(reads, afterReads);
+  values.set([...values.keys()].find(key => key.endsWith(':fixture-sso')), '{"tenant":"fixture-tenant","clientId":"fixture-id","clientSecret":"rotated-fixture"}');
+  assert.equal(await ask('reuse'), 'approval-required');
+  assert.equal(calls.length, afterReuse);
+  profile.abort();
+  assert.equal(await ask('reuse'), 'approval-required');
+
+  const legacyUse = { ...parsed.use, name: 'old-dns', fields: { accessKeyId: 'AccessKeyId', accessKeySecret: 'AccessKeySecret' } };
+  const prefix = botCredentialNamespace(root, project.id, 'main', await realpath(root));
+  values.set(`${prefix}access-key-pair:old-dns`, '{"AccessKeyId":"fixture-old-id","AccessKeySecret":"fixture-old-secret"}');
+  approve = true;
+  const legacy = (operation) => ask('prompt', { lifetime: new AbortController().signal, operation });
+  assert.equal((await legacy(legacyUse)).status, 'ok');
+  assert.equal((await legacy({ ...legacyUse, fields: { ...legacyUse.fields, securityToken: 'sessionToken' } })).status, 'missing');
+  assert.equal(values.has(`${prefix}structured:old-dns`), false);
 });

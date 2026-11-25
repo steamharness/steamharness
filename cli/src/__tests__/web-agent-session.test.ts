@@ -1,12 +1,14 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, AgentSessionTurn } from 'steamharness/agent';
 import { ConversationController } from '../web/conversation-controller';
+import type { BotCredentialHost } from '../web/bot-credential-host';
 import { conversationPrompt } from '../web/conversation-paths';
-import { messageSettled, sessionRunning, type Project, type Report, type Runtime } from '../web/workflow-types';
+import { messageSettled, sessionRunning, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
-function fixture(configurationRevision?: () => number, userSettings?: () => import('steamharness').UserSettings) {
+function fixture(configurationRevision?: () => number, userSettings?: () => import('steamharness').UserSettings, credentialConversationHost?: BotCredentialHost,
+  credentialAutomaticHost?: BotCredentialHost) {
   const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/fixture',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'bot', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
   const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void; fail(error: Error): void }[] = [];
@@ -16,7 +18,7 @@ function fixture(configurationRevision?: () => number, userSettings?: () => impo
     cancel: vi.fn(() => runs.at(-1)?.finish({ status: 'aborted' })),
   };
   const save = vi.fn(async () => {});
-  const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn(), configurationRevision, userSettings }); controllers.push(controller);
+  const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn(), configurationRevision, userSettings, credentialConversationHost, credentialAutomaticHost }); controllers.push(controller);
   const snapshot = (): AgentSessionSnapshot => ({ version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
     configuration: { version: 0, provider: 'fixture', model: 'one', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
     tasks: [], history: [], receipts: [], records: [], usage: [], conversations: [{ id: 1, title: 'Main', background: false }], contexts: [],
@@ -24,14 +26,189 @@ function fixture(configurationRevision?: () => number, userSettings?: () => impo
       items: [{ id: 'first', title: 'Output', content: 'First answer', contentType: 'markdown', collapsed: false, metadata: { kind: 'agent-part', partType: 'text' } }] }],
   });
   const emit = (value: AgentSessionSnapshot) => runs.at(-1)!.emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'agent-session', content: value, metadata: { kind: 'agent-session' } } } });
-  const start = async (status: AgentSessionTurn['status'] = 'done') => {
-    await controller.send({ text: 'First', params: { model: 'one' }, attachments: [] });
+  const start = async (status: AgentSessionTurn['status'] = 'done', allowBotCredentialInput?: true) => {
+    await controller.send({ text: 'First', params: { model: 'one' }, attachments: [], allowBotCredentialInput });
     await vi.waitFor(() => expect(runs).toHaveLength(1));
     const initial = snapshot(); emit({ ...initial, foreground: status === 'placed', turns: initial.turns.map(turn => ({ ...turn, status })) });
   };
   const finish = async () => { runs.at(-1)?.finish({ status: 'success' }); await controller.idle(); };
   return { controller, runtime, runs, snapshot, emit, start, finish, save };
 }
+
+it('routes successive credential receipts to the durable follow-up that requested them', async () => {
+  const f = fixture(); await f.start('done', true);
+  const entry = f.controller.current, initial = f.snapshot(), anchor = entry.messages[1];
+  const turn: AgentSessionTurn = { ...initial.turns[0], requestId: 'second', prompt: 'Save two fixtures', mode: 'followUp', status: 'placed', entryId: 3, answerId: undefined, items: [] };
+  f.emit({ ...initial, revision: 2, foreground: true, turns: [...initial.turns, turn] });
+  const answer = entry.messages.at(-1)!;
+  const requests = ['first-key', 'second-key'].map((name): InputRequest => ({ requestId: `credential:${name}`, nodeName: 'bot-credential', title: 'Bot credential',
+    params: [], credential: { name, kind: 'api-key' }, metadata: { type: 'bot-credential', botRequestId: turn.requestId } }));
+  const receipt = (request: InputRequest, status: 'saved' | 'declined') => ({ requestId: request.requestId, nodeName: request.nodeName, request,
+    values: { status }, submittedAt: '2026-11-25T00:00:00.000Z' });
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  const [first, second] = requests;
+  f.runs[0].emit({ type: 'user_input_requested', ...first });
+  expect(answer.pendingInput?.requestId).toBe(first.requestId);
+  await f.controller.captureCredential(answer.id!, first.requestId, async () => 'saved', entry);
+  f.runs[0].emit({ type: 'user_input_resolved', ...receipt(first, 'saved') });
+  expect(answer.pendingInput).toBeUndefined();
+  expect(answer.submittingInput).toBeUndefined();
+  expect(answer.status).toBe('running');
+  f.runs[0].emit({ type: 'user_input_requested', ...second });
+  f.emit({ ...initial, revision: 3, foreground: true, turns: [...initial.turns, turn] });
+  expect(answer.status).toBe('waiting_for_input');
+  // A duplicate of the first receipt must not touch the second request.
+  f.runs[0].emit({ type: 'user_input_resolved', ...receipt(first, 'saved') });
+  expect(answer.pendingInput?.requestId).toBe(second.requestId);
+  await f.controller.captureCredential(answer.id!, second.requestId, async () => 'declined', entry);
+  f.runs[0].emit({ type: 'user_input_resolved', ...receipt(second, 'declined') });
+  f.emit({ ...initial, revision: 4, turns: [...initial.turns, { ...turn, status: 'done', answerId: 4 }] });
+  expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(2);
+  expect(anchor.resolvedInputs).toBeUndefined();
+  expect(answer.resolvedInputs?.map(input => [input.requestId, input.values.status])).toEqual([[first.requestId, 'saved'], [second.requestId, 'declined']]);
+  expect(messageSettled(answer)).toBe(true);
+  expect(f.controller.running).toBe(false);
+  await f.finish();
+});
+
+it('limits conversation credential reuse to local turns and cancels a pending reuse on Stop', async () => {
+  let resolveReuse!: (value: 'approval-required') => void;
+  const host = vi.fn<BotCredentialHost>(async (_entry, action) => {
+    if (action.action === 'use' && action.approval?.mode === 'reuse') return new Promise(resolve => { resolveReuse = resolve; });
+    return { status: 'ok', page: 1, total: 0, rows: [] };
+  });
+  const f = fixture(undefined, undefined, host); await f.start('placed', true);
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  const entry = f.controller.current, answer = entry.messages[1], initial = f.snapshot();
+  const request = (suffix: string, turn = initial.turns[0].requestId): InputRequest => ({ requestId: `credential:${suffix}`, nodeName: 'bot-credential-use', title: 'Use a saved Bot credential', params: [],
+    credentialUse: { name: 'fixture-dns', connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'id', accessKeySecret: 'secret' }, page: 1 },
+    metadata: { type: 'bot-credential-use', botRequestId: turn } });
+  const first = request('first');
+  f.runs[0].emit({ type: 'user_input_requested', ...first });
+  await f.controller.captureCredential(answer.id!, first.requestId, host, entry);
+  expect(host.mock.calls[0][1]).toMatchObject({ approval: { scopeId: expect.any(String), mode: 'prompt' } });
+  f.runs[0].emit({ type: 'user_input_resolved', requestId: first.requestId, nodeName: first.nodeName, request: first, values: { status: 'ok' } });
+  expect(answer.pendingInput).toBeUndefined();
+
+  const remote = request('remote', 'non-local-turn');
+  f.runs[0].emit({ type: 'user_input_requested', ...remote });
+  expect(host).toHaveBeenCalledTimes(1);
+  expect(answer.pendingInput?.requestId).toBe(remote.requestId);
+  f.runs[0].emit({ type: 'user_input_resolved', requestId: remote.requestId, nodeName: remote.nodeName, request: remote, values: { status: 'declined' } });
+
+  const reuse = request('reuse');
+  f.runs[0].emit({ type: 'user_input_requested', ...reuse });
+  expect(host.mock.calls[1][1]).toMatchObject({ approval: { mode: 'reuse' } });
+  expect(answer.pendingInput).toBeUndefined();
+  const signal = host.mock.calls[1][2];
+  const stopping = f.controller.stop(entry);
+  expect(signal?.aborted).toBe(true);
+  resolveReuse('approval-required');
+  await stopping;
+  expect(answer.pendingInput).toBeUndefined();
+  expect(answer.submittingInput).toBeUndefined();
+  expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  ['auto', 'auto', 'auto', 'automatic'],
+  ['auto', 'auto', 'workspace', 'prompt'],
+  ['workspace', 'auto', 'auto', 'prompt'],
+  ['auto', 'workspace', 'auto', 'prompt'],
+  ['auto', 'read-only', 'auto', 'blocked'],
+  ['read-only', 'auto', 'auto', 'blocked'],
+  ['auto', 'auto', undefined, 'prompt'],
+] as const)('routes credential query: run %s, current %s, Core %s → %s', async (initial, current, corePolicy, expected) => {
+  let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: initial } };
+  const host = vi.fn<BotCredentialHost>(async () => ({ status: 'ok', page: 1, total: 0, rows: [] }));
+  const f = fixture(undefined, () => settings, host, host); await f.start('placed', true);
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  const entry = f.controller.current, answer = entry.messages[1];
+  const request: InputRequest = { requestId: 'capture:policy', nodeName: 'bot-credential-use', title: 'Use a saved Bot credential', params: [],
+    credentialUse: { name: 'fixture-dns', connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'id', accessKeySecret: 'secret' }, page: 1 },
+    metadata: { type: 'bot-credential-use', botRequestId: f.snapshot().turns[0].requestId, credentialUsePolicy: corePolicy } };
+  settings = { agent: { permissionPolicy: current } };
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  if (expected === 'prompt') {
+    expect(host).not.toHaveBeenCalled();
+    expect(answer.pendingInput?.requestId).toBe(request.requestId);
+    settings = { agent: { permissionPolicy: 'auto' } };
+    expect(host).not.toHaveBeenCalled();
+    await f.controller.captureCredential(answer.id!, request.requestId, host, entry);
+    expect(host.mock.calls[0][1]).toMatchObject({ approval: { mode: 'prompt' } });
+  } else {
+    expect(answer.pendingInput).toBeUndefined();
+    await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledOnce());
+    if (expected === 'automatic') expect(host.mock.calls[0][1]).toMatchObject({ approval: { mode: 'auto' } });
+    else {
+      expect(host).not.toHaveBeenCalled();
+      expect(f.runtime.resolveLiveInput).toHaveBeenCalledWith(answer.runId, expect.objectContaining({ values: { status: 'failed' } }));
+    }
+  }
+  await f.finish();
+});
+
+it('retires a stale credential card on a completed durable turn reopened from history', async () => {
+  const f = fixture(); await f.start(); const initial = f.snapshot();
+  const turn: AgentSessionTurn = { ...initial.turns[0], requestId: 'saved-follow-up', mode: 'followUp', entryId: 3, answerId: 4 };
+  f.emit({ ...initial, revision: 2, turns: [...initial.turns, turn] });
+  await f.finish();
+  const saved = structuredClone({ sessions: f.controller.sessions });
+  const answer = saved.sessions[0].messages.at(-1)!;
+  const pending: InputRequest = { requestId: 'credential:old', nodeName: 'bot-credential', title: 'Bot credential', params: [], credential: { name: 'fixture', kind: 'api-key' } };
+  Object.assign(answer, { status: 'waiting_for_input', pendingInput: pending, submittingInput: { ...pending, request: pending, values: { status: 'saved' }, submittedAt: '2026-11-25T00:00:00.000Z' } });
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  const recent = restored.current.messages.at(-1)!;
+  expect(recent).toMatchObject({ status: 'success', content: 'First answer' });
+  expect(messageSettled(recent)).toBe(true);
+  expect(recent.resolvedInputs).toBeUndefined(); // No receipt was persisted for this reply; do not invent one.
+});
+
+it('keeps identical credential request IDs independent in two running conversations', async () => {
+  const f = fixture(), first = f.controller.current;
+  const secondId = globalThis.crypto.randomUUID();
+  await f.controller.navigate(secondId, [{ id: secondId, create: true, draft: { text: '', attachments: [] } }]);
+  const second = f.controller.sessions.find(session => session.id === secondId)!;
+  for (const entry of [first, second]) await f.controller.send({ text: 'Save a test credential', params: { model: 'one' }, attachments: [], allowBotCredentialInput: true }, entry);
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  const request: InputRequest = { requestId: 'same-node-request', nodeName: 'secure-input-node', title: 'Fixture', params: [], credential: { name: 'fixture', kind: 'api-key' } };
+  let save!: (status: 'saved') => void;
+  const pending = new Promise<'saved'>(resolve => { save = resolve; });
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  const firstAnswer = first.messages[1], secondAnswer = second.messages[1];
+  const opening = f.controller.captureCredential(firstAnswer.id!, request.requestId, async () => pending, first);
+  try {
+    f.runs[1].emit({ type: 'user_input_requested', ...request });
+    expect(secondAnswer.pendingInput?.requestId).toBe(request.requestId);
+    await f.controller.captureCredential(secondAnswer.id!, request.requestId, async () => 'declined', second);
+  } finally { save('saved'); await opening; }
+  expect(f.runtime.resolveLiveInput).toHaveBeenNthCalledWith(1, second.activeRunId, expect.objectContaining({ values: { status: 'declined' } }));
+  expect(f.runtime.resolveLiveInput).toHaveBeenNthCalledWith(2, first.activeRunId, expect.objectContaining({ values: { status: 'saved' } }));
+  for (const run of f.runs) run.finish({ status: 'success' });
+  await f.controller.idle();
+});
+
+it('does not clear an unscoped live approval while the worker projects an older completed reply', async () => {
+  const f = fixture(); await f.start();
+  const entry = f.controller.current, anchor = entry.messages[1];
+  const input: InputRequest = { requestId: 'live-approval', nodeName: 'tool', title: 'Approve?', params: [{ name: 'approved', type: 'boolean' }],
+    metadata: { type: 'tool-approval', live: true } };
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  f.runs[0].emit({ type: 'user_input_requested', ...input });
+  f.emit({ ...f.snapshot(), revision: 2 });
+  expect(anchor.status).toBe('waiting_for_input');
+  expect(anchor.pendingInput?.requestId).toBe(input.requestId);
+  await f.controller.resume(anchor.id!, input.requestId, { approved: true }, entry);
+  expect(f.runtime.resolveLiveInput).toHaveBeenCalledOnce();
+  f.runs[0].emit({ type: 'user_input_resolved', requestId: input.requestId, nodeName: input.nodeName, request: input, values: { approved: true }, submittedAt: '2026-11-25T00:00:00.000Z' });
+  f.emit({ ...f.snapshot(), revision: 3 });
+  expect(anchor.status).toBe('success');
+  expect(messageSettled(anchor)).toBe(true);
+  await f.finish();
+});
 
 it.each([true, false])('hides internal completion inputs and retains their assistant continuation (busy=%s)', async busy => {
   const f = fixture(); await f.start(busy ? 'placed' : 'done');

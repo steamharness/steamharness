@@ -249,7 +249,7 @@ export class Controller {
     if (!record?.pendingInput) { throw new Error('Input request is no longer available.'); }
     if (this.workspace.occupiedId && this.workspace.occupiedId !== id) { throw new Error('Another workflow is waiting for input.'); }
     const request = record.pendingInput;
-    if (request.credential) throw new Error('Bot credentials can only be collected by local Studio.');
+    if (request.credential || request.credentialUse) throw new Error('Bot credentials require a local Studio conversation.');
     const allItems = this.options.journal && record.outputSummary ? (await this.options.journal.details(id)).items : record.items;
     const form = Object.fromEntries(request.params.map(field => [field.name, projectFormValue(field, values[field.name] ?? request.defaultValues?.[field.name])]));
     record.submittingInput = { requestId, nodeName: request.nodeName, values: resolvedProjectValues(request.params, form),

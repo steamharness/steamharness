@@ -108,7 +108,9 @@ If `format` is passed in, the return value must still inherit `RunPayload`, usin
 
 ## Bot credential input
 
-Trusted Bot project code can set `credential` to request native secure input in a supported local Studio conversation. `name` is an alias of up to 64 characters. Start with a lowercase letter or digit; the remaining characters may also include dots, underscores, or hyphens. Set `kind` to `api-key`, `password`, or `ssh-private-key`.
+Trusted Bot project code can set `credential` to request native secure input in a supported local Studio conversation. `name` is an alias of up to 64 characters. Use a lowercase letter or digit first, then lowercase letters, digits, dots, underscores, or hyphens.
+
+Set `kind` to `api-key`, `password`, `ssh-private-key`, or `structured`. The `structured` kind requires a Studio host that supports structured credentials. Pass 1 to 16 unique key names in `credential.fields`, each matching `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`, or omit `fields` to let the user choose the keys. Never pass values or defaults in the request.
 
 ```ts
 const requestDeployKey = steamharness.createUserInputNode({

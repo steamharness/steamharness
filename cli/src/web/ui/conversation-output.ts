@@ -167,6 +167,7 @@ export class ConversationOutput {
     const failed = (message.status === 'failed' || message.status === 'timed_out') && !!message.error?.trim();
     const intermediate = new Set(blocks.filter((block, index) => {
       if (isDelivery(block)) return false;
+      if (!('entries' in block) && block.answer?.request?.credentialUse) return false;
       if (failed) return true;
       if (!('entries' in block) && (block.card || block.item && ringOutputContent(block.item))) return false;
       return index < finalIndex || 'entries' in block || !!block.answer || !!block.timer;
@@ -464,6 +465,14 @@ export class ConversationOutput {
   private answer(answer: ResolvedInput, submitting: boolean): HTMLElement {
     const root = document.createElement('div'); root.className = 'resolved-inputs'; root.dataset.requestId = answer.requestId;
     const entry = document.createElement('div'); entry.className = 'resolved-input';
+    if (answer.request?.credentialUse && !submitting) {
+      const status = answer.values.status;
+      const text = document.createElement('p');
+      text.textContent = status === 'ok' ? t('Credential query completed') : status === 'declined' ? t('Credential use declined')
+        : status === 'missing' ? t('Saved credential not found in this Bot') : status === 'missing-fields' ? t('Saved credential does not have the requested fields')
+        : status === 'denied' ? t('Credential query denied by provider') : t('Credential query failed');
+      entry.append(text);
+    }
     for (const field of answer.request?.params ?? []) {
       const value = answer.values[field.name]; if (value === undefined || value === '' || value === null || Array.isArray(value) && !value.length) { continue; }
       const label = document.createElement('strong'); label.textContent = field.label || field.name;

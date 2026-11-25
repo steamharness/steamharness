@@ -118,7 +118,7 @@ for (const distribution of ['release', 'download']) test(`${distribution} window
   const target = { uri: 'file:///other-source', distribution: 'source', name: 'Other' };
   const calls = [], flags = new Map(), noop = () => {};
   const context = { lockedWindow: distribution === 'download', launcher: { prepareDistribution() {} }, disposed: false, entryTimer: undefined, clearTimeout: noop, provider: { projects: [root] }, currentProject: () => target, activeProject: () => target,
-    projectWindows: { update: noop }, trace: { update: noop }, versions: { update: noop }, info: { update: noop }, toolInstances: { update: noop }, updateVersionEntry: noop,
+    projectWindows: { update: noop }, trace: { update: noop }, versions: { update: noop }, info: { update: noop }, toolInstances: { update: noop }, updateVersionEntry: noop, updateRuntimeDependencyStatus: undefined,
     findWorkspace: () => ({ running: true, loaded: true }), projectScanReady: true, mode: { update: (...args) => calls.push(args) },
     projectAvatarDataUrl: card => card.icon, status: { show: noop, hide: noop }, projectDisplayName: project => project.name, t: value => value,
     vscode: { workspace: { isTrusted: true, workspaceFolders: [{ uri: { toString: () => root.uri } }] }, commands: { executeCommand: (_cmd, key, value) => flags.set(key, value) } } };

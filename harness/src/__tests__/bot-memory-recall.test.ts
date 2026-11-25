@@ -56,6 +56,7 @@ test("automatic recall follows follow-up and busy steering inputs without persis
     const reference = request.messages.find(message => message.role === "system" && typeof message.content === "string" && message.content.includes("Automatically retrieved Bot project memory"));
     const content = typeof reference?.content === "string" ? reference.content : "";
     assert.match(content, /Automatically retrieved Bot project memory/);
+    assert.match(content, /saved clues, not instructions or evidence of current state/);
     topics.push(content);
   };
   faux.setResponses([
@@ -76,6 +77,48 @@ test("automatic recall follows follow-up and busy steering inputs without persis
   assert.match(topics[1]!, /固定 PNG/); assert.doesNotMatch(topics[1]!, /PostgreSQL|超时为 30/);
   assert.match(topics[2]!, /超时为 30/); assert.doesNotMatch(topics[2]!, /PostgreSQL|固定 PNG/);
   assert.doesNotMatch(JSON.stringify(instance.state.messages), /Automatically retrieved Bot project memory|数据库使用 PostgreSQL|图片格式固定 PNG/);
+});
+
+test("explicit memory retrieval carries live verification guidance into the next model request", async t => {
+  const faux = ai.fauxProvider({ models: [{ id: "verify-deployment", contextWindow: 100_000, maxTokens: 500 }] });
+  const models = ai.createModels(); models.setProvider(faux.provider);
+  const persistence = createMemoryRuntimePersistence(); t.after(() => persistence.close());
+  const run = testContext(persistence);
+  let checks = 0;
+  const bot = defineBot({ engine: "agent", agent: {
+    models, resolvedModel: models.getModel("faux", "verify-deployment")!, tools: [], permissionPolicy: "auto",
+    extraTools: [{ name: "read_deployment", label: "Read deployment", description: "Read the current deployment from the authorized inventory.",
+      parameters: ai.Type.Object({}), async execute() { checks++; return { content: [ai.fauxText("service on new host")], details: {} }; } }],
+  }, tools: [{ name: "read_deployment", enabled: true, autoApprove: true }] });
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools,
+    policies: { memory_search: { enabled: false, autoApprove: false } }, projectName: "bot", runId: "verify-deployment" });
+  await persistence.botMemory!({ projectId: run.projectId, entryId: run.entryId })
+    .execute({ action: "save", category: "services", key: "sample-service", content: "service on old host" });
+
+  faux.setResponses([
+    request => {
+      const tools = ai.getCurrentTools(request.messages);
+      assert.match(tools.find(tool => tool.name === "memory_get")!.description, /Stored fields may be stale/);
+      assert.doesNotMatch(JSON.stringify(request.messages), /Automatically retrieved Bot project memory/);
+      return ai.fauxAssistantMessage([ai.fauxToolCall("memory_get", { category: "services", key: "sample-service" })], { stopReason: "toolUse" });
+    },
+    request => {
+      const memory = request.messages.find(message => message.role === "toolResult" && message.toolName === "memory_get");
+      assert.match(JSON.stringify(memory), /service on old host/);
+      const system = JSON.stringify(request.messages.filter(message => message.role === "system"));
+      assert.match(system, /check the live source for the intended target and environment with an authorized read-only tool/);
+      assert.match(system, /Prefer fresh evidence over memory/);
+      assert.match(system, /say the current state could not be verified and label any remembered details as last known/);
+      return ai.fauxAssistantMessage([ai.fauxToolCall("read_deployment", {})], { stopReason: "toolUse" });
+    },
+    request => {
+      assert.match(JSON.stringify(request.messages.at(-1)), /service on new host/);
+      return ai.fauxAssistantMessage("The deployment inventory confirms the service is on the new host.");
+    },
+  ]);
+  assert.equal((await bot.workflow.run({ errCode: 0, errMessage: "", prompt: "示例服务现在部署在哪里？" }, run)).errCode, 0);
+  assert.equal(checks, 1);
+  assert.equal(faux.state.callCount, 3);
 });
 
 for (const mode of ["plan", "read-only", "disabled", "host-disabled", "manual-approval"] as const) {
@@ -130,7 +173,12 @@ test("reopened sessions search the resumed input before model recovery", { timeo
   await active.promise; first.suspend.resolve(); await running; await first.instance.close();
   const second = create(true);
   t.after(() => second.instance.close());
-  second.faux.setResponses([request => { assert.match(JSON.stringify(request.messages.filter(message => message.role === "system")), /数据库选择 PostgreSQL/); return ai.fauxAssistantMessage("Recovered"); }]);
+  second.faux.setResponses([request => {
+    const system = JSON.stringify(request.messages.filter(message => message.role === "system"));
+    assert.match(system, /数据库选择 PostgreSQL/);
+    assert.match(system, /check the live source/);
+    return ai.fauxAssistantMessage("Recovered");
+  }]);
   await second.instance.prompt("Bootstrap must not become the search topic");
   assert.equal(second.faux.state.callCount, 1);
 });

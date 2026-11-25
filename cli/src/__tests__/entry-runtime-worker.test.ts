@@ -51,7 +51,8 @@ it('routes real worker entry IPC with host-derived provenance and cancellation',
     expect(slow.status).toBe('success');
     expect(calls.filter(call=>call.input.requestId==='slow')).toHaveLength(1);
     waiting=runtime.run({project,conversationId:'cancel-conversation',runId:'cancel-run',args:['--request','wait'],entryCall},()=>{});
-    await expect.poll(()=>calls.length).toBe(3);
+    // The new worker can take more than a second to start during the full suite.
+    await expect.poll(()=>calls.length,{timeout:10_000}).toBe(3);
     runtime.cancel('cancel-run');await waiting;waiting=undefined;
     expect(signal?.aborted).toBe(true);
   }finally{

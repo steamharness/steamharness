@@ -9,6 +9,7 @@ import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 import { t } from './localization';
 import type { CreatedProject, ProjectCreationInput, StartTemplate } from './start-page-types';
 import type { CreateProjectFromTemplateRequest, TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
+import type { RuntimeDependencyManager } from './project-runtime-dependencies-node';
 
 interface TemplateModule {
   validateProjectName(value: string): string;
@@ -75,7 +76,8 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
   };
 }
 
-export async function installProjectDependencies(options: { directory: string; signal: AbortSignal; log: (message: string) => void; env?: NodeJS.ProcessEnv; runtime?: NodeRuntime }): Promise<void> {
+export async function installProjectDependencies(options: { directory: string; signal: AbortSignal; log: (message: string) => void; env?: NodeJS.ProcessEnv; runtime?: NodeRuntime;
+  runtimeReplacement?: RuntimeDependencyManager }): Promise<void> {
   options.signal.throwIfAborted();
   const runtime = options.runtime;
   const env = { ...(runtime ? nodeRuntimeEnvironment(runtime, options.env) : options.env ?? process.env) };
@@ -133,6 +135,17 @@ export async function installProjectDependencies(options: { directory: string; s
     });
     if (options.signal.aborted) { abort(); }
   });
+  if (options.runtimeReplacement) {
+    const manager = options.runtimeReplacement;
+    await run(manager, ['--version'], true);
+    options.log(`${manager}: updating the local Core and CLI archives\n`);
+    // An unchanged file: path does not invalidate the old archive integrity in every package manager.
+    await run(manager, manager === 'pnpm'
+      ? ['install', '--ignore-workspace', '--force', '--no-frozen-lockfile', '--ignore-scripts', '--ignore-pnpmfile', '--prefer-offline', '--reporter=append-only',
+        '--config.modules-dir=node_modules', '--config.lockfile-dir=.', '--config.lockfile=true']
+      : ['update', 'steamharness', '@steamharness/cli', '--ignore-scripts', '--workspaces=false', '--package-lock=true', '--no-audit', '--no-fund']);
+    return;
+  }
   let manager: 'pnpm' | 'npm' = 'pnpm';
   if (manifest.packageManager?.startsWith('npm@') || runtime?.npmCli && !runtime.pnpmCli) manager = 'npm';
   try { await run(manager, ['--version'], true); }

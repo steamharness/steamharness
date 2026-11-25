@@ -197,7 +197,7 @@ try {
           entryId: registration.entryId, entryRoot: path.resolve(folderPath, registration.root),
           aggregateName: resolveProjectName(pkg.name, projectInfo, language),
           entries: manifest.entries, defaultEntry: manifest.defaultEntry,
-          runtime: { harnessVersion: coreManifest.version, harnessPath, botMemoryManagementVersion: memoryManagement, botMemoryDirectoryVersion: memoryDirectories, folderBotProfileVersion: core.LOCAL_BOT_PROFILE_PROTOCOL_VERSION, botCredentialInputVersion: core.BOT_CREDENTIAL_INPUT_VERSION },
+          runtime: { harnessVersion: coreManifest.version, harnessPath, botMemoryManagementVersion: memoryManagement, botMemoryDirectoryVersion: memoryDirectories, folderBotProfileVersion: core.LOCAL_BOT_PROFILE_PROTOCOL_VERSION, botCredentialInputVersion: core.BOT_CREDENTIAL_INPUT_VERSION, botCredentialUseVersion: core.BOT_CREDENTIAL_USE_VERSION },
           folderPath,
           name: resolveProjectName(registration.name, readProjectInfo(registration), language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),
@@ -390,12 +390,21 @@ try {
           },
           requestInput: () => undefined,
           waitForInput,
-          ...(request.allowBotCredentialInput === true && request.runtimeHost?.kind === 'studio' && !request.folderBot?.background && !request.readOnly && core.BOT_CREDENTIAL_INPUT_VERSION === 1
-            ? { waitForCredential: async (input, signal) => {
+          ...(request.allowBotCredentialInput === true && request.runtimeHost?.kind === 'studio' && !request.readOnly && core.BOT_CREDENTIAL_INPUT_VERSION === 1
+            ? { ...(Array.isArray(core.BOT_CREDENTIAL_KINDS) && { credentialKinds: core.BOT_CREDENTIAL_KINDS.filter(kind =>
+              ['api-key', 'password', 'ssh-private-key'].includes(kind) || kind === 'structured' && request.allowBotCredentialStructured === true) }),
+              waitForCredential: async (input, signal) => {
               const receipt = await waitForInput(input, signal);
               if (receipt.requestId !== input.requestId || !core.isBotCredentialStatus(receipt.values?.status)) throw new Error('Invalid Bot credential receipt.');
               return receipt.values.status;
-            } } : {}),
+            }, ...(request.allowBotCredentialUse === true && core.BOT_CREDENTIAL_USE_VERSION === 1 && {
+              waitForCredentialUse: async (input, signal) => {
+                const receipt = await waitForInput(input, signal);
+                const result = core.parseBotCredentialUseResult(receipt.values, input.credentialUse);
+                if (receipt.requestId !== input.requestId || !result) throw new Error('Invalid Bot credential use receipt.');
+                return result;
+              },
+            }) } : {}),
         },
         abortSignal: controller.signal,
         onRuntimeEvent: (event) => send('event', event),

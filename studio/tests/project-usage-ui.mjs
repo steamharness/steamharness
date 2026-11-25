@@ -35,6 +35,9 @@ try {
       const { StudioLaunchpadView, StudioStartView, projectUsageBridge, InMemoryStorageService } = window.usageFixture;
       const projects = ['Aggregate', 'Other'].map(name => ({ name, kind: 'folder', uri: `file:///${name}`, path: `/${name}`, distribution: 'source',
         projectId: name, version: '1.2.3', entries: [{ entryId: 'agent', type: 'bot', name: 'Agent', primary: true }] }));
+      const assistant = { name: 'Project Assistant', kind: 'folder', uri: 'file:///Assistant', path: '/Assistant', distribution: 'release', builtin: true,
+        projectId: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', entries: [{ entryId: 'main', type: 'bot', name: 'Assistant', primary: true },
+          { entryId: 'studio-control', type: 'workflow', name: 'Studio Control' }] };
       const requests = window.requests = [], cancelled = window.cancelled = [], clipboard = window.clipboard = [];
       const commands = { async executeCommand(command, arg) {
         if (command !== 'studio.internalProjectUsage') return;
@@ -85,6 +88,20 @@ try {
         const service = { state: { version: 1, labels: { overview: 'Overview' }, recent: [], pending: [], hasWorkspace: true, projects: [project] },
           onDidChange: () => ({ dispose() {} }), setVisible() {} };
         window.overview = new StudioStartView(host, service, commands, clip, storage);
+      };
+      window.showCredentialFixture = () => {
+        document.getElementById('overview').hidden = true;
+        const requests = window.credentialRequests = [];
+        const library = new StudioLaunchpadView(window._VSCODE_NLS_LANGUAGE, {
+          hoverService: { setupDelayedHover: () => ({ dispose() {} }) },
+          readBotCredentials: async (project, entryId) => {
+            requests.push([project.uri, entryId]);
+            return { status: 'ok', rows: [{ name: 'fixture-credential-' + 'long-'.repeat(8), type: window._VSCODE_NLS_LANGUAGE === 'zh-cn' ? '结构化凭据' : 'Structured credential' }] };
+          },
+        });
+        document.getElementById('launchpad').append(library.element);
+        library.update({ ...state, recent: [], builtinProjects: [assistant] });
+        library.select('library', assistant.uri);
       };
     });
     assert.equal(await page.locator('.lp-project-usage').count(), 0);
@@ -170,8 +187,27 @@ try {
     await page.evaluate(() => window.resolveUsage('file:///Aggregate', 16384));
     await overview.getByText('16 KiB', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.requests.every(({ refresh }) => refresh === true)), true);
+    await page.setViewportSize({ width: 1120, height: 840 });
+    await page.evaluate(() => window.showCredentialFixture());
+    const credentialTitle = zh ? '凭据管理' : 'Credential management';
+    const details = page.locator('.lp-project-details:visible');
+    await details.getByRole('heading', { name: 'Project Assistant' }).waitFor();
+    const management = details.getByRole('region', { name: zh ? 'Bot 管理' : 'Bot management', exact: true });
+    const credentialButton = management.getByRole('button', { name: credentialTitle, exact: true });
+    assert.equal(await page.evaluate(() => window.credentialRequests.length), 0);
+    await credentialButton.click();
+    const credentials = management.getByRole('region', { name: credentialTitle, exact: true });
+    await credentials.getByRole('cell', { name: 'fixture-credential-' + 'long-'.repeat(8), exact: true }).waitFor();
+    assert.deepEqual(await credentials.getByRole('columnheader').allTextContents(), zh ? ['别名', '类型'] : ['Alias', 'Type']);
+    assert.ok(await credentials.getByRole('cell', { name: zh ? '结构化凭据' : 'Structured credential', exact: true }).isVisible());
+    assert.equal(await credentials.locator('button,input,textarea').count(), 0);
+    assert.deepEqual(await page.evaluate(() => window.credentialRequests), [['file:///Assistant', 'main']]);
+    await page.setViewportSize({ width: 410, height: 840 });
+    assert.equal(await credentials.evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1), true);
+    await credentialButton.click();
+    await credentials.waitFor({ state: 'detached' });
     assert.deepEqual(errors, []);
     await page.close();
-    console.log(`Project usage UI passed (${language}, ${light ? 'light' : 'dark'}, wide and 410px)`);
+    console.log(`Project usage and credential list UI passed (${language}, ${light ? 'light' : 'dark'}, wide and 410px)`);
   }
 } finally { await browser.close(); }

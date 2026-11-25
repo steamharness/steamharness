@@ -1,5 +1,6 @@
 {
   "name": "@steamharness/cli",
+  "steamharnessProjectRuntime": "archive-manifest",
   "version": "0.2.6",
   "license": "MIT",
   "packageManager": "pnpm@10.15.1",

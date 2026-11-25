@@ -60,6 +60,8 @@ export interface UserInputRequest {
   description?: string;
   params: ParamDefinition[];
   credential?: import("./bot-credential").BotCredentialSlot;
+  /** Public descriptor for a native credential-backed operation, never the stored value. */
+  credentialUse?: import("./bot-credential-use").BotCredentialUse;
   defaultValues?: Record<string, unknown>;
   metadata?: NodeMetadata;
   createdAt: Date;
@@ -83,6 +85,9 @@ export interface UserInputContext {
   waitForInput?(request: UserInputRequest, signal?: AbortSignal): Promise<UserInputResolved>;
   /** Native host interaction. Only its status, never the credential value, crosses this boundary. */
   waitForCredential?(request: UserInputRequest & { credential: NonNullable<UserInputRequest["credential"]> }, signal?: AbortSignal): Promise<import("./bot-credential").BotCredentialStatus>;
+  waitForCredentialUse?(request: UserInputRequest & { credentialUse: NonNullable<UserInputRequest["credentialUse"]> }, signal?: AbortSignal): Promise<import("./bot-credential-use").BotCredentialUseResult>;
+  /** Omit for the original API key, password and SSH private key types. */
+  credentialKinds?: readonly import("./bot-credential").BotCredentialKind[];
 }
 
 export interface NodeExecutionHooks {

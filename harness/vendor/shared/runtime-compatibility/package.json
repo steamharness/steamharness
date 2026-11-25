@@ -9,10 +9,15 @@
     ".": {
       "types": "./index.ts",
       "import": "./index.ts"
+    },
+    "./node": {
+      "types": "./node.ts",
+      "import": "./node.ts"
     }
   },
   "dependencies": {
-    "semver": "^7.7.4"
+    "semver": "^7.7.4",
+    "tar": "7.5.22"
   },
   "devDependencies": {
     "@types/semver": "^7.7.1"

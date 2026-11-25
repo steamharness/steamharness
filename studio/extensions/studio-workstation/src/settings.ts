@@ -35,7 +35,7 @@ export function settingsCatalog(): SettingItem[] {
     { key: 'studio.agent.permissionPolicy', section: 'permissions', group: t('Agent permissions'), label: t('Permission policy'),
       description: t('Used by agents that inherit user settings. Changes apply to subsequent tasks after active work finishes.'), type: 'radio', options: [
         { value: 'read-only', label: t('Read only'), description: t('Hide editing and command tools. File and search tools stay within the workspace and mounted directories.') },
-        { value: 'workspace', label: t('Workspace'), description: t('Automatically approve edits and commands. File and search tools stay within the workspace and mounted directories; shell commands are not restricted to these paths.') },
+        { value: 'workspace', label: t('Workspace'), description: t('Automatically approve edits and commands. File and search tools stay within the workspace and mounted directories; shell commands are not restricted to these paths. Sensitive permissions, including the use of saved credentials, require approval.') },
         { value: 'auto', label: t('Auto approve'), description: t('Approve all permissions that are not explicitly denied, including access to paths outside the workspace.') },
       ] },
     { key: 'studio.notifications.desktop', section: 'notifications', group: t('IM messages'), label: t('Desktop notifications'),

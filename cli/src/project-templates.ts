@@ -123,7 +123,6 @@ async function createProject(request: Omit<CreateProjectFromTemplateRequest, 'te
   const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
   const manifest = {
     name: packageName, version: '0.1.0', private: true, type: 'module',
-    ...(archives ? { steamharnessRuntime: { version: archives[0].version } } : {}),
     scripts: { dev: 'steamharness web .', release: 'steamharness release .', inspect: 'steamharness structure .',
       ...(template.files.includes('build.mjs') ? { build: 'node build.mjs' } : {}),
       ...(template.projectType === 'kanban' ? {} : { 'run:json': 'steamharness json .' }) },

@@ -19,7 +19,7 @@ import { readProjectReleaseSync, releaseHash, releaseRegularFile, sealProjectRel
 import { parseConfigurationDefinition, type ProjectConfigurationDefinition } from "@steamharness/project-configuration";
 import { readProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { projectRuntimeDirectory, projectRuntimePackages, projectRuntimeSpec } from "../project-runtime-packages";
-import { readBundledProjectRuntimeVersion } from "@steamharness/runtime-compatibility";
+import { readBundledProjectRuntime } from "@steamharness/runtime-compatibility/node";
 
 export interface ProjectReleaseResult { directory: string; archive: string; buildId: string; entries: string[]; cached: boolean }
 export interface ReleaseOptions { signal?: AbortSignal; progress?: (message: string) => void }
@@ -172,6 +172,10 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
     let previous: ProjectReleaseManifest | undefined;
     try { previous = readProjectReleaseSync(output); } catch { /* An invalid output is rebuilt, never distributed. */ }
     if (previous?.inputHash === inputHash && await exists(archive)) return { directory: output, archive, buildId: previous.buildId, entries: previous.entries.map(entry => entry.entryId), cached: true };
+    const bundledRuntime = await readBundledProjectRuntime(root, pkg, options.signal);
+    if (bundledRuntime && !bundledRuntime.cliReadsArchiveManifest) {
+      throw new Error("Update the project's bundled CLI and Core before building a release without a separate runtime version declaration.");
+    }
     const commandArgs = config.build ?? (pkg.scripts?.build ? ["corepack", "pnpm", "run", "build"] : undefined);
     if (selected.some(entry => entry.type === "kanban") && !commandArgs) throw new Error("A release containing Kanban requires release.build or a package build script.");
     if (commandArgs) await command(commandArgs, root, options);
@@ -180,14 +184,13 @@ export async function buildProjectRelease(directory: string, options: ReleaseOpt
     const { release: _release, entries: _entries, defaultEntry: _default, builtinRelease: _builtin, ...identity } = sourceManifest;
     await writeJson(stage, "steamharness.json", { ...identity, defaultEntry, entries: selected.map(entry => ({ entryId: entry.entryId, root: `entries/${entry.entryId}` })) });
     const externals = config.externals ?? [];
-    const localRuntimeVersion = readBundledProjectRuntimeVersion(pkg);
     const devDependencies: Record<string, string> = {};
     for (const { name, file } of projectRuntimePackages) {
-      devDependencies[name] = localRuntimeVersion ? projectRuntimeSpec(file) : packageVersion(root, name);
-      if (localRuntimeVersion) await copyAsset(root, stage, `${projectRuntimeDirectory}/${file}`);
+      devDependencies[name] = bundledRuntime ? projectRuntimeSpec(file) : packageVersion(root, name);
+      if (bundledRuntime) await copyAsset(root, stage, `${projectRuntimeDirectory}/${file}`);
     }
     const dependencies = Object.fromEntries(externals.map(name => [name, devDependencies[name] ?? packageVersion(root, name)]));
-    await writeJson(stage, "package.json", { name: pkg.name ?? "steamharness-project", version: declaration.version, type: "module", private: true, ...(pkg.engines ? { engines: pkg.engines } : {}), ...(localRuntimeVersion ? { steamharnessRuntime: { version: localRuntimeVersion } } : {}), devDependencies, ...(externals.length ? { dependencies } : {}) });
+    await writeJson(stage, "package.json", { name: pkg.name ?? "steamharness-project", version: declaration.version, type: "module", private: true, ...(pkg.engines ? { engines: pkg.engines } : {}), devDependencies, ...(externals.length ? { dependencies } : {}) });
     const entries: ProjectReleaseManifest["entries"] = [];
     for (const entry of selected) {
       options.signal?.throwIfAborted(); options.progress?.(i18n.language.startsWith("zh") ? `正在编译发行入口：${entry.entryId}` : `Compiling release entry: ${entry.entryId}`);

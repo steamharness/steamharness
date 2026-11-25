@@ -42,7 +42,7 @@ export class EntryConversations {
   constructor(private readonly controller: ConversationController, private readonly snapshot: (session: ConversationSession) => EntryConversationSnapshot,
     private readonly prepare?: (session: ConversationSession, text: string, params: Record<string, string | string[]>) => Promise<Pick<ConversationQueuedInput, "params" | "states" | "configurationSelection">>) {}
   async invoke(action: EntryConversationAction, input: Record<string, unknown>, signal?: AbortSignal,
-    files?: { keys: string[]; load(): Promise<Attachment[]> }): Promise<unknown> {
+    files?: { keys: string[]; load(): Promise<Attachment[]> }, allowHostCredentials?: true): Promise<unknown> {
     signal?.throwIfAborted();
     if (action === 'list') return this.controller.sessions.map(session => ({ conversationId: session.id, title: session.title }));
     const id = required(input.conversationId, 'id');
@@ -81,7 +81,8 @@ export class EntryConversations {
           signal?.throwIfAborted();
           const attachments = files ? await files.load() : [];
           signal?.throwIfAborted();
-          await this.controller.send({ text, ...prepared, entrySubmission: { params: structuredClone(submitted), ...(files && { fileKeys: files.keys }) }, attachments }, target, true, requestId);
+          await this.controller.send({ text, ...prepared, entrySubmission: { params: structuredClone(submitted), ...(files && { fileKeys: files.keys }) }, attachments,
+            ...(allowHostCredentials && target.origin === 'host' && { allowBotCredentialInput: true }) }, target, true, requestId);
         }
         return { conversationId: id, requestId, messageId: requestId,
           status: target.queuedInputs?.some(item => (item.requestId ?? item.id) === requestId) ? 'queued' : 'accepted' };

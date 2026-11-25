@@ -39,6 +39,8 @@ pnpm exec steamharness web . --release --entry agent
 
 The release project is written to `dist/steamharness/release/project/`, with its archive under `dist/steamharness/release/`. The `--release` option on `run`, `json`, and `web` runs only entries included in the release configuration. A failed build reports an error and preserves the previous complete output.
 
+When a project uses `file:` references to bundled Core and CLI tarballs, the CLI reads the versions from those tarballs. No separate `steamharnessRuntime` field is needed. If the bundled CLI still requires that field, update both packages before building a new release.
+
 LLM Bots do not use project memory and do not need a memory switch to build a release. For Agent Bots, the memory default comes from the selected release entry and configuration definition, including `entry` and `configuration` under `release.entryOverrides`. Adding the switch preserves v2 configuration profiles.
 
 Project declarations, configuration definitions, and extra JSON assets are minified to a single line. Field names, string content, and original number literals are preserved. Server configuration publication also minifies JSON before updating the file inventory.

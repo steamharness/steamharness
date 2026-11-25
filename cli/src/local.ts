@@ -23,12 +23,12 @@ import {
   assertCoreCompatibility,
   classifyVersionReference,
   normalizeExactVersion,
-  readBundledProjectRuntimeVersion,
   readRequiredCoreVersion,
   resolveReleaseMode,
   resolveRequiredCoreVersion,
   type RepositoryMode,
 } from "@steamharness/runtime-compatibility";
+import { readBundledProjectRuntime } from "@steamharness/runtime-compatibility/node";
 import { prepareCliInvocation } from "./locale";
 import { CLI_VERSION } from "./version";
 import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from './online';
@@ -58,11 +58,11 @@ export async function main(
   }
 
   if (command === "structure") {
-    return runStructureCommand(args);
+    return runStructureCommand(args, abortController.signal);
   }
   if (command === "check") {
     const parsed = parseProjectArgs(args, { json: true });
-    assertLocalCliCoreCompatible(parsed.projectDir);
+    await assertLocalCliCoreCompatible(parsed.projectDir, undefined, { signal: abortController.signal });
     const report = parsed.entryId
       ? inspectLocalProjectStructure({ projectDir: parsed.projectDir, entryId: parsed.entryId })
       : inspectAggregateProjectStructure(parsed.projectDir);
@@ -78,7 +78,7 @@ export async function main(
     json: command === "json",
   });
   if (parsed.release) parsed.projectDir = (await prepareReleaseRun(parsed.projectDir, { signal: abortController.signal, progress: message => process.stderr.write(message + "\n") })).directory;
-  assertLocalCliCoreCompatible(parsed.projectDir);
+  await assertLocalCliCoreCompatible(parsed.projectDir, undefined, { signal: abortController.signal });
   const platform = await resolveOnlineConnections(runtimeOptions.online);
   const report = await withPlatformConnections(platform, () => runLocalProjectWithReport({
     runtimeHost: { kind: "cli", cliVersion: CLI_VERSION },
@@ -142,7 +142,7 @@ function parseCommand(value: string | undefined): SteamHarnessCommand {
 async function runResolveParamsCommand(argv: string[], abortSignal: AbortSignal): Promise<number> {
   try {
     const parsed = parseProjectArgs(argv, { json: true });
-    assertLocalCliCoreCompatible(parsed.projectDir);
+    await assertLocalCliCoreCompatible(parsed.projectDir, undefined, { signal: abortSignal });
     const request = parseParamResolveRequest(readFileSync(0, "utf8"));
     const result = await resolveLocalProjectParams({
       projectDir: parsed.projectDir,
@@ -399,11 +399,11 @@ function readProjectArgValue(argv: string[], index: number, name: string): strin
   return value;
 }
 
-function runStructureCommand(argv: string[]): number {
+async function runStructureCommand(argv: string[], signal: AbortSignal): Promise<number> {
   const parsed = parseProjectArgs(argv, { json: true });
 
   try {
-    assertLocalCliCoreCompatible(parsed.projectDir);
+    await assertLocalCliCoreCompatible(parsed.projectDir, undefined, { signal });
     const report = inspectLocalProjectStructure({
       projectDir: parsed.projectDir,
       entryId: parsed.entryId,
@@ -417,11 +417,11 @@ function runStructureCommand(argv: string[]): number {
   }
 }
 
-export function assertLocalCliCoreCompatible(
+export async function assertLocalCliCoreCompatible(
   projectDir: string,
   hostCoreVersion = readInstalledProjectCoreVersion(),
-  options: { mode?: RepositoryMode } = {},
-): { cliRequiredCoreVersion: string; projectRequiredCoreVersion: string } {
+  options: { mode?: RepositoryMode; signal?: AbortSignal } = {},
+): Promise<{ cliRequiredCoreVersion: string; projectRequiredCoreVersion: string }> {
   // CLI 自己的清单是发布契约：它永远钉精确的 Core 版本，不接受相对路径。
   const cliManifest = readJsonFile(new URL("../package.json", import.meta.url), "CLI package.json");
   const cliRequiredCoreVersion = readRequiredCoreVersion(cliManifest);
@@ -429,9 +429,12 @@ export function assertLocalCliCoreCompatible(
 
   const projectDirectory = path.resolve(projectDir);
   const projectManifest = readJsonFile(path.join(projectDirectory, "package.json"), "Workflow package.json");
-  const bundled = readBundledProjectRuntimeVersion(projectManifest);
-  if (bundled !== undefined && bundled !== hostCoreVersion) {
-    throw new Error(`The project bundles Core ${bundled}, but Core ${hostCoreVersion} is loaded. Reinstall the project's local dependencies.`);
+  const bundled = (await readBundledProjectRuntime(projectDirectory, projectManifest, options.signal))?.version;
+  if (bundled !== undefined) {
+    if (bundled !== hostCoreVersion) {
+      throw new Error(`The project bundles Core ${bundled}, but Core ${hostCoreVersion} is loaded. Reinstall the project's local dependencies.`);
+    }
+    return { cliRequiredCoreVersion, projectRequiredCoreVersion: bundled };
   }
   // 内置项目位于 monorepo 的 build-in/ 下；相对引用仍以开源源码根为边界。
   const parentDirectory = path.dirname(projectDirectory);
