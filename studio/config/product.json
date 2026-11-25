@@ -1,6 +1,7 @@
 {
   "nameShort": "SteamHarness",
   "nameLong": "SteamHarness",
+  "studioVersion": "1.141.1",
   "applicationName": "studio",
   "dataFolderName": ".studio-workstation",
   "sharedDataFolderName": ".studio-workstation-shared",

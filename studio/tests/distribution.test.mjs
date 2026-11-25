@@ -167,11 +167,13 @@ test('branding changes update previously generated data', async (t) => {
 test('Web development receives Studio branding, gallery and the correct API version', async (t) => {
   const { root, upstream } = await fixture(t);
   const gallery = { serviceUrl: 'https://open-vsx.org/vscode/gallery' };
-  await fs.writeFile(path.join(root, 'config/product.json'), JSON.stringify({ nameShort: 'Studio', extensionsGallery: gallery }));
-  await prepareDistribution(root);
+  await fs.writeFile(path.join(root, 'config/product.json'), JSON.stringify({ nameShort: 'Studio', studioVersion: '1.141.1', extensionsGallery: gallery }));
+  const { product } = await prepareDistribution(root);
+  assert.equal(product.studioVersion, '1.141.1');
   const overrides = JSON.parse(await fs.readFile(path.join(upstream, 'product.overrides.json'), 'utf8'));
   assert.equal(overrides.nameShort, 'Studio Dev');
   assert.equal(overrides.version, '1.141.0');
+  assert.equal(overrides.studioVersion, '1.141.1');
   assert.deepEqual(overrides.extensionsGallery, gallery);
   await fs.writeFile(path.join(upstream, 'product.overrides.json'), '{"nameShort":"Manual Web Change"}\n');
   await assert.rejects(prepareDistribution(root), /product.overrides.json has local edits/);
