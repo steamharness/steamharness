@@ -199,6 +199,25 @@ test('additional HTTPS trusted domains are opt-in and persist in desktop and web
   }
 });
 
+test('Workspace Trust can default to off only in the opted-in desktop product', async (t) => {
+  const { root, upstream } = await fixture(t);
+  const key = 'STEAMHARNESS_STUDIO_DISABLE_WORKSPACE_TRUST_BY_DEFAULT';
+  const previous = process.env[key];
+  t.after(() => {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  });
+  process.env[key] = '1';
+  await prepareDistribution(root);
+  const readProduct = async name => JSON.parse(await fs.readFile(path.join(upstream, name), 'utf8'));
+  assert.equal((await readProduct('product.json')).workspaceTrustEnabledByDefault, false);
+  assert.equal((await readProduct('product.overrides.json')).workspaceTrustEnabledByDefault, undefined);
+
+  delete process.env[key];
+  await prepareDistribution(root);
+  assert.equal((await readProduct('product.json')).workspaceTrustEnabledByDefault, undefined);
+});
+
 test('prepare preserves manual upstream branding changes', async (t) => {
   const { root, upstream } = await fixture(t);
   await prepareDistribution(root);

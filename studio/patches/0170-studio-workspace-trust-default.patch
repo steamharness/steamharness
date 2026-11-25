@@ -1,0 +1,33 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index 0ced6b57b1abc19b4973d63d6b55bccf145fc4be..28507df7a66fde7d39fdfee77f676c3af98f4491 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -263,6 +263,7 @@ export interface IProductConfiguration {
+ 
+ 	readonly msftInternalDomains?: string[];
+ 	readonly linkProtectionTrustedDomains?: readonly string[];
++	readonly workspaceTrustEnabledByDefault?: boolean;
+ 
+ 	readonly authClientIdMetadataUrl?: string;
+ 
+diff --git a/src/vs/workbench/contrib/workspace/browser/workspace.contribution.ts b/src/vs/workbench/contrib/workspace/browser/workspace.contribution.ts
+index 6cccbced7b7c304d1e9678fab1559a584f9ecc44..dd45bfb3f8edc91685a516548c5de01cd0891368 100644
+--- a/src/vs/workbench/contrib/workspace/browser/workspace.contribution.ts
++++ b/src/vs/workbench/contrib/workspace/browser/workspace.contribution.ts
+@@ -6,6 +6,7 @@
+ import './media/workspaceTrustEditor.css';
+ import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
+ import { Disposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
++import product from '../../../../platform/product/common/product.js';
+ import { localize, localize2 } from '../../../../nls.js';
+ import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
+ import { ConfigurationScope, Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
+@@ -798,7 +799,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
+ 		properties: {
+ 			[WORKSPACE_TRUST_ENABLED]: {
+ 				type: 'boolean',
+-				default: true,
++				default: isWeb || product.workspaceTrustEnabledByDefault !== false,
+ 				description: localize('workspace.trust.description', "Controls whether or not Workspace Trust is enabled within VS Code."),
+ 				tags: [WORKSPACE_TRUST_SETTING_TAG],
+ 				scope: ConfigurationScope.APPLICATION,

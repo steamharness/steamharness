@@ -240,7 +240,7 @@ async function main() {
         await launch(upstream, 'code', [
           ...directoryArgs,
           '--disable-telemetry',
-          '--disable-workspace-trust',
+          ...(testing || product.workspaceTrustEnabledByDefault === undefined ? ['--disable-workspace-trust'] : []),
           ...desktopArgs,
         ], { ...remote?.env, ...(assistantFixture ? { STUDIO_STEAMHARNESS_SOURCE: assistantFixture.root } : {}) });
       } finally { await remote?.close(); await assistantFixture?.dispose(); }

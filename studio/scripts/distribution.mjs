@@ -198,6 +198,9 @@ export async function prepareDistribution(root = ROOT, { linkBuiltinExtension = 
     }
     product.linkProtectionTrustedDomains = [...new Set([...(product.linkProtectionTrustedDomains ?? []), ...domains])];
   }
+  if (process.env.STEAMHARNESS_STUDIO_DISABLE_WORKSPACE_TRUST_BY_DEFAULT === '1') {
+    product.workspaceTrustEnabledByDefault = false;
+  }
   const defaultsFile = path.join(root, 'config/default-extensions.json');
   const bundled = await exists(defaultsFile) ? (await readJSON(defaultsFile)).filter(extension => extension.builtin) : [];
   if (bundled.length) {
@@ -213,7 +216,9 @@ export async function prepareDistribution(root = ROOT, { linkBuiltinExtension = 
   const state = await exists(stateFile) ? await readJSON(stateFile) : undefined;
   const packageJSON = JSON.parse(git(['show', `${upstream.commit}:package.json`], upstream.directory));
   const webOverridesFile = path.join(upstream.directory, 'product.overrides.json');
-  const webGenerated = JSON.stringify({ ...product, version: packageJSON.version }, null, 2);
+  const webProduct = { ...product, version: packageJSON.version };
+  delete webProduct.workspaceTrustEnabledByDefault;
+  const webGenerated = JSON.stringify(webProduct, null, 2);
   const webCurrent = await exists(webOverridesFile) ? (await fs.readFile(webOverridesFile, 'utf8')).trim() : undefined;
 
   if (current !== base && current !== generated && digest(current) !== state?.sha256) {

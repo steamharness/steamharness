@@ -13,7 +13,7 @@ const functions = ['build', 'main'].map(name => {
   return declaration.getText(source);
 }).join('\n');
 
-function launch(command, failure, args = []) {
+function launch(command, failure, args = [], product = {}) {
   const events = [], launches = [];
   const upstream = { directory: '/source/upstream/vscode', commit: 'same-kernel-commit' };
   let output = 'old workbench without the newly applied patch';
@@ -21,7 +21,7 @@ function launch(command, failure, args = []) {
     command, args, path, ROOT: '/source', npm: 'npm',
     process: { platform: 'linux', pid: 1, execPath: '/node', env: {} },
     console: { log() {} },
-    prepare: async () => { events.push('prepare'); return { upstream, product: { nameShort: 'Studio', applicationName: 'studio' } }; },
+    prepare: async () => { events.push('prepare'); return { upstream, product: { nameShort: 'Studio', applicationName: 'studio', ...product } }; },
     requireDependencies: async () => {},
     // Reproduce an existing build whose recorded HEAD still matches after a patch.
     buildReady: async () => true,
@@ -65,6 +65,12 @@ test('ordinary desktop and web launches pass no workspace targets', async () => 
   assert.deepEqual([...desktop.launches[0].args.slice(-2)], ['--disable-telemetry', '--disable-workspace-trust']);
   assert.equal(web.launches[0].args.includes('--default-folder'), false);
   assert.equal(web.launches[0].args.includes('--default-workspace'), false);
+});
+
+test('a desktop product default does not prevent the user from re-enabling Workspace Trust', async () => {
+  const desktop = launch('dev', undefined, ['/external-project'], { workspaceTrustEnabledByDefault: false });
+  await desktop.run();
+  assert.deepEqual([...desktop.launches[0].args.slice(-2)], ['--disable-telemetry', '/external-project']);
 });
 
 test('explicit folder and workspace arguments still reach the launcher', async () => {
