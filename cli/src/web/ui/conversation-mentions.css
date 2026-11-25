@@ -11,6 +11,7 @@
 .mention-choice > .codicon { flex: 0 0 auto; font-size: 18px; }
 .mention-choice-text { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 3px; }
 .mention-choice-text > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mention-choice[data-kind=file] .mention-choice-text > span { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mention-choice-text > small, .mention-choice-kind, .mention-status { color: var(--muted); font-size: 11px; }
 .mention-choice[aria-selected=true] small { color: inherit; }
 .mention-choice-kind { flex-shrink: 0; }

@@ -120,7 +120,7 @@ export class ConversationMentions {
           this.fileQuery = token.query; this.files = undefined; this.filesError = undefined;
           this.searchTimer = setTimeout(() => { this.searchTimer = undefined; this.request('file', token.query); this.update(); }, 150);
         }
-        choices.push(...(this.files?.files ?? []).map(file => ({ id: `file:${file.path}`, label: file.name.split('/').at(-1)!,
+        choices.push(...(this.files?.files ?? []).map(file => ({ id: `file:${file.path}`, label: file.name,
           title: file.path, kind: 'file' as const, value: file.path })));
       } else { clearTimeout(this.searchTimer); this.searchTimer = undefined; this.fileQuery = undefined; }
       if (!token.kind || token.kind === 'entry') {

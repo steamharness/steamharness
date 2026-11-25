@@ -116,6 +116,16 @@ describe('Conversation @ menu', () => {
     f.type('@skill:maint'); f.key('Enter'); expect(f.textarea.value).toBe('@skill:Maintain ');
   });
 
+  it('shows project-relative paths for files with the same basename and inserts the selected reference', () => {
+    const f = fixture(); f.type('@file:RECORD'); vi.advanceTimersByTime(150);
+    const names = ['RECORD.md', 'docs/RECORD.md', 'benchmark/notes/RECORD.md'];
+    f.reply('project-mention-files', { files: names.map(name => ({ name, path: `/project/${name}` })), truncated: false });
+
+    expect(f.rows().map(row => row.querySelector('.mention-choice-text > span')?.textContent)).toEqual(names);
+    f.key('End'); f.key('Enter');
+    expect(f.mentions.text()).toBe('@file:/project/benchmark/notes/RECORD.md ');
+  });
+
   it('debounces file searches and ignores responses for older queries and previous conversations', () => {
     const f = fixture(); f.type('@file:a'); vi.advanceTimersByTime(150);
     const first = f.load.mock.calls.at(-1)![1];
