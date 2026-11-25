@@ -34,6 +34,30 @@ test('native macOS controls use the embedded header height at every zoom and res
   assert.equal(native.hasStudioModeSwitcher, false, 'the resident launchpad must not create the floating IDE mode switcher');
 });
 
+test('macOS fullscreen keeps a populated title bar in Auto and respects an explicit hide preference', async () => {
+  const source = await readFile(new URL('../upstream/vscode/src/vs/workbench/services/layout/browser/layoutService.ts', import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  const module = { exports: {} };
+  const services = {
+    refineServiceDecorator: service => service,
+    isMacintosh: true, isNative: true, isWeb: false, isFullscreen: window => window.fullscreen,
+    hasCustomTitlebar: () => true,
+    hasNativeTitlebar: config => config.getValue('window.titleBarStyle') === 'native',
+    hasNativeMenu: () => true,
+    TitleBarSetting: { CUSTOM_TITLE_BAR_VISIBILITY: 'window.customTitleBarVisibility' },
+    CustomTitleBarVisibility: { WINDOWED: 'windowed', NEVER: 'never' },
+  };
+  runInNewContext(compiled, { module, exports: module.exports, require: () => services });
+  const show = (fullscreen, hasContent, preference = 'auto', nativeTitleBar = false) => module.exports.shouldShowCustomTitleBar({
+    getValue: key => ({ 'window.customTitleBarVisibility': preference, 'window.titleBarStyle': nativeTitleBar ? 'native' : 'custom' })[key],
+  }, { fullscreen }, false, hasContent);
+  assert.equal(show(true, false), false, 'an empty custom title bar should still give back the space');
+  assert.equal(show(true, true), true, 'registered actions count even with the built-in title controls disabled');
+  assert.equal(show(true, true, 'windowed'), false);
+  assert.equal(show(false, true, 'windowed'), true);
+  assert.equal(show(true, true, 'never', true), false);
+});
+
 const dragSource = await readFile(new URL('../upstream/vscode/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts', import.meta.url), 'utf8');
 const dragCompiled = ts.transpileModule(dragSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 function dragFixture() {

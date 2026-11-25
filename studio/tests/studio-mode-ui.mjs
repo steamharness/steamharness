@@ -16,6 +16,7 @@ import { serveLocalWebviewAssets } from './local-webview-assets.mjs';
 await assertRuntime();
 const upstream = await assertUpstream();
 const platform = process.env.STEAMHARNESS_STUDIO_INTERNAL === '1';
+const titlebarOnly = process.env.STEAMHARNESS_UI_FOCUS === 'titlebar';
 const toolsToggleOnly = process.env.STEAMHARNESS_UI_FOCUS === 'tools-toggle';
 const sourceRoot = path.resolve(process.env.STUDIO_STEAMHARNESS_SOURCE ?? path.join(ROOT, '..'));
 const proof = path.resolve(ROOT, process.env.STEAMHARNESS_UI_PROOF ?? '.studio/studio-mode-ui');
@@ -38,6 +39,12 @@ async function useCachedLanguagePack(directory, language) {
     extensions: [{ extensionIdentifier: { id: `${manifest.publisher}.${manifest.name}` }, version: manifest.version }],
     translations: Object.fromEntries(localization.translations.map(entry => [entry.id, path.resolve(location, entry.path)])),
   } }));
+  if (titlebarOnly) {
+    const main = localization.translations.find(entry => entry.id === 'vscode');
+    const pack = JSON.parse(await readFile(path.resolve(location, main.path), 'utf8'));
+    return Object.fromEntries(Object.entries(pack.contents).flatMap(([moduleId, translations]) =>
+      Object.entries(translations).map(([key, value]) => [`${moduleId}#${key}`, value])));
+  }
 }
 async function until(read, accept, message, timeout = 60_000) {
   const deadline = Date.now() + timeout;
@@ -54,7 +61,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
   try {
     await mkdir(folder); await mkdir(home); await mkdir(extension, { recursive: true }); await mkdir(path.join(folder, '.vscode'));
     await writeFile(path.join(folder, '.vscode/settings.json'), JSON.stringify({ 'editor.editContext': false,
-      'window.autoDetectColorScheme': false, 'workbench.startupEditor': 'none', 'files.autoSave': 'off', 'git.enabled': false }));
+      'window.autoDetectColorScheme': false, 'workbench.startupEditor': 'none', 'files.autoSave': 'off', 'git.enabled': false,
+      ...(titlebarOnly ? { 'workbench.notifications.position': 'top-right', 'workbench.notifications.showInTitleBar': true } : {}) }));
     await writeProjectFixture(path.join(extension, 'package.json'), JSON.stringify({ name: 'mode-test', publisher: 'studio-test', version: '0.0.1',
       engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
     await build({ entryPoints: [path.join(ROOT, 'tests/start-page-ui-extension.mjs')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: path.join(extension, 'extension.cjs') });
@@ -77,7 +85,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'bot',name:'Assistant',root:'.',entry:'index.ts'}] }));
       await copyFile(path.join(ROOT, 'tests/fixtures/assistant-new-tab/index.ts'), path.join(template, 'index.ts'));
     }
-    await useCachedLanguagePack(directory, language);
+    const sourceMessages = await useCachedLanguagePack(directory, language);
     child = spawn(process.execPath, [path.join(upstream.directory, 'scripts/code-server.js'), '--host', '127.0.0.1', '--port', '0',
       '--connection-token', token, '--server-data-dir', path.join(directory, 'server'), '--extensions-dir', path.join(directory, 'extensions'),
       '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'), '--disable-workspace-trust', '--force-disable-user-env',
@@ -95,7 +103,14 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       headless: true, args: ['--disable-features=LocalNetworkAccessChecks'] });
     const context = await browser.newContext({ viewport: { width: toolsToggleOnly ? 800 : 1440, height: 960 }, locale: language === 'en' ? 'en-US' : 'zh-CN' });
     await context.addCookies([{ name: 'vscode.nls.locale', value: language, domain: '127.0.0.1', path: '/' }]);
-    await context.addInitScript(language => { globalThis._VSCODE_NLS_LANGUAGE = language; }, language);
+    await context.addInitScript(({ language, messages }) => {
+      globalThis._VSCODE_NLS_LANGUAGE = language;
+      if (messages) { globalThis._VSCODE_NLS_MESSAGES = messages; }
+    }, { language, messages: sourceMessages });
+    if (titlebarOnly) {
+      // Detect fullscreen during bootstrap, before the workbench registers its listeners.
+      await context.addInitScript(() => Object.defineProperty(screen, 'height', { get: () => window.innerHeight }));
+    }
     await serveLocalWebviewAssets(context, upstream);
     await context.route(/https:\/\/[^/]+\.vscode-resource\.vscode-cdn\.net\/.*\/extensions\/simple-browser\/media\//, async route => {
       const relative = decodeURIComponent(new URL(route.request().url()).pathname.split('/extensions/simple-browser/media/')[1]);
@@ -149,27 +164,77 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       check('macOS: mode controls clear native window buttons at different zoom levels and reclaim the space in fullscreen');
     }
 
-    if (process.env.STEAMHARNESS_UI_FOCUS === 'titlebar') {
+    if (titlebarOnly) {
+      const t = (en, zh) => sourceMessages ? zh : en;
       await call({ action: 'untitled', text: 'Auxiliary window title-bar probe.' });
-      await command('setContext', 'studio.projectAvailable', true);
-      await command('setContext', 'studio.projectReleaseAvailable', true);
-      const titlebar = page.locator('.part.titlebar .titlebar-container').first();
+      await page.locator('.monaco-workbench.fullscreen').waitFor();
+      const titlebarPart = page.locator('.part.titlebar').first();
+      const titlebar = titlebarPart.locator('.titlebar-container');
+      const menu = page.locator('.context-view .monaco-menu:visible');
+      await titlebar.click({ button: 'right', position: { x: 260, y: 5 } });
+      await menu.getByText(t('Hide Custom Title Bar In Full Screen', '在全屏模式下隐藏自定义标题栏'), { exact: true }).waitFor();
+      await page.keyboard.press('Escape');
+      await menu.waitFor({ state: 'hidden' });
+      check(`${language}: fullscreen-specific commands are available immediately on a restored fullscreen workbench`);
+
+      const setProjectActions = async () => {
+        for (const key of ['studio.projectAvailable', 'studio.projectReleaseAvailable', 'studio.platformAvailable', 'studio.projectUploadAvailable']) {
+          await command('setContext', key, true);
+        }
+      };
       const adjacent = titlebar.locator('.center-adjacent-toolbar-container');
-      await until(() => adjacent.locator('.action-item').count(), count => count >= 2, 'Title-bar actions did not appear');
+      const waitForProjectActions = () => until(async () => {
+        const count = await adjacent.locator('.action-item').count();
+        if (count < 3) { await setProjectActions(); }
+        return count;
+      }, count => count >= 3, 'Title-bar actions did not appear', 15_000);
+      // The extension may still finish its initial scan of this ordinary folder and clear the fixture keys.
+      await waitForProjectActions();
       await page.setViewportSize({ width: 800, height: 960 });
       await until(() => titlebar.getAttribute('class'), value => value?.includes('studio-narrow-titlebar'), 'Main title bar did not enter narrow mode');
-      await command('setContext', 'studio.projectAvailable', true);
-      await command('setContext', 'studio.projectReleaseAvailable', true);
-      await until(() => adjacent.locator('.studio-titlebar-primary-run').count(), Boolean, 'Run action disappeared in narrow mode');
+      await waitForProjectActions();
       assert.equal(await page.locator('.studio-mode-toggle').isVisible(), true);
       assert.equal(await titlebar.locator('.titlebar-center').isVisible(), false);
       assert.equal(await adjacent.locator('.action-item:visible').count(), 1);
       assert.equal(await adjacent.locator('.studio-titlebar-primary-run:visible').count(), 1);
-      assert.equal(await titlebar.locator('.action-toolbar-container').isVisible(), false);
+      const toolbar = titlebar.locator('.action-toolbar-container');
+      const sidebar = page.locator('.part.auxiliarybar');
+      const toggler = toolbar.locator('[role="button"][class*="codicon-auxiliarybar-right-"]');
+      const sidebarWasVisible = await sidebar.isVisible();
+      await toggler.click();
+      await sidebar.waitFor({ state: sidebarWasVisible ? 'hidden' : 'visible' });
+      await toggler.click();
+      await sidebar.waitFor({ state: sidebarWasVisible ? 'visible' : 'hidden' });
+
+      const notice = 'Compact title bar notification';
+      await call({ action: 'notify', message: notice });
+      await page.locator('.notifications-toasts').getByText(notice, { exact: true }).waitFor();
+      await waitForProjectActions();
+      await toolbar.locator('.codicon-toolbar-more').click();
+      // Studio commands may be provided by the localized extension or by the kernel's fallback labels.
+      const projectAction = (en, zh) => menu.getByText(en, { exact: true }).or(menu.getByText(zh, { exact: true }));
+      await projectAction('Run (Release Mode)', '运行（发行模式）').waitFor();
+      await projectAction('Upload Project', '上传项目').waitFor();
+      await menu.getByText(t('Command Center', '命令中心'), { exact: true }).waitFor();
+      await menu.getByText(t('Toggle Notifications', '切换通知'), { exact: true }).click();
+      await page.locator('.notifications-center').getByText(notice, { exact: true }).waitFor();
+      await command('notifications.hideList');
+      await page.locator('.notifications-center').waitFor({ state: 'hidden' });
       await page.setViewportSize({ width: 1440, height: 960 });
       await until(() => titlebar.getAttribute('class'), value => !value?.includes('studio-narrow-titlebar'), 'Main title bar did not restore full mode');
-      assert.ok(await adjacent.locator('.action-item:visible').count() >= 2);
-      check(`${language}: main title bar keeps mode and run when narrow, then restores wide controls`);
+      assert.ok(await adjacent.locator('.action-item:visible').count() >= 3);
+      check(`${language}: narrow fullscreen keeps Run and the secondary side bar, exposes the other actions in More, and restores the wide layout`);
+
+      const modeDock = page.locator('.studio-steam-window-chrome');
+      const oldDisplay = await titlebarPart.evaluate(part => { const display = part.style.display; part.style.display = 'none'; return display; });
+      try {
+        await modeDock.waitFor({ state: 'hidden' });
+        assert.equal(await modeDock.evaluate(element => element.hidden), true);
+      } finally {
+        await titlebarPart.evaluate((part, display) => part.style.display = display, oldDisplay);
+      }
+      await modeDock.waitFor();
+      check(`${language}: the IDE switcher hides with its title bar anchor and returns when the anchor is restored`);
 
       const auxiliaryStyles = await page.evaluate(() => {
         const shell = document.createElement('div');
@@ -183,6 +248,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         toolbar.replaceChildren();
         toolbar.closest('.action-toolbar-container').classList.remove('has-no-actions');
         const pin = document.createElement('li'); pin.className = 'action-item icon'; pin.textContent = 'pin'; toolbar.append(pin);
+        const updateToolbar = shell.querySelector('.update-toolbar-container');
+        updateToolbar.classList.remove('has-no-actions', 'overflowing');
+        updateToolbar.append(document.createElement('button'));
         const visible = selector => !!shell.querySelector(selector)?.checkVisibility();
         const result = {
           commandCenter: visible('.command-center-center'),
@@ -194,7 +262,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         };
         shell.remove(); return result;
       });
-      assert.deepEqual(auxiliaryStyles, { commandCenter: true, navigation: false, run: true, releaseRun: false, update: false, alwaysOnTop: true });
+      assert.deepEqual(auxiliaryStyles, { commandCenter: true, navigation: false, run: true, releaseRun: false, update: true, alwaysOnTop: true });
       const manifest = JSON.parse(await readFile(path.join(ROOT, 'extensions/studio-workstation/package.json'), 'utf8'));
       assert.equal(manifest.contributes.menus['editor/title'].some(item => item.command === 'studio.openProject'), false);
       check(`${language}: auxiliary title bar retains command center, run and always-on-top; editor tabs omit duplicate run`);

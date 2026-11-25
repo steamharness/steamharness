@@ -20,6 +20,7 @@ export async function activate(context) {
         let result;
         if (input.action === 'command') { result = await vscode.commands.executeCommand(input.command, ...(input.args ?? [])); }
         else if (input.action === 'commands') { result = await vscode.commands.getCommands(); }
+        else if (input.action === 'notify') { void vscode.window.showInformationMessage(input.message); }
         else if (input.action === 'recent' || input.action === 'nativeRecent') {
           const folders = input.paths.map(path => ({ uri: vscode.Uri.file(path) }));
           for (const folder of folders) { await vscode.commands.executeCommand('_workbench.addToRecentlyOpened', { uri: folder.uri, type: 'folder' }); }
