@@ -57,7 +57,7 @@ export async function startGateway({ config, directory, workbench, webviewDirect
   // The development workbench loads thousands of ES modules. Reuse sockets to its trusted backend only.
   const workbenchAgent = new http.Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 8 });
   const remote = [config.proxy, config.lan].filter(Boolean);
-  const entryOrigins = remote.map(entry => ({ url: entry.workbench.origin, preview: entry.preview.origin }));
+  const remoteUrls = remote.map(entry => entry.workbench.origin);
   let localPort, previewPort, closing, adminPort;
   let remainingAttempts = 20, renewAttempts = 0;
   const sessions = await openSessions(directory, id => {
@@ -91,16 +91,15 @@ export async function startGateway({ config, directory, workbench, webviewDirect
     return server;
   }
   const localUrls = () => [...localPreviewOrigins.keys()];
-  const status = mode => ({ mode, running: true, localUrls: localUrls(), remoteUrls: entryOrigins.map(entry => entry.url), devices: sessions.list(), pairExpiresAt: sessions.pairExpiresAt() });
+  const status = mode => ({ mode, running: true, localUrls: localUrls(), remoteUrls, devices: sessions.list(), pairExpiresAt: sessions.pairExpiresAt() });
 
   async function manage(res, input, mode) {
     switch (input.action) {
       case 'status': return json(res, 200, status(mode));
       case 'generate': {
-        const endpoint = entryOrigins.find(entry => entry.url === input.origin);
-        if (!endpoint) return json(res, 409, { error: 'unconfigured' });
-        const pair = sessions.issue(endpoint.url);
-        const link = `${endpoint.url}/pair#code=${pair.code}`;
+        if (!remoteUrls.includes(input.origin)) return json(res, 409, { error: 'unconfigured' });
+        const pair = sessions.issue(input.origin);
+        const link = `${input.origin}/pair#code=${pair.code}`;
         const qr = qrcode(0, 'M'); qr.addData(link); qr.make();
         return json(res, 200, { ...status(mode), pair: { ...pair, link, qr: qr.createDataURL(4, 16) } });
       }
@@ -135,7 +134,7 @@ export async function startGateway({ config, directory, workbench, webviewDirect
 
   function mint(res, input, origin, owner, preview) {
     const target = targets.get(input.id);
-    if (!target || target.lease || target.registration.destroyed) return json(res, 404, { error: 'preview' });
+    if (!preview || !target || target.lease || target.registration.destroyed) return json(res, 404, { error: 'preview' });
     const id = secret();
     target.lease = id;
     leases.set(id, { owner, origin, preview, targetId: input.id, target });
@@ -274,8 +273,8 @@ export async function startGateway({ config, directory, workbench, webviewDirect
       catch (error) { if (!['EADDRINUSE', 'EADDRNOTAVAIL', 'EAFNOSUPPORT'].includes(error.code)) throw error; }
     }
     for (const entry of remote) {
-      const entries = new Map([[entry.workbench.host, { origin: entry.workbench.origin, preview: entry.preview.origin }],
-        [entry.preview.host, { origin: entry.preview.origin, previewOnly: true }]]);
+      const entries = new Map([[entry.workbench.host, { origin: entry.workbench.origin, preview: entry.preview?.origin }]]);
+      if (entry.preview) entries.set(entry.preview.host, { origin: entry.preview.origin, previewOnly: true });
       for (const port of entry.ports ?? [entry.port]) {
         const allowed = entry.tls ? new Map([...entries].filter(([host]) => Number(new URL(`https://${host}`).port || 443) === port)) : entries;
         await listen(publicServer(allowed, { tls: entry.tls }), entry.host, port);
