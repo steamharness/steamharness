@@ -42,6 +42,37 @@ const post = (origin, route, body) => fetch(`${origin}/_studio/web/${route}`, { 
   headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const openTab = async (page, open) => (await Promise.all([page.waitForEvent('popup', { timeout: 30_000 }), open()]))[0];
 
+async function checkWebBundle(page, { cached = false } = {}) {
+  const asset = await page.evaluate(() => {
+    const entry = document.querySelector('#vscode-studio-release-entry');
+    const timing = entry && performance.getEntriesByName(entry.src, 'resource')[0];
+    return timing && { encoded: timing.encodedBodySize, decoded: timing.decodedBodySize, transfer: timing.transferSize };
+  });
+  assert.ok(asset?.encoded > 0 && asset.encoded < asset.decoded / 2, 'The workbench must load its compressed entry');
+  if (cached) assert.ok(asset.transfer < 4096, 'Reload must not transfer the workbench bundle again');
+}
+
+async function checkPairedBundleCache(browser, local, origin) {
+  // Playwright request routing disables the HTTP cache. Keep these pages free of routes.
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'en-US' });
+  try {
+    const { pair } = await (await post(local, 'manage', { action: 'generate', origin })).json();
+    const page = await context.newPage();
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    await page.getByLabel('Pairing code').fill(pair.code);
+    await page.getByRole('button', { name: 'Confirm pairing' }).click();
+    await page.locator('.studio-launchpad').waitFor({ timeout: 60_000 });
+    await checkWebBundle(page);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('.studio-launchpad').waitFor({ timeout: 60_000 });
+    await checkWebBundle(page, { cached: true });
+    console.log('[OK] Paired HTTPS sends a compressed Workbench once and reuses it on reload');
+  } finally {
+    await context.request.post(`${origin}/_studio/web/manage`, { headers: { Origin: origin }, data: { action: 'logout' }, timeout: 5000 }).catch(() => undefined);
+    await context.close();
+  }
+}
+
 async function checkLocalProfile(home, zh = false) {
   await home.getByRole('tab', { name: zh ? '我的' : 'My Studio', exact: true }).click();
   const profile = home.locator('#lp-page-profile');
@@ -488,7 +519,7 @@ try {
     STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: remote[0], STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: previews[0], STEAMHARNESS_STUDIO_WEB_LAN_HOST: '0.0.0.0',
     STEAMHARNESS_STUDIO_WEB_LAN_ORIGIN: remote[1], STEAMHARNESS_STUDIO_WEB_LAN_PREVIEW_ORIGIN: previews[1],
     STEAMHARNESS_STUDIO_WEB_TLS_CERT_FILE: cert, STEAMHARNESS_STUDIO_WEB_TLS_KEY_FILE: key });
-  runner = runManagedWeb({ directory: data, storage: path.join(directory, 'runs'), config, prepare: async () => ({ upstream: upstream.directory,
+  runner = runManagedWeb({ directory: data, storage: path.join(directory, 'runs'), config, prepare: async () => ({ upstream: upstream.directory, bundleClient: true,
     args: ['--server-data-dir', data, '--extensions-dir', path.dirname(companion), '--disable-workspace-trust', '--telemetry-level', 'off',
       '--builtin-extensions-dir', await webBuiltins(data, upstream.directory, path.join(ROOT, 'extensions/studio-workstation'))],
   }) }).catch(error => { startupError = error; });
@@ -499,6 +530,7 @@ try {
     // The fixture maps the HTTPS workbench and preview origins onto loopback.
     args: [...(liveWebviews ? [] : ['--no-proxy-server', '--disable-features=LocalNetworkAccessChecks']), '--host-resolver-rules=MAP *.example.test 127.0.0.1'] });
   const localContext = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 900 } });
+  await checkPairedBundleCache(browser, local, remote[0]);
   // Local shells and real webview workers must load even if the CDN is unreachable.
   await localContext.route(/^https:\/\/[^/]+\.vscode-cdn\.net\/.*\/webview\/browser\/pre\//u, route => route.abort());
   await runPlatformProfile(localContext);
@@ -506,6 +538,7 @@ try {
   const aliasPage = await localContext.newPage();
   await aliasPage.goto(local.replace('127.0.0.1', 'localhost'), { waitUntil: 'domcontentloaded' });
   await aliasPage.locator('.studio-launchpad').getByRole('tab', { name: 'Library' }).waitFor({ timeout: 60_000 });
+  await checkWebBundle(aliasPage);
   // A direct folder link uses the workbench and does not mount a Launchpad over it.
   await aliasPage.goto(new URL(`/?folder=${encodeURIComponent(workspace)}`, local).href, { waitUntil: 'domcontentloaded' });
   await aliasPage.locator('.monaco-workbench:not(.studio-launchpad-window)').waitFor({ timeout: 60_000 });
@@ -627,6 +660,7 @@ try {
       assert.equal(new URL(launchpad.url()).pathname, '/');
       await waitForBrowserExtensionHost(launchpad);
       await home.locator('.lp-library-loading').waitFor({ state: 'hidden', timeout: 60_000 });
+      await checkWebBundle(launchpad);
       await launchpad.reload({ waitUntil: 'domcontentloaded' });
       await home.getByRole('tab', { name: zh ? '仓库' : 'Library' }).waitFor({ timeout: 60_000 });
       await checkLocalProfile(home, zh);

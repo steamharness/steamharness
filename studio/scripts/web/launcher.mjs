@@ -28,9 +28,10 @@ export async function webBuiltins(directory, upstream, studioExtension) {
 // Only non-network Code OSS options are exposed through the wrapper.
 export function workspaceArgs(args) {
   const serverArgs = [], seen = new Set();
-  let port;
+  let port, bundleClient = true;
   for (let i = 0; i < args.length; i++) {
     const [flag, ...parts] = args[i].split('=');
+    if (flag === '--unbundled' && !parts.length && bundleClient) { bundleClient = false; continue; }
     if (!['--host', '--port', '--default-folder', '--default-workspace'].includes(flag) || seen.has(flag)) throw new Error(`Unsupported Studio Web argument: ${flag}.`);
     seen.add(flag);
     const value = parts.length ? parts.join('=') : args[++i];
@@ -39,7 +40,7 @@ export function workspaceArgs(args) {
     if (flag === '--port') port = value;
     if (flag.startsWith('--default-')) serverArgs.push(`${flag}=${path.resolve(value)}`);
   }
-  return { port, serverArgs };
+  return { port, serverArgs, bundleClient };
 }
 
 function processRunning(pid) {
@@ -98,10 +99,15 @@ export async function runManagedWeb({ directory, storage, config, prepare }) {
   let upstream, gateway;
   try {
     const settings = await prepare();
+    const client = settings.bundleClient ? await (await import('./client.mjs')).prepareWebClient(settings.upstream,
+      path.join(directory, 'web-client'), config.proxy?.websocketPort === undefined ? {} : {
+        origin: config.proxy.workbench.origin, websocketPort: config.proxy.websocketPort,
+      }) : undefined;
     controller.signal.throwIfAborted();
     const proof = secret();
     upstream = codeServer(settings.upstream, [...settings.args, '--host=127.0.0.1', '--port=0', '--without-connection-token', '--force-disable-user-env'], {
       STEAMHARNESS_STUDIO_WEB_BACKEND_KEY: proof, STEAMHARNESS_STUDIO_WEB_REGISTRY: registry,
+      STEAMHARNESS_STUDIO_WEB_TEMPLATE: client?.template,
       STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR: storage,
     });
     const port = await new Promise((resolve, reject) => {
@@ -122,7 +128,7 @@ export async function runManagedWeb({ directory, storage, config, prepare }) {
     await direct.body?.cancel();
     if (direct.status !== 403) throw new Error('Studio Web backend is missing gateway protection. Rebuild the VS Code kernel.');
     const webviewDirectory = path.join(settings.upstream, 'out/vs/workbench/contrib/webview/browser/pre');
-    gateway = await startGateway({ config, directory, workbench: port, webviewDirectory, proof, stop });
+    gateway = await startGateway({ config, directory, workbench: port, webviewDirectory, clientAssets: client?.assets, proof, stop });
     controller.signal.throwIfAborted();
     await writePrivate(registry, gateway.registry);
     await writePrivate(descriptor, gateway.admin);

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "425fc4ca06d189874c231b1601d914c77e2bb8e8",
+  "commit": "b15e3ef187c536aca8f4d6138efdb4be2225ff01",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -166,6 +166,7 @@
     "0169-studio-pin-stable-webview-assets.patch": "c2c8ab5906912212d4ed5a97bc9bf704ebaee45a87b55b286016f511756639a9",
     "0170-studio-workspace-trust-default.patch": "df380403d421811b5d717ddaa82e75c88aab8dff711cbe0bb7d7848d0ba73a52",
     "0171-studio-project-usage-cache.patch": "4df9199db428f42713666fab33f2624b3ed9393c22f4b2aad65ded9f0b340fcc",
-    "0172-studio-protected-bot-credentials.patch": "861821241c48c9c103d5cb7426b7e91076d4d8c0dabdfa947d770fcf8b057d21"
+    "0172-studio-protected-bot-credentials.patch": "861821241c48c9c103d5cb7426b7e91076d4d8c0dabdfa947d770fcf8b057d21",
+    "0173-studio-web-prepared-template.patch": "fdd45a5a5fdf5e400e95d1f1385c5ae8735fcd2c91a682a2aaefe786a4e354ba"
   }
 }

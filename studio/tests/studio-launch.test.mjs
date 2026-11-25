@@ -95,6 +95,12 @@ test('the Web launcher does not accept upstream authentication or bind overrides
   }
 });
 
+test('Web bundles are the default, with an explicit source mode for developers', () => {
+  assert.equal(workspaceArgs([]).bundleClient, true);
+  assert.deepEqual(workspaceArgs(['--unbundled', '--port', '3040']), { bundleClient: false, port: '3040', serverArgs: [] });
+  assert.throws(() => workspaceArgs(['--unbundled=true']));
+});
+
 for (const args of [['--user-data-dir', '/custom-profile'], ['--user-data-dir=/custom-profile']]) {
   test(`dev passes one user data directory when explicitly set as ${args[0]}`, async () => {
     const fixture = launch('dev', undefined, args);

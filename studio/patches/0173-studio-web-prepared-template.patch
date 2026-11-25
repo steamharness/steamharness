@@ -1,0 +1,23 @@
+diff --git a/src/vs/server/node/webClientServer.ts b/src/vs/server/node/webClientServer.ts
+index a847313a9da17a3b026df9eacf8b5acb37918fa7..c8c4027c3c0cfed667e9139c877cd536512459d2 100644
+--- a/src/vs/server/node/webClientServer.ts
++++ b/src/vs/server/node/webClientServer.ts
+@@ -386,7 +386,9 @@ export class WebClientServer {
+ 
+ 		const resolveWorkspaceURI = (defaultLocation?: string) => defaultLocation && URI.file(resolve(defaultLocation)).with({ scheme: Schemas.vscodeRemote, authority: remoteAuthority });
+ 
+-		const filePath = FileAccess.asFileUri(`vs/code/browser/workbench/workbench${this._environmentService.isBuilt ? '' : '-dev'}.html`).fsPath;
++		const studioWeb = !!process.env['STEAMHARNESS_STUDIO_WEB_REGISTRY'];
++		const studioTemplate = studioWeb && !this._environmentService.isBuilt ? process.env['STEAMHARNESS_STUDIO_WEB_TEMPLATE'] : undefined;
++		const filePath = studioTemplate || FileAccess.asFileUri(`vs/code/browser/workbench/workbench${this._environmentService.isBuilt ? '' : '-dev'}.html`).fsPath;
+ 		const authSessionInfo = !this._environmentService.isBuilt && this._environmentService.args['github-auth'] ? {
+ 			id: generateUuid(),
+ 			providerId: 'github',
+@@ -416,7 +418,6 @@ export class WebClientServer {
+ 
+ 		const cookies = cookie.parse(req.headers.cookie || '');
+ 		const locale = (cookies['vscode.nls.locale'] || req.headers['accept-language']?.split(',')[0] || 'en').toLowerCase();
+-		const studioWeb = !!process.env['STEAMHARNESS_STUDIO_WEB_REGISTRY'];
+ 		// The trusted gateway supplies this only on its loopback Workbench listener.
+ 		const requestedWebviewPort = studioWeb ? getFirstHeader('x-steamharness-webview-port') : undefined;
+ 		const loopbackPort = /^(?:localhost|127\.0\.0\.1):([1-9]\d{0,4})$/.exec(remoteAuthority)?.[1];

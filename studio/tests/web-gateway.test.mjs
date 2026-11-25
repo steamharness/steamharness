@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { test } from 'node:test';
+import { brotliCompressSync, brotliDecompressSync, gzipSync, gunzipSync } from 'node:zlib';
 import { webConfig } from '../scripts/web/config.mjs';
 import { listen, startGateway } from '../scripts/web/gateway.mjs';
 import { openSessions, PAIR_MS, secret, SESSION_SECONDS } from '../scripts/web/sessions.mjs';
@@ -63,6 +64,9 @@ test('configuration fails closed on missing or overlapping remote HTTPS settings
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_PORT: '3030' }), /local port range/);
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ACCEPT_LOOPBACK_HOST: '1' }), /PROXY_ORIGIN/);
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ACCEPT_LOOPBACK_HOST: '*' }), /PROXY_ACCEPT_LOOPBACK_HOST/);
+  await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_WEBSOCKET_PORT: '7302' }), /PROXY_ORIGIN/);
+  await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin, STEAMHARNESS_STUDIO_WEB_PROXY_WEBSOCKET_PORT: '65536' }), /PROXY_WEBSOCKET_PORT/);
+  await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin + ':8443', STEAMHARNESS_STUDIO_WEB_PROXY_WEBSOCKET_PORT: '7302' }), /default HTTPS port/);
 });
 
 test('a workbench-only proxy requires pairing and leaves registered previews unavailable remotely', { timeout: 10_000 }, async t => {
@@ -155,7 +159,17 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   await writeFile(path.join(webviewDirectory, 'index.html'), 'webview shell');
   await writeFile(path.join(webviewDirectory, 'fake.html'), 'webview frame');
   await writeFile(path.join(webviewDirectory, 'service-worker.js'), '/* webview worker */');
-  const gateway = await startGateway({ config, directory: dir, workbench, webviewDirectory, proof, stop() {} });
+  const client = 'workbench.studio-web-fixture.js', contents = Buffer.from('globalThis.studio = true;');
+  const asset = `/oss-dev/static/out/vs/code/browser/workbench/${client}`;
+  const clientEtag = 'W/"fixture"';
+  const variants = {};
+  for (const [encoding, data] of [['identity', contents], ['br', brotliCompressSync(contents)], ['gzip', gzipSync(contents)]]) {
+    const file = path.join(dir, encoding);
+    await writeFile(file, data);
+    variants[encoding] = { file, size: data.length };
+  }
+  const clientAssets = new Map([[client, { variants, mime: 'text/javascript', etag: clientEtag }]]);
+  const gateway = await startGateway({ config, directory: dir, workbench, webviewDirectory, clientAssets, proof, stop() {} });
   t.after(async () => {
     await gateway.close();
     for (const s of sockets) s.destroy();
@@ -168,7 +182,10 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   const request = (origin, route, headers = {}, body) => new Promise((resolve, reject) => {
     const req = http.request((origin === local ? local : proxy) + route, { method: body ? 'POST' : 'GET', agent: false,
       headers: { Host: new URL(origin).host, ...headers, ...(body ? { 'Content-Type': 'application/json', Origin: origin } : {}) } },
-    res => resolve(new Response(Readable.toWeb(res), { status: res.statusCode, headers: res.headers })));
+    res => {
+      if (res.statusCode === 304) res.resume();
+      resolve(new Response(res.statusCode === 304 ? null : Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+    });
     req.on('error', reject); req.end(body ? JSON.stringify(body) : undefined);
   });
   const admin = input => request(local, endpoint + 'manage', {}, input);
@@ -186,6 +203,8 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.equal(proxyEntry.headers.get('location'), '/pair');
   assert.equal((await request(workbenchOrigin, '/pair', rewritten)).status, 200);
   assert.equal((await request(workbenchOrigin, '/static/resource', rewritten)).status, 401);
+  assert.equal((await request(workbenchOrigin, asset, { ...rewritten, 'If-None-Match': clientEtag })).status, 401);
+  assert.equal((await request(previewOrigin, asset)).status, 404);
   assert.equal((await request(workbenchOrigin, '/', { ...rewritten, Origin: previewOrigin })).status, 403);
   assert.equal((await request(workbenchOrigin, '/', { Host: new URL(local).host, 'X-Forwarded-Host': new URL(workbenchOrigin).host })).status, 403);
   const imQuery = '?im=chat&conversation_id=group_a%26b';
@@ -244,6 +263,19 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.equal(record.at(-1)['x-forwarded-host'], undefined);
   assert.equal(record.at(-1)['x-steamharness-webview-port'], undefined);
   assert.equal(record.at(-1).cookie, '');
+  const brotli = await request(workbenchOrigin, asset, { Cookie: cookie, 'Accept-Encoding': 'gzip, br' });
+  assert.equal(brotli.headers.get('content-encoding'), 'br');
+  assert.equal(brotli.headers.get('cache-control'), 'private, max-age=31536000, immutable');
+  assert.equal(brotli.headers.get('vary'), 'Accept-Encoding, Cookie');
+  assert.deepEqual(brotliDecompressSync(Buffer.from(await brotli.arrayBuffer())), contents);
+  const zipped = await request(local, asset, { 'Accept-Encoding': 'br;q=0, gzip' });
+  assert.equal(zipped.headers.get('content-encoding'), 'gzip');
+  assert.deepEqual(gunzipSync(Buffer.from(await zipped.arrayBuffer())), contents);
+  const raw = await request(local, asset);
+  assert.equal(raw.headers.get('content-encoding'), null);
+  assert.deepEqual(Buffer.from(await raw.arrayBuffer()), contents);
+  assert.equal((await request(workbenchOrigin, asset, { Cookie: cookie, 'If-None-Match': clientEtag })).status, 304);
+  assert.equal((await request(workbenchOrigin, '/', { Cookie: cookie, 'Accept-Encoding': 'br' })).headers.get('cache-control'), 'no-store');
   const socketsBefore = workbenchSockets.size;
   for (let index = 0; index < 20; index++) {
     assert.equal(await (await request(workbenchOrigin, `/static/module-${index}.js`, { Cookie: cookie })).text(), 'workbench');
@@ -311,4 +343,5 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.equal((await next.registration.read()).done, true);
   assert.equal((await request(previewOrigin, activeMount + '/')).status, 404);
   assert.equal((await request(workbenchOrigin, '/', { Cookie: cookie })).status, 401);
+  assert.equal((await request(workbenchOrigin, asset, { Cookie: cookie, 'If-None-Match': clientEtag })).status, 401);
 });

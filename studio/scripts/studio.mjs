@@ -248,7 +248,7 @@ async function main() {
     }
     case 'workflow:web':
     case 'web': {
-      const { port, serverArgs } = workspaceArgs(args);
+      const { port, serverArgs, bundleClient } = workspaceArgs(args);
       if (command === 'workflow:web' && !hasFlag('--default-folder') && !hasFlag('--default-workspace')) {
         serverArgs.push(`--default-folder=${await resolveMonorepoRoot()}`);
       }
@@ -266,7 +266,7 @@ async function main() {
         await ensureDefaultExtensions(extensionsDirectory, extension => run(process.execPath,
           [path.join(upstream.directory, 'out/server-main.js'), ...defaults, '--install-extension', extension],
           upstream.directory, { NODE_ENV: 'development', VSCODE_DEV: '1' }));
-        return { upstream: upstream.directory, args: [...defaults, ...serverArgs] };
+        return { upstream: upstream.directory, args: [...defaults, ...serverArgs], bundleClient };
       } });
       break;
     }
@@ -274,7 +274,7 @@ async function main() {
       await doctor();
       break;
     case 'help':
-      console.log('Studio commands: setup, prepare, electron, build, watch, dev [VS Code arguments], web [--port port] [--default-folder path | --default-workspace path], doctor, test:desktop');
+      console.log('Studio commands: setup, prepare, electron, build, watch, dev [VS Code arguments], web [--port port] [--unbundled] [--default-folder path | --default-workspace path], doctor, test:desktop');
       break;
     default:
       throw new Error(`Unknown Studio command: ${command}`);

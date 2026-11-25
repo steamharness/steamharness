@@ -5,6 +5,7 @@ import { equalSecret, isSecret, openSessions, secret, SESSION_SECONDS } from './
 import { imPairQuery, pairPage } from './pair-page.mjs';
 import { relay, relayUpgrade } from './relay.mjs';
 import { isLocalWebviewHost, serveLocalWebview } from './webview.mjs';
+import { serveClientAsset } from './client-assets.mjs';
 
 const cookie = '__Host-steamharness-studio';
 const route = '/_studio/web/';
@@ -50,7 +51,7 @@ const workbenchOrigin = (req, origin) => {
   return true;
 };
 
-export async function startGateway({ config, directory, workbench, webviewDirectory, proof, stop, now = Date.now }) {
+export async function startGateway({ config, directory, workbench, webviewDirectory, clientAssets, proof, stop, now = Date.now }) {
   const servers = [], sockets = new Set(), active = new Map(), targets = new Map(), leases = new Map();
   const adminKey = secret(), registryKey = secret();
   const localPreviewOrigins = new Map();
@@ -216,6 +217,7 @@ export async function startGateway({ config, directory, workbench, webviewDirect
           }
           return json(res, 401, { error: 'pair' });
         }
+        if (await serveClientAsset(req, res, url, clientAssets, drop => track(owner, drop))) return;
         const webviewPort = entry.local && webviewDirectory ? localPort : undefined;
         relay(req, res, { port: workbench, path: url.pathname + url.search, host: entry.host, origin: entry.origin, proof, webviewPort, agent: workbenchAgent }, drop => track(owner, drop));
       })().catch(() => { if (!res.headersSent && !res.destroyed) json(res, 400, { error: 'request' }); else res.destroy(); });

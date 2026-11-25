@@ -27,14 +27,22 @@ export async function webConfig(env = process.env, localPort) {
   };
   const local = portRange(localPort ?? get('LOCAL_PORT') ?? '3030-3040', prefix + 'LOCAL_PORT');
   const acceptLoopbackHost = get('PROXY_ACCEPT_LOOPBACK_HOST');
+  const socketPort = get('PROXY_WEBSOCKET_PORT');
+  const websocketPort = socketPort === undefined ? undefined : Number(socketPort);
+  if (socketPort !== undefined && (!/^\d{4,5}$/u.test(socketPort) || websocketPort < 1024 || websocketPort > 65535)) {
+    throw new Error(`Invalid ${prefix}PROXY_WEBSOCKET_PORT.`);
+  }
   if (acceptLoopbackHost !== undefined && !['0', '1'].includes(acceptLoopbackHost)) {
     throw new Error(`${prefix}PROXY_ACCEPT_LOOPBACK_HOST must be 0 or 1.`);
   }
   let proxy, lan;
-  if (acceptLoopbackHost === '1' || ['PROXY_ORIGIN', 'PROXY_PREVIEW_ORIGIN', 'PROXY_PORT'].some(get)) {
+  if (acceptLoopbackHost === '1' || ['PROXY_ORIGIN', 'PROXY_PREVIEW_ORIGIN', 'PROXY_PORT', 'PROXY_WEBSOCKET_PORT'].some(get)) {
     const port = portRange(get('PROXY_PORT') ?? '3041', prefix + 'PROXY_PORT');
     if (port.first !== port.last || port.first >= local.first && port.first <= local.last) throw new Error(`${prefix}PROXY_PORT must be outside the local port range.`);
-    proxy = { ...remote('PROXY', true), host: '127.0.0.1', port: port.first, acceptLoopbackHost: acceptLoopbackHost === '1' };
+    const origins = remote('PROXY', true);
+    if (websocketPort !== undefined && origins.workbench.port) throw new Error(`${prefix}PROXY_WEBSOCKET_PORT needs a workbench on the default HTTPS port.`);
+    proxy = { ...origins, host: '127.0.0.1', port: port.first, acceptLoopbackHost: acceptLoopbackHost === '1',
+      ...(websocketPort !== undefined && { websocketPort }) };
   }
   if (['LAN_HOST', 'LAN_ORIGIN', 'LAN_PREVIEW_ORIGIN', 'TLS_CERT_FILE', 'TLS_KEY_FILE'].some(get)) {
     const host = get('LAN_HOST');
