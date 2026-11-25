@@ -217,7 +217,7 @@ export async function startGateway({ config, directory, workbench, webviewDirect
           return json(res, 401, { error: 'pair' });
         }
         const webviewPort = entry.local && webviewDirectory ? localPort : undefined;
-        relay(req, res, { port: workbench, path: url.pathname + url.search, host: req.headers.host, origin: entry.origin, proof, webviewPort, agent: workbenchAgent }, drop => track(owner, drop));
+        relay(req, res, { port: workbench, path: url.pathname + url.search, host: entry.host, origin: entry.origin, proof, webviewPort, agent: workbenchAgent }, drop => track(owner, drop));
       })().catch(() => { if (!res.headersSent && !res.destroyed) json(res, 400, { error: 'request' }); else res.destroy(); });
     };
     const options = { requestTimeout: 30_000, headersTimeout: 10_000, ...(tls ?? {}) };
@@ -230,7 +230,7 @@ export async function startGateway({ config, directory, workbench, webviewDirect
         if (entry.previewOnly) target = previewTarget(req, entry, url, true);
         else if (!url.pathname.startsWith(route) && url.pathname !== '/pair') {
           const id = identity(req, entry.origin, entry.local);
-          if (id) target = { id, port: workbench, path: url.pathname + url.search, host: req.headers.host, origin: entry.origin, proof };
+          if (id) target = { id, port: workbench, path: url.pathname + url.search, host: entry.host, origin: entry.origin, proof };
         }
       }
       if (!target) { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); return; }
@@ -263,7 +263,8 @@ export async function startGateway({ config, directory, workbench, webviewDirect
     if (!localPort) throw new Error('No Studio Web local port is available.');
     for (const host of ['127.0.0.1', 'localhost']) {
       const origin = `http://${host}:${localPort}`, preview = `http://${host}:${previewPort}`;
-      localEntries.set(`${host}:${localPort}`, { origin, preview, local: true });
+      const authority = `${host}:${localPort}`;
+      localEntries.set(authority, { host: authority, origin, preview, local: true });
       localPreviews.set(`${host}:${previewPort}`, { origin: preview, previewOnly: true });
       localPreviewOrigins.set(origin, preview);
     }
@@ -273,8 +274,12 @@ export async function startGateway({ config, directory, workbench, webviewDirect
       catch (error) { if (!['EADDRINUSE', 'EADDRNOTAVAIL', 'EAFNOSUPPORT'].includes(error.code)) throw error; }
     }
     for (const entry of remote) {
-      const entries = new Map([[entry.workbench.host, { origin: entry.workbench.origin, preview: entry.preview?.origin }]]);
+      const workbenchEntry = { host: entry.workbench.host, origin: entry.workbench.origin, preview: entry.preview?.origin };
+      const entries = new Map([[workbenchEntry.host, workbenchEntry]]);
       if (entry.preview) entries.set(entry.preview.host, { origin: entry.preview.origin, previewOnly: true });
+      // A proxy may rewrite Host to the local backend address. Only its paired
+      // workbench may use that alias; the public origin never comes from headers.
+      if (entry === config.proxy && entry.acceptLoopbackHost) entries.set(`127.0.0.1:${entry.port}`, workbenchEntry);
       for (const port of entry.ports ?? [entry.port]) {
         const allowed = entry.tls ? new Map([...entries].filter(([host]) => Number(new URL(`https://${host}`).port || 443) === port)) : entries;
         await listen(publicServer(allowed, { tls: entry.tls }), entry.host, port);
