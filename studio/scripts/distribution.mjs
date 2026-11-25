@@ -190,6 +190,14 @@ export async function prepareDistribution(root = ROOT, { linkBuiltinExtension = 
   const channel = checkoutServiceChannel({root});
   const identity = channelProductIdentity(channel, overrides);
   const product = mergeProduct(JSON.parse(base), {...overrides,...identity});
+  const trustedDomainsFile = process.env.STEAMHARNESS_STUDIO_TRUSTED_DOMAINS_FILE;
+  if (trustedDomainsFile) {
+    const domains = await readJSON(trustedDomainsFile);
+    if (!Array.isArray(domains) || domains.some(domain => typeof domain !== 'string' || !/^https:\/\/(?:\*\.)?[\w-]+(?:\.[\w-]+)+$/u.test(domain))) {
+      throw new Error('Studio trusted domains must be an array of HTTPS domains (optionally with a leading subdomain wildcard).');
+    }
+    product.linkProtectionTrustedDomains = [...new Set([...(product.linkProtectionTrustedDomains ?? []), ...domains])];
+  }
   const defaultsFile = path.join(root, 'config/default-extensions.json');
   const bundled = await exists(defaultsFile) ? (await readJSON(defaultsFile)).filter(extension => extension.builtin) : [];
   if (bundled.length) {

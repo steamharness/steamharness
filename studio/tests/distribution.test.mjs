@@ -12,6 +12,7 @@ const baseProduct = {
   dataFolderName: '.vscode-oss', urlProtocol: 'code-oss',
   builtInExtensions: [{ name: 'upstream-debugger', sha256: 'original-checksum' }],
   defaultChatAgent: { extensionId: 'GitHub.copilot', chatExtensionId: 'GitHub.copilot-chat' },
+  linkProtectionTrustedDomains: ['https://upstream.example'],
 };
 
 test('all distribution patches have valid Git patch syntax', async () => {
@@ -165,6 +166,37 @@ test('Web development receives Studio branding, gallery and the correct API vers
   assert.deepEqual(overrides.extensionsGallery, gallery);
   await fs.writeFile(path.join(upstream, 'product.overrides.json'), '{"nameShort":"Manual Web Change"}\n');
   await assert.rejects(prepareDistribution(root), /product.overrides.json has local edits/);
+});
+
+test('additional HTTPS trusted domains are opt-in and persist in desktop and web products', async (t) => {
+  const { root, upstream } = await fixture(t);
+  const key = 'STEAMHARNESS_STUDIO_TRUSTED_DOMAINS_FILE';
+  const previous = process.env[key];
+  t.after(() => {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  });
+  const file = path.join(root, 'trusted-domains.json');
+  const defaults = baseProduct.linkProtectionTrustedDomains;
+  const extra = ['https://studio.example', 'https://*.studio.example'];
+  await fs.writeFile(file, JSON.stringify([...defaults, ...extra]));
+  process.env[key] = file;
+  await prepareDistribution(root);
+  const productFiles = ['product.json', 'product.overrides.json'];
+  for (const name of productFiles) {
+    const product = JSON.parse(await fs.readFile(path.join(upstream, name), 'utf8'));
+    assert.deepEqual(product.linkProtectionTrustedDomains, [...defaults, ...extra]);
+  }
+  for (const invalid of ['*', 'https://*', 'http://*.studio.example']) {
+    await fs.writeFile(file, JSON.stringify([invalid]));
+    await assert.rejects(prepareDistribution(root), /Studio trusted domains must be an array of HTTPS domains/);
+  }
+  delete process.env[key];
+  await prepareDistribution(root);
+  for (const name of productFiles) {
+    const product = JSON.parse(await fs.readFile(path.join(upstream, name), 'utf8'));
+    assert.deepEqual(product.linkProtectionTrustedDomains, defaults);
+  }
 });
 
 test('prepare preserves manual upstream branding changes', async (t) => {
