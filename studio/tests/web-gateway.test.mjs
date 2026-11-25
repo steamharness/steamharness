@@ -61,6 +61,8 @@ test('configuration fails closed on missing or overlapping remote HTTPS settings
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: previewOrigin }), /PROXY_ORIGIN/);
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin, STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: workbenchOrigin + ':8443' }), /different hostname/);
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_PORT: '3030' }), /local port range/);
+  await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ACCEPT_LOOPBACK_HOST: '1' }), /PROXY_ORIGIN/);
+  await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ACCEPT_LOOPBACK_HOST: '*' }), /PROXY_ACCEPT_LOOPBACK_HOST/);
 });
 
 test('a workbench-only proxy requires pairing and leaves registered previews unavailable remotely', { timeout: 10_000 }, async t => {
@@ -88,6 +90,7 @@ test('a workbench-only proxy requires pairing and leaves registered previews una
   const unpaired = await request('/', { Accept: 'text/html' });
   assert.equal(unpaired.status, 303);
   assert.equal(unpaired.headers.get('location'), '/pair');
+  assert.equal((await request('/', { Host: `127.0.0.1:${proxyPort}` })).status, 403);
   assert.equal((await request('/', { Host: `localhost:${proxyPort}` })).status, 403);
   assert.equal((await request('/', { Host: 'other.example.test' })).status, 403);
   assert.equal((await request('/', { Origin: 'https://other.example.test' })).status, 403);
@@ -145,7 +148,8 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   const [workbench, target] = await Promise.all([listen(upstream, '127.0.0.1'), listen(app, '127.0.0.1')]);
   const localPort = await freePort(), proxyPort = await freePort();
   const config = await webConfig({ STEAMHARNESS_STUDIO_WEB_LOCAL_PORT: String(localPort), STEAMHARNESS_STUDIO_WEB_PROXY_PORT: String(proxyPort),
-    STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin, STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: previewOrigin });
+    STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin, STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: previewOrigin,
+    STEAMHARNESS_STUDIO_WEB_PROXY_ACCEPT_LOOPBACK_HOST: '1' });
   const webviewDirectory = path.join(dir, 'webview');
   await mkdir(webviewDirectory);
   await writeFile(path.join(webviewDirectory, 'index.html'), 'webview shell');
@@ -159,6 +163,8 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
     await rm(dir, { recursive: true, force: true });
   });
   const local = `http://127.0.0.1:${localPort}`, proxy = `http://127.0.0.1:${proxyPort}`;
+  const proxyHost = new URL(proxy).host;
+  const rewritten = { Host: proxyHost };
   const request = (origin, route, headers = {}, body) => new Promise((resolve, reject) => {
     const req = http.request((origin === local ? local : proxy) + route, { method: body ? 'POST' : 'GET', agent: false,
       headers: { Host: new URL(origin).host, ...headers, ...(body ? { 'Content-Type': 'application/json', Origin: origin } : {}) } },
@@ -166,15 +172,22 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
     req.on('error', reject); req.end(body ? JSON.stringify(body) : undefined);
   });
   const admin = input => request(local, endpoint + 'manage', {}, input);
-  async function upgrade(cookie, origin = workbenchOrigin, route = '/socket') {
+  async function upgrade(cookie, origin = workbenchOrigin, route = '/socket', host = new URL(origin).host) {
     const socket = net.connect(proxyPort, '127.0.0.1');
     socket.on('error', () => undefined);
     await once(socket, 'connect');
     const first = once(socket, 'data');
-    socket.write(`GET ${route} HTTP/1.1\r\nHost: ${new URL(origin).host}\r\nOrigin: ${origin}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n${cookie ? `Cookie: ${cookie}\r\n` : ''}\r\n`);
+    socket.write(`GET ${route} HTTP/1.1\r\nHost: ${host}\r\nOrigin: ${origin}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n${cookie ? `Cookie: ${cookie}\r\n` : ''}\r\n`);
     return { socket, response: (await first)[0].toString() };
   }
   assert.equal((await request(workbenchOrigin, '/', { Accept: 'text/html', 'X-Forwarded-Host': new URL(local).host })).headers.get('location'), '/pair');
+  const proxyEntry = await request(workbenchOrigin, '/', { ...rewritten, Accept: 'text/html' });
+  assert.equal(proxyEntry.status, 303);
+  assert.equal(proxyEntry.headers.get('location'), '/pair');
+  assert.equal((await request(workbenchOrigin, '/pair', rewritten)).status, 200);
+  assert.equal((await request(workbenchOrigin, '/static/resource', rewritten)).status, 401);
+  assert.equal((await request(workbenchOrigin, '/', { ...rewritten, Origin: previewOrigin })).status, 403);
+  assert.equal((await request(workbenchOrigin, '/', { Host: new URL(local).host, 'X-Forwarded-Host': new URL(workbenchOrigin).host })).status, 403);
   const imQuery = '?im=chat&conversation_id=group_a%26b';
   assert.equal((await request(workbenchOrigin, `/${imQuery}&returnTo=//other.example&token=no`, { Accept: 'text/html' })).headers.get('location'), '/pair' + imQuery);
   assert.equal((await request(workbenchOrigin, `/${imQuery}&user_id=another`, { Accept: 'text/html' })).headers.get('location'), '/pair');
@@ -182,7 +195,7 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.ok(pairDocument.includes(`location.replace("/${imQuery}")`));
   assert.equal((await request(workbenchOrigin, '/static/resource')).status, 401);
   assert.equal((await request(workbenchOrigin, workerFrame)).status, 401);
-  const denied = await upgrade(); assert.match(denied.response, /403/); denied.socket.destroy();
+  const denied = await upgrade(undefined, workbenchOrigin, '/socket', proxyHost); assert.match(denied.response, /403/); denied.socket.destroy();
   assert.equal(record.length, 0);
   assert.equal((await request(previewOrigin, `/p/${secret()}/`)).status, 404);
   assert.equal((await request(local, '/', { Origin: previewOrigin })).status, 403);
@@ -217,14 +230,18 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.match(pair.qr, /^data:image\/gif;base64,/);
   const failure = await request(workbenchOrigin, endpoint + 'pair', {}, { code: 'bad' });
   assert.equal(failure.status, 401);
-  const redeemed = await request(workbenchOrigin, endpoint + 'pair', {}, { code: pair.code });
+  assert.equal((await request(previewOrigin, endpoint + 'pair', rewritten, { code: pair.code })).status, 403);
+  const redeemed = await request(workbenchOrigin, endpoint + 'pair', rewritten, { code: pair.code });
   assert.equal(redeemed.status, 200);
   const setCookie = redeemed.headers.get('set-cookie');
   assert.match(setCookie, /; Path=\/; HttpOnly; Secure; SameSite=Strict;/);
   const cookie = setCookie.split(';')[0];
-  assert.equal(await (await request(workbenchOrigin, '/', { Cookie: cookie, 'X-Steamharness-Gateway': 'client-value', 'X-Steamharness-Webview-Port': String(localPort) })).text(), 'workbench');
+  assert.equal(await (await request(workbenchOrigin, '/', { ...rewritten, Cookie: cookie, 'X-Forwarded-Host': new URL(previewOrigin).host,
+    'X-Steamharness-Gateway': 'client-value', 'X-Steamharness-Webview-Port': String(localPort) })).text(), 'workbench');
   assert.equal((await request(workbenchOrigin, '/pair' + imQuery, { Cookie: cookie })).headers.get('location'), '/' + imQuery);
   assert.equal(record.at(-1)['x-steamharness-gateway'], proof);
+  assert.equal(record.at(-1).host, new URL(workbenchOrigin).host);
+  assert.equal(record.at(-1)['x-forwarded-host'], undefined);
   assert.equal(record.at(-1)['x-steamharness-webview-port'], undefined);
   assert.equal(record.at(-1).cookie, '');
   const socketsBefore = workbenchSockets.size;
@@ -257,6 +274,7 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.equal((await request(workbenchOrigin, endpoint + 'preview', {}, { id })).status, 401);
   const { url } = await (await request(workbenchOrigin, endpoint + 'preview', { Cookie: cookie }, { id })).json();
   const mount = new URL(url).pathname;
+  assert.equal((await request(previewOrigin, mount + '/', rewritten)).status, 401);
   const content = await request(previewOrigin, mount + '/', { Cookie: cookie });
   assert.equal(await content.text(), 'preview');
   assert.match(content.headers.get('content-security-policy'), /frame-ancestors 'self' https:\/\/studio\.example\.test/);
@@ -278,8 +296,12 @@ test('the remote listener gates HTTP, upgrades and previews even with a loopback
   assert.match(Buffer.from((await events.read()).value).toString(), /ready/);
   const workbenchEvents = (await request(workbenchOrigin, '/events', { Cookie: cookie })).body.getReader();
   assert.match(Buffer.from((await workbenchEvents.read()).value).toString(), /workbench ready/);
-  const connected = await upgrade(cookie);
+  const foreignSocket = await upgrade(cookie, previewOrigin, '/socket', proxyHost);
+  assert.match(foreignSocket.response, /403/);
+  foreignSocket.socket.destroy();
+  const connected = await upgrade(cookie, workbenchOrigin, '/socket', proxyHost);
   assert.match(connected.response, /101 Switching Protocols/);
+  assert.equal(record.at(-1).host, new URL(workbenchOrigin).host);
   const disconnected = once(connected.socket, 'close');
   const { devices: [device] } = await (await admin({ action: 'status' })).json();
   await admin({ action: 'revoke', id: device.id });
