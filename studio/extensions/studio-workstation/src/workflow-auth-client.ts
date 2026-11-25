@@ -29,6 +29,8 @@ export interface AccountState {
   serverUrl: string;
   aiServerUrl?: string;
   aiConfigured?: boolean;
+  aiRestoring?: boolean;
+  aiRestoreFailed?: boolean;
   user?: User;
   expiresAt?: string;
   error?: string;

@@ -637,6 +637,102 @@ test('System AI reuses the signed-in account unless an explicit AI session is co
   assert.equal(f.opened.length, 0);
 });
 
+for (const entry of ['select', 'open', 'restore']) {
+  test(`System AI restores the saved Studio session on ${entry} and loads without another sign-in`, async t => {
+    const f = await fixture(t, { connect: false });
+    let loads = 0;
+    f.controller.registerSectionProvider({ id: 'system-ai', title: 'System AI', load: async connection => {
+      ++loads;
+      assert.equal(connection.accessToken, 'test-token');
+      return [{ id: 'usage', title: 'Usage' }];
+    } });
+    const section = 'provider:system-ai';
+    if (entry === 'restore') {
+      const panel = f.vscode.window.createWebviewPanel('studio.settings', 'Settings', 1, {});
+      await f.serializer.deserializeWebviewPanel(panel, { section });
+    } else f.controller.open({ section: entry === 'select' ? 'general' : section });
+    await f.message({ type: 'ready' });
+    if (entry === 'select') {
+      assert.equal(f.requests, 0);
+      await f.message({ type: 'settings-view-state', state: { section } });
+    }
+    const latest = type => f.messages.filter(message => message.type === type).at(-1);
+    await until(() => latest('account-sections')?.states[0]?.sections.length === 1);
+    assert.equal(latest('account').state.status, 'authenticated');
+    assert.equal(latest('account').state.aiConfigured, true, 'The live auth event publishes the resolved AI state');
+    assert.deepEqual(f.requestUrls, ['http://127.0.0.1:7126/api/auth/me']);
+    assert.equal(f.opened.length, 0);
+
+    let finish;
+    f.fetch = () => new Promise(resolve => { finish = resolve; });
+    const refresh = f.commands.get('studio.refreshAccount')();
+    await until(() => finish);
+    assert.equal(latest('account').state.status, 'checking');
+    assert.equal(latest('account').state.aiConfigured, true);
+    assert.equal(latest('account-sections').states[0].sections[0].id, 'usage');
+    finish(); await refresh;
+    assert.equal(latest('account').state.aiConfigured, true);
+    assert.equal(loads, 1, 'Re-verifying the same session does not discard or reload usage');
+    assert.doesNotMatch(JSON.stringify(f.messages), /test-token/);
+  });
+}
+
+test('opening System AI while signed out does not start a login in the browser', async t => {
+  const f = await fixture(t, { signedIn: false });
+  f.controller.registerSectionProvider({ id: 'system-ai', title: 'System AI', load: async () => assert.fail('No account to load') });
+  f.controller.open({ section: 'provider:system-ai' });
+  await f.message({ type: 'ready' });
+  const latest = () => f.messages.filter(message => message.type === 'account').at(-1)?.state;
+  await until(() => f.secretReads.some(key => key.startsWith('studio.project.account')) && latest()?.status === 'signed-out' && !latest().aiRestoring);
+  assert.equal(latest().aiConfigured, false);
+  assert.equal(f.requests, 0);
+  assert.equal(f.opened.length, 0);
+});
+
+test('System AI silently uses a saved AI-only session and clears it on sign-out', async t => {
+  const f = await fixture(t, { signedIn: false });
+  const serverUrl = 'http://127.0.0.1:7126';
+  const key = 'studio.system-ai.dev.' + encodeURIComponent(serverUrl);
+  f.saved.set(key, JSON.stringify({ serverUrl, accessToken: 'separate-ai-token' }));
+  f.fetch = async (url, options) => {
+    assert.equal(url, `${serverUrl}/api/auth/me`);
+    assert.equal(options.headers.Authorization, 'Bearer separate-ai-token');
+  };
+  f.controller.registerSectionProvider({ id: 'system-ai', title: 'System AI', load: async connection => {
+    assert.equal(connection.accessToken, 'separate-ai-token');
+    return [{ id: 'usage', title: 'Usage' }];
+  } });
+  f.controller.open({ section: 'provider:system-ai' });
+  await f.message({ type: 'ready' });
+  const latest = type => f.messages.filter(message => message.type === type).at(-1);
+  await until(() => latest('account-sections')?.states[0]?.sections.length === 1);
+  assert.equal(latest('account').state.status, 'signed-out');
+  assert.equal(latest('account').state.aiConfigured, true);
+  assert.equal(f.opened.length, 0);
+  await f.commands.get('studio.logout')();
+  assert.equal(f.saved.get(key), undefined);
+  assert.equal(latest('account').state.aiConfigured, false);
+  assert.equal(latest('account-sections').states.length, 0);
+  assert.doesNotMatch(JSON.stringify(f.messages), /separate-ai-token/);
+});
+
+test('retry after a temporary account verification failure does not open browser sign-in', async t => {
+  const f = await fixture(t, { connect: false });
+  f.fetch = async () => { throw new Error('Network unavailable'); };
+  f.controller.registerSectionProvider({ id: 'system-ai', title: 'System AI', load: async () => [{ id: 'usage', title: 'Usage' }] });
+  f.controller.open({ section: 'provider:system-ai' });
+  await f.message({ type: 'ready' });
+  const latest = type => f.messages.filter(message => message.type === type).at(-1);
+  await until(() => latest('account')?.state.status === 'error' && !latest('account').state.aiRestoring);
+  assert.equal(latest('account').state.aiConfigured, false);
+  f.fetch = undefined;
+  await f.message({ type: 'retry-system-ai' });
+  await until(() => latest('account-sections')?.states[0]?.sections.length === 1);
+  assert.equal(latest('account').state.aiConfigured, true);
+  assert.equal(f.requests, 2);
+  assert.equal(f.opened.length, 0);
+});
+
 test('an explicit cached System AI session is validated before it replaces the account connection', async t => {
   const f = await fixture(t, { connect: false });
   const requests = [];

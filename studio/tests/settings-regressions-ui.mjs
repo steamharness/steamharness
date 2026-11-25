@@ -257,14 +257,32 @@ try {
     checks.push(`${language}: reset while editing`);
 
     await setup(language, 'provider:plugin', [provider]);
-    await send('account', { state: { ...account, status: 'error' } });
+    const signIn = page.locator('#settings-provider-sign-in');
+    const providerStatus = page.locator('#settings-sign-in p');
+    await send('account', { state: { ...account, aiConfigured: false, aiRestoring: true, status: 'signed-out', user: undefined } });
+    assert.equal(await providerStatus.textContent(), language === 'en' ? 'Verifying account...' : chinese['Verifying account...']);
+    assert.equal(await signIn.isVisible(), false, 'Restoring the account must not offer a second sign-in');
+    await send('account', { state: { ...account, aiConfigured: false, status: 'error' } });
     assert.equal(await page.locator('#settings-sign-in').isVisible(), true, 'A restored but unverified account needs an explanation');
-    assert.equal(await page.locator('#settings-sign-in p').textContent(), language === 'en' ? 'Account verification failed.' : chinese['Account verification failed.']);
-    await page.locator('#settings-provider-sign-in').click();
+    assert.equal(await providerStatus.textContent(), language === 'en' ? 'Account verification failed.' : chinese['Account verification failed.']);
+    assert.equal(await signIn.textContent(), language === 'en' ? 'Retry' : chinese.Retry);
+    await signIn.click();
+    assert.equal(await page.evaluate(() => window.messages.at(-1)?.type), 'retry-system-ai');
+    await send('account-sections', { states: [loaded] });
+    await send('account', { state: { ...account, status: 'checking' } });
+    const content = page.locator('#account-sections');
+    assert.equal(await content.isVisible(), true, 'A verified account keeps its content visible while rechecking');
+    assert.equal(await signIn.isVisible(), false);
+    await send('account', { state: { ...account, status: 'signed-out', user: undefined } });
+    assert.equal(await content.isVisible(), true, 'An active AI-only session does not require a project account');
+    await send('account', { state: { ...account, status: 'expired', aiConfigured: false, user: undefined } });
+    assert.equal(await content.locator('[data-provider]').count(), 0, 'An expired session clears account data');
+    assert.equal(await providerStatus.textContent(), language === 'en' ? 'Sign-in expired. Sign in again.' : chinese['Sign-in expired. Sign in again.']);
+    await signIn.click();
     assert.equal(await page.evaluate(() => window.messages.at(-1)?.type), 'connect-system-ai');
     await category('general').click();
     assert.equal(await input('studio.terminal.name').isEnabled(), true);
-    checks.push(`${language}: unverified account provider fallback`);
+    checks.push(`${language}: provider restores, retries without signing in, retains verified content and handles expiry`);
 
     for (const phase of ['loading', 'uninitialized', 'unregistered']) {
       state = await setup(language, 'provider:plugin', phase === 'unregistered' ? [] : [provider]);

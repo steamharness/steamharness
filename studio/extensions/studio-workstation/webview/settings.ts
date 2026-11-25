@@ -63,7 +63,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <section id="settings-remote-access" class="settings-panel" aria-label="${t('Remote Access')}" hidden></section>
         <section id="settings-sidebar" class="settings-panel" aria-label="${t('Right Sidebar')}" hidden></section>
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
-        <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p>${t('Sign in to view this information.')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
+        <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p role="status">${t('Loading...')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
         <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about"><span class="settings-product-icon codicon codicon-terminal" aria-hidden="true"></span><h2>SteamHarness Studio</h2><p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p><dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd><dt>${t('VS Code version')}</dt><dd id="settings-vscode-version"></dd></dl><button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button></div></section>
         <div id="settings-no-results" class="settings-empty" hidden><p>${t('No matching settings')}</p>${launchpad ? '' : `<p class="muted">${t('Other editor and extension settings are available in settings JSON.')}</p><button type="button" class="secondary" data-settings-action="json-current">${t('Open settings JSON')}</button>`}</div>
       </section>
@@ -416,12 +416,17 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     for (const node of [...sections.children] as HTMLElement[]) {
       node.hidden = searching ? !(snapshot?.providers.find(provider => provider.id === node.dataset.provider)?.title.toLocaleLowerCase().includes(query)) : `provider:${node.dataset.provider}` !== activeSection;
     }
-    const signedIn = !!account?.aiConfigured;
-    const hasProvider = signedIn && [...sections.children].some(node => !(node as HTMLElement).hidden && (node as HTMLElement).dataset.provider);
+    const connected = !!account?.aiConfigured;
+    const hasProvider = connected && [...sections.children].some(node => !(node as HTMLElement).hidden && (node as HTMLElement).dataset.provider);
+    const verifying = !account || account.aiRestoring || account.status === 'checking';
+    const failed = !!(account?.aiRestoreFailed || account?.status === 'error');
     find('settings-sign-in').hidden = hasProvider || !snapshot?.providers.length;
-    find('settings-sign-in').querySelector('p')!.textContent = account?.status === 'checking' || signedIn && account?.status !== 'error'
-      ? t('Loading...') : signedIn ? t('Account verification failed.') : t('Sign in to view this information.');
-    find('settings-provider-sign-in').textContent = account?.aiConfigured ? t('Manage AI account') : t('Sign in to connect System AI');
+    find('settings-sign-in').querySelector('p')!.textContent = verifying ? t('Verifying account...')
+      : failed ? t('Account verification failed.') : connected ? t('Loading...')
+      : account?.status === 'expired' ? t('Sign-in expired. Sign in again.') : t('Sign in to view this information.');
+    const providerAction = find<HTMLButtonElement>('settings-provider-sign-in');
+    providerAction.hidden = !!verifying || connected && !failed;
+    providerAction.textContent = failed ? t('Retry') : t('Sign in to connect System AI');
     sections.hidden = !hasProvider;
     find('settings-title').textContent = searching ? t('Search results') : selected?.label ?? t('General');
     find('settings-no-results').hidden = !searching || matches > 0;
@@ -461,7 +466,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   };
   find('settings-identity').hidden = !platform;
   find('settings-identity').addEventListener('click', openAccount);
-  find('settings-provider-sign-in').addEventListener('click', () => vscode.postMessage({ type: 'connect-system-ai' }));
+  find('settings-provider-sign-in').addEventListener('click', () => vscode.postMessage({ type: account?.aiRestoreFailed || account?.status === 'error' ? 'retry-system-ai' : 'connect-system-ai' }));
   window.addEventListener('message', event => {
     const message = event.data;
     if (models.handle(message)) { return; }
@@ -515,7 +520,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       name.textContent = state.user?.displayName || state.user?.email || 'SteamHarness'; name.title = name.textContent;
       label.textContent = state.user ? state.user.email : t('Signed Out'); label.title = label.textContent;
       updateAvatar(state.user?.avatarUrl);
-      if (!state.user || !['authenticated', 'checking', 'error'].includes(state.status)) { providers = []; sections.replaceChildren(); }
+      if (!state.aiConfigured) { providers = []; sections.replaceChildren(); }
       filter();
     },
   };
