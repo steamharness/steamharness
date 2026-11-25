@@ -58,8 +58,57 @@ test('pairing expires, is single-use, is origin-bound and survives restart only 
 test('configuration fails closed on missing or overlapping remote HTTPS settings', async () => {
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: 'http://studio.example.test' }), /HTTPS/);
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_LAN_ORIGIN: workbenchOrigin }), /LAN_HOST/);
+  await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: previewOrigin }), /PROXY_ORIGIN/);
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin, STEAMHARNESS_STUDIO_WEB_PROXY_PREVIEW_ORIGIN: workbenchOrigin + ':8443' }), /different hostname/);
   await assert.rejects(webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_PORT: '3030' }), /local port range/);
+});
+
+test('a workbench-only proxy requires pairing and leaves registered previews unavailable remotely', { timeout: 10_000 }, async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'sh-workbench-only-'));
+  const upstream = http.createServer((_req, res) => res.end('workbench'));
+  const app = http.createServer((_req, res) => res.end('preview'));
+  let gateway;
+  t.after(async () => {
+    await gateway?.close();
+    await Promise.all([close(upstream), close(app)]);
+    await rm(directory, { recursive: true, force: true });
+  });
+  const [workbench, appPort] = await Promise.all([listen(upstream, '127.0.0.1'), listen(app, '127.0.0.1')]);
+  const localPort = await freePort(), proxyPort = await freePort();
+  const config = await webConfig({ STEAMHARNESS_STUDIO_WEB_PROXY_ORIGIN: workbenchOrigin,
+    STEAMHARNESS_STUDIO_WEB_PROXY_PORT: String(proxyPort) }, String(localPort));
+  gateway = await startGateway({ config, directory, workbench, proof: secret(), stop() {} });
+  const local = `http://127.0.0.1:${localPort}`;
+  const request = (route, headers = {}, body) => new Promise((resolve, reject) => {
+    const req = http.request(`http://127.0.0.1:${proxyPort}${route}`, { method: body ? 'POST' : 'GET', agent: false,
+      headers: { Host: new URL(workbenchOrigin).host, ...(body ? { 'Content-Type': 'application/json', Origin: workbenchOrigin } : {}), ...headers } },
+    res => resolve(new Response(Readable.toWeb(res), { status: res.statusCode, headers: res.headers })));
+    req.on('error', reject); req.end(body ? JSON.stringify(body) : undefined);
+  });
+  const unpaired = await request('/', { Accept: 'text/html' });
+  assert.equal(unpaired.status, 303);
+  assert.equal(unpaired.headers.get('location'), '/pair');
+  assert.equal((await request('/', { Host: `localhost:${proxyPort}` })).status, 403);
+  assert.equal((await request('/', { Host: 'other.example.test' })).status, 403);
+  assert.equal((await request('/', { Origin: 'https://other.example.test' })).status, 403);
+
+  const generated = await fetch(local + endpoint + 'manage', { method: 'POST', headers: { Origin: local, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'generate', origin: workbenchOrigin }) });
+  const { pair } = await generated.json();
+  const paired = await request(endpoint + 'pair', {}, { code: pair.code });
+  assert.equal(paired.status, 200);
+  const setCookie = paired.headers.get('set-cookie');
+  assert.match(setCookie, /; HttpOnly; Secure; SameSite=Strict;/);
+  const cookie = setCookie.split(';')[0];
+  assert.equal(await (await request('/', { Cookie: cookie })).text(), 'workbench');
+
+  const registration = await fetch(`http://127.0.0.1:${gateway.registry.port}/targets`, { method: 'POST',
+    headers: { Authorization: `Bearer ${gateway.registry.key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'register', kind: 'hosted', port: appPort }) });
+  const { id } = JSON.parse(Buffer.from((await registration.body.getReader().read()).value).toString());
+  const preview = await request(endpoint + 'preview', { Cookie: cookie }, { id });
+  assert.equal(preview.status, 404);
+  assert.deepEqual(await preview.json(), { error: 'preview' });
 });
 
 test('the remote listener gates HTTP, upgrades and previews even with a loopback peer', { timeout: 10_000 }, async t => {

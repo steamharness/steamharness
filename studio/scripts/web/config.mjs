@@ -19,9 +19,10 @@ export async function webConfig(env = process.env, localPort) {
         ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error(`${prefix}${key} must be an HTTPS origin without a path or credentials.`);
     return url;
   };
-  const remote = type => {
-    const workbench = parseOrigin(`${type}_ORIGIN`), preview = parseOrigin(`${type}_PREVIEW_ORIGIN`);
-    if (workbench.hostname === preview.hostname) throw new Error(`${prefix}${type}_PREVIEW_ORIGIN must use a different hostname than the workbench.`);
+  const remote = (type, previewOptional = false) => {
+    const workbench = parseOrigin(`${type}_ORIGIN`), previewKey = `${type}_PREVIEW_ORIGIN`;
+    const preview = !previewOptional || get(previewKey) ? parseOrigin(previewKey) : undefined;
+    if (workbench.hostname === preview?.hostname) throw new Error(`${prefix}${previewKey} must use a different hostname than the workbench.`);
     return { workbench, preview };
   };
   const local = portRange(localPort ?? get('LOCAL_PORT') ?? '3030-3040', prefix + 'LOCAL_PORT');
@@ -29,7 +30,7 @@ export async function webConfig(env = process.env, localPort) {
   if (['PROXY_ORIGIN', 'PROXY_PREVIEW_ORIGIN', 'PROXY_PORT'].some(get)) {
     const port = portRange(get('PROXY_PORT') ?? '3041', prefix + 'PROXY_PORT');
     if (port.first !== port.last || port.first >= local.first && port.first <= local.last) throw new Error(`${prefix}PROXY_PORT must be outside the local port range.`);
-    proxy = { ...remote('PROXY'), host: '127.0.0.1', port: port.first };
+    proxy = { ...remote('PROXY', true), host: '127.0.0.1', port: port.first };
   }
   if (['LAN_HOST', 'LAN_ORIGIN', 'LAN_PREVIEW_ORIGIN', 'TLS_CERT_FILE', 'TLS_KEY_FILE'].some(get)) {
     const host = get('LAN_HOST');
