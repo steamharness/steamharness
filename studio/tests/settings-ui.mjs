@@ -65,13 +65,41 @@ try {
         assert.deepEqual(await last('settings-action'), { type: 'settings-action', action: 'notification-settings' });
         await fits();
         await category('general').click();
-        const modelDivider = await category('models').evaluate(button => {
-          const model = button.getBoundingClientRect(), previous = button.previousElementSibling.getBoundingClientRect();
-          const beforePrevious = button.previousElementSibling.previousElementSibling.getBoundingClientRect(), style = getComputedStyle(button);
-          return { usualGap:previous.top+previous.height/2-(beforePrevious.top+beforePrevious.height/2), centerGap:model.top+model.height/2-(previous.top+previous.height/2), border:style.borderTopWidth, borderColor:style.borderTopColor, topRadius:style.borderTopLeftRadius };
-        });
-        if (width > 700) assert.ok(modelDivider.centerGap >= modelDivider.usualGap + 16);
-        assert.equal(modelDivider.border, '1px'); assert.equal(modelDivider.topRadius, '0px'); assert.notEqual(modelDivider.borderColor, 'rgba(0, 0, 0, 0)');
+        if (width > 700) {
+          const modelDivider = await category('models').evaluate(button => {
+            const previous = button.previousElementSibling.getBoundingClientRect();
+            const style = getComputedStyle(button);
+            return { gap: button.getBoundingClientRect().top - previous.bottom, border: style.borderTopWidth, borderColor: style.borderTopColor, topRadius: style.borderTopLeftRadius };
+          });
+          assert.ok(modelDivider.gap >= 16, 'The wide sidebar separates the Models category');
+          assert.equal(modelDivider.border, '1px'); assert.equal(modelDivider.topRadius, '0px'); assert.notEqual(modelDivider.borderColor, 'rgba(0, 0, 0, 0)');
+        } else {
+          const provider = { id: 'system-ai', title: language === 'en' ? 'System AI' : '系统 AI', icon: 'sparkle' };
+          await send('settings', { state: { ...state, remoteAccess: true, providers: [provider] } });
+          const navigation = page.locator('#settings-navigation');
+          const layout = () => navigation.locator('button').evaluateAll(buttons => buttons.map(button => {
+            const { left, right, top, height } = button.getBoundingClientRect();
+            return { section: button.dataset.section, left, top, height, radius: getComputedStyle(button).borderRadius,
+              start: button.firstElementChild.getBoundingClientRect().left - left, end: right - button.lastElementChild.getBoundingClientRect().right };
+          }));
+          const tabs = await layout();
+          await category('models').click();
+          assert.equal(await category('models').getAttribute('aria-current'), 'page');
+          assert.deepEqual(await layout(), tabs, 'Selecting Models does not change the tab layout');
+          for (const [index, tab] of tabs.entries()) {
+            const previous = tabs[index - 1];
+            if (previous && tab.left > previous.left) assert.equal(tab.top, previous.top, `${tab.section} aligns with other tabs on its row`);
+            assert.equal(tab.height, tabs[0].height, `${tab.section} uses the standard compact height`);
+            assert.equal(tab.radius, tabs[0].radius, `${tab.section} uses the standard compact corners`);
+          }
+          assert.ok(tabs.every(tab => Math.abs(tab.start - tab.end) <= 1), 'A wrapped row does not stretch its tabs');
+          if (language === 'zh-cn' && theme === 'dark' && width === 640) {
+            const name = 'settings-navigation-zh-cn-dark-640.png';
+            await navigation.screenshot({ path: path.join(output, name) }); screenshots.push(name);
+          }
+          await send('settings', { state });
+          await category('general').click();
+        }
         const browserKey = 'studio.browser.linkTarget', browserChoice = setting(browserKey);
         assert.match(await browserChoice.innerText(), language === 'en' ? /Built-in browser/ : /内置浏览器/);
         await selectSettingsOption(page, browserChoice, 'external');
@@ -84,7 +112,7 @@ try {
         state = { ...state, items: state.items.map(item => item.key === browserKey ? { ...item, value: 'internal', configured: false } : item) };
         await send('settings-saved', { key: browserKey, target: 'user', state });
         await fits();
-        assert.equal(await page.locator('select').count(), 0, 'Settings must use page menus, including language and scope');
+        assert.equal(await page.locator('#settings-general select, #settings-editor select, #settings-scope select').count(), 0, 'General and editor settings must use page menus, including language and scope');
         await selectSettingsOption(page, setting('workbench.colorTheme'), 'Light');
         assert.equal((await last('settings-update')).value, 'Light');
         await send('settings-saved', { key: 'workbench.colorTheme', target: 'user' });

@@ -21,8 +21,9 @@
 .settings-nav-item:hover { background: var(--vscode-list-hoverBackground); }
 .settings-nav-item[aria-current="page"] { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-button-secondaryBackground)); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); border-color: var(--vscode-contrastActiveBorder, transparent); }
 .settings-nav-item[aria-current="page"] > .codicon { color: inherit; }
-.settings-nav-item[data-section="models"] { margin-top: 16px; border-top: 1px solid var(--vscode-panel-border); border-top-left-radius: 0; border-top-right-radius: 0; }
-.settings-nav-item:last-child { margin-top: 16px; border-top: 1px solid var(--vscode-panel-border); border-top-left-radius: 0; border-top-right-radius: 0; }
+@media (width > 700px) {
+  .settings-nav-item:is([data-section="models"], :last-child) { margin-top: 16px; border-top: 1px solid var(--vscode-panel-border); border-top-left-radius: 0; border-top-right-radius: 0; }
+}
 .settings-sidebar-footer { margin: auto 12px 0; padding-top: 24px; font-size: 10px; color: var(--vscode-descriptionForeground); }
 .settings-main { min-width: 0; min-height: 0; padding: 50px 48px 48px 36px; overflow: auto; scroll-behavior: auto; }
 .settings-page-header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; min-height: 54px; margin-bottom: 30px; }
@@ -131,9 +132,8 @@
   .settings-avatar > .codicon { font-size: 20px; }
   .settings-search input { height: 34px; }
   .settings-search > .codicon { top: 9px; }
-  #settings-navigation { flex-direction: row; flex-wrap: wrap; gap: 4px; }
-  .settings-nav-item { flex: 1 1 auto; width: auto; min-width: 0; min-height: 32px; padding: 6px 8px; gap: 6px; font-size: 12px; }
-  .settings-nav-item:last-child { margin-top: 0; border-top: 1px solid transparent; border-radius: 7px; }
+  #settings-navigation { flex-flow: row wrap; align-items: flex-start; gap: 4px; }
+  .settings-nav-item { flex: 0 1 auto; width: auto; min-width: 0; min-height: 32px; padding: 6px 8px; gap: 6px; font-size: 12px; }
   .settings-nav-item > .codicon { font-size: 14px; }
   .settings-sidebar-footer { display: none; }
   .settings-main { padding: 24px 16px 32px; }
