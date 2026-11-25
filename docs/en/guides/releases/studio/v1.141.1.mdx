@@ -1,0 +1,19 @@
+---
+title: "Studio v1.141.1"
+description: "Release notes for open-source Studio v1.141.1."
+---
+
+# Studio v1.141.1
+
+2026-11-26
+
+#### Added
+
+- The lower-left corner of the launchpad shows the current Studio version. Studio release versions are managed separately from the VS Code API version. {/* note: studio-launchpad-version */}
+- In Project details → Bot management → Credential management, see locally saved credential aliases and types without starting a conversation. Credentials are entered in a native window and are excluded from project and conversation exports. {/* note: native-bot-credential-vault */}
+- Use the project's `package.json` to update its bundled Core and CLI or switch to npm versions. Check the dependency source before updating. {/* note: studio-project-runtime-maintenance */}
+
+#### Fixed
+
+- Release packages include the file icon theme and preserve the original SQLite3 Editor files. Open a `.sqlite`, `.sqlite3`, or `.db` file to browse its tables and schema. {/* note: studio-builtin-editor-assets */}
+- The browser workbench reuses downloaded startup assets, reducing repeat requests when opening or refreshing it. {/* note: studio-web-workbench-startup-cache */}

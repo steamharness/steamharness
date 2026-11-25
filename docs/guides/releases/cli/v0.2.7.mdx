@@ -1,0 +1,16 @@
+---
+title: "CLI v0.2.7"
+description: "CLI v0.2.7 的更新说明。"
+---
+
+# CLI v0.2.7
+
+2026-11-26
+
+#### 变更
+
+- 项目用 `file:` 引用随附的 Core 和 CLI 时，CLI 从两个 `.tgz` 读取版本，不再要求另填 `steamharnessRuntime`。旧版 CLI 仍要求该字段时，先一起更新这两个包再重新构建。 {/* note: bundled-runtime-version-from-archives */}
+
+#### 修复
+
+- 同一条 Bot 会话中的凭据审批和结果按当前运行处理；切换会话不会把旧请求交给另一条会话。 {/* note: bot-credential-session-scope */}

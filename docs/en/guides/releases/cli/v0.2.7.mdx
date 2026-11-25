@@ -1,0 +1,16 @@
+---
+title: "CLI v0.2.7"
+description: "Release notes for CLI v0.2.7."
+---
+
+# CLI v0.2.7
+
+2026-11-26
+
+#### Changed
+
+- When a project references bundled Core and CLI packages with `file:`, the CLI reads their versions from the two `.tgz` files. You no longer need to set `steamharnessRuntime`. If an older CLI still requires it, update both packages before rebuilding. {/* note: bundled-runtime-version-from-archives */}
+
+#### Fixed
+
+- Credential approvals and results stay with the active run in the original Bot conversation. Switching conversations does not forward a pending request to a different one. {/* note: bot-credential-session-scope */}

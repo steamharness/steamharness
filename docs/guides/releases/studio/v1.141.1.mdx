@@ -1,0 +1,19 @@
+---
+title: "Studio v1.141.1"
+description: "开源 Studio v1.141.1 的更新说明。"
+---
+
+# Studio v1.141.1
+
+2026-11-26
+
+#### 新增
+
+- 启动台左下角显示当前 Studio 版本。Studio 的发行号与 VS Code API 版本分别管理。 {/* note: studio-launchpad-version */}
+- 在「项目详情 → Bot 管理 → 凭据管理」可查看本机已保存的凭据别名和类型，无需先启动对话。凭据由原生窗口录入，不随项目或对话导出。 {/* note: native-bot-credential-vault */}
+- 从项目的 `package.json` 可以更新随项目保存的 Core 和 CLI，也可以切换到 npm 版本。更新前请确认项目使用的依赖来源。 {/* note: studio-project-runtime-maintenance */}
+
+#### 修复
+
+- 发行包随附文件图标主题，并保留 SQLite3 Editor 的原始扩展文件。打开 `.sqlite`、`.sqlite3` 或 `.db` 文件时可直接查看表和结构。 {/* note: studio-builtin-editor-assets */}
+- 浏览器工作站复用已下载的启动资源，打开和刷新时减少重复请求。 {/* note: studio-web-workbench-startup-cache */}
