@@ -13,6 +13,7 @@ export interface UsageJob {
   uri: string;
   part: UsagePart;
   storage: string;
+  expectedProjectId?: string;
   managed?: ManagedUsageTarget;
 }
 
@@ -190,13 +191,18 @@ async function readDatabase<T>(base: string, file: string, missing: T, query: (d
 
 const isIn = (relative: string, directory: string) => relative.startsWith(directory + path.sep);
 const baseName = (file: string) => file.replace(/-(?:wal|shm|journal)$/, '');
-const history = path.join('runtime', 'history.sqlite');
-const agents = path.join('runtime', 'agents');
-const memories = path.join('runtime', 'memories');
-const scopedMemories = path.join('runtime', 'memories-by-directory');
+const runtime = 'runtime';
+const history = path.join(runtime, 'history.sqlite');
+const agents = path.join(runtime, 'agents');
+const memories = path.join(runtime, 'memories');
+const scopedMemories = path.join(runtime, 'memories-by-directory');
+const historyFolders = [agents, 'files', 'conversation-imports'];
+const isHistoryFile = (relative: string) => baseName(relative) === history ||
+  historyFolders.some(folder => relative === folder || isIn(relative, folder));
 
 interface EntryFiles {
   entry: ProjectEntry;
+  declared: boolean;
   history: Footprint;
   memory: Footprint;
   memories: Map<string, 'primary' | 'scoped' | undefined>;
@@ -222,14 +228,14 @@ async function visitChildren(storage: string, directory: string, deadline: numbe
   } catch { incomplete(); }
 }
 
-async function storageOwner(storage: string, directory: string): Promise<{ projectId: string; entryId: string; projectType: string } | undefined> {
+async function storageOwner(storage: string, directory: string): Promise<{ projectId: string; entryId: string; projectType: ProjectEntry['type'] } | undefined> {
   const filename = path.join(directory, 'project.json');
   const info = await beneath(storage, filename);
   if (!info) return;
   if (!info.isFile() || info.size > 4096) throw new Error('Invalid runtime identity');
   const value = JSON.parse(await readFile(filename, 'utf8'));
   if (value?.version !== 1 || typeof value.projectId !== 'string' || !PROJECT_UUID_PATTERN.test(value.projectId) || !isProjectEntryId(value.entryId) ||
-    !['bot', 'workflow', 'kanban'].includes(value.projectType)) {
+    (value.projectType !== 'bot' && value.projectType !== 'workflow' && value.projectType !== 'kanban')) {
     throw new Error('Invalid runtime identity');
   }
   return { projectId: value.projectId.toLowerCase(), entryId: value.entryId, projectType: value.projectType };
@@ -243,10 +249,11 @@ async function measureHistory(storage: string, directory: string, target: EntryF
     const file = path.join(directory, history);
     if (type === 'bot') {
       const counts = await readDatabase(storage, file, { sessions: 0, messages: 0 } as { sessions: number; messages?: number }, db => {
-        const row = db.prepare(`SELECT count(*) AS sessions,
-          sum(CASE WHEN json_type(record, '$.messages') = 'array' THEN json_array_length(record, '$.messages') END) AS messages,
-          count(CASE WHEN json_type(record, '$.messages') = 'array' THEN 1 END) AS valid
-          FROM history WHERE kind='conversation' AND deleted=0`).get()!;
+        const row = db.prepare(`SELECT count(*) AS sessions, sum(messages) AS messages, count(messages) AS valid FROM (
+          SELECT CASE WHEN json_valid(record) THEN CASE WHEN json_type(record, '$.messages') = 'array'
+            THEN json_array_length(record, '$.messages') END END AS messages
+          FROM history WHERE kind='conversation' AND deleted=0
+        )`).get()!;
         return { sessions: Number(row.sessions), messages: row.valid === row.sessions ? Number(row.messages ?? 0) : undefined };
       }, target.historyDatabases);
       target.sessions = sumCount(target.sessions, counts.sessions);
@@ -254,9 +261,14 @@ async function measureHistory(storage: string, directory: string, target: EntryF
       return counts.sessions > 0;
     }
     const counts = await readDatabase(storage, file, { runs: 0 } as { runs: number; lastRunAt?: number }, db => {
-      const row = db.prepare("SELECT count(*) AS runs, max(json_extract(record, '$.state.createdAt')) AS lastRunAt FROM history WHERE kind='run' AND deleted=0").get()!;
+      const row = db.prepare(`SELECT count(*) AS runs, max(CASE WHEN stamp > 0 AND stamp <= 8.64e15
+        THEN stamp END) AS lastRunAt FROM (
+          SELECT CASE WHEN json_valid(record) THEN CASE WHEN json_type(record, '$.state.createdAt') IN ('integer','real')
+            THEN json_extract(record, '$.state.createdAt') END END AS stamp
+          FROM history WHERE kind='run' AND deleted=0
+        )`).get()!;
       const stamp = row.lastRunAt;
-      return { runs: Number(row.runs), ...(typeof stamp === 'number' && stamp > 0 && stamp < 8.64e15 && { lastRunAt: stamp }) };
+      return { runs: Number(row.runs), ...(typeof stamp === 'number' && { lastRunAt: stamp }) };
     }, target.historyDatabases);
     target.runs = sumCount(target.runs, counts.runs);
     if (counts.lastRunAt) target.lastRunAt = Math.max(target.lastRunAt ?? 0, counts.lastRunAt);
@@ -268,17 +280,27 @@ async function measureHistory(storage: string, directory: string, target: EntryF
 }
 
 async function measureRuntime(storage: string, projectId: string, entries: readonly ProjectEntry[], deadline: number, instanceId?: string) {
-  if (!PROJECT_UUID_PATTERN.test(projectId) || instanceId && !PROJECT_UUID_PATTERN.test(instanceId)) throw new Error('Invalid usage identity');
+  if (!PROJECT_UUID_PATTERN.test(projectId) || instanceId !== undefined && !PROJECT_UUID_PATTERN.test(instanceId)) throw new Error('Invalid usage identity');
   const total = new Footprint(), locations = new Set<string>();
-  const targets = new Map(entries.map((entry): [string, EntryFiles] => [entry.entryId, {
-    entry, history: new Footprint(), memory: new Footprint(), memories: new Map(), historyDatabases: new Set(), sessions: 0, messages: 0, runs: 0,
-  }]));
-  const botStores = new Map([...targets.values()].filter(target => target.entry.type === 'bot').map(target => [
+  const declaredEntries = new Map(entries.map(entry => [entry.entryId, entry]));
+  const targets = new Map<string, EntryFiles>(), botStores = new Map<string, EntryFiles>();
+  const targetFor = (entryId: string, type: ProjectEntry['type']): EntryFiles => {
+    const key = `${entryId}:${type}`, existing = targets.get(key);
+    if (existing) return existing;
+    const current = declaredEntries.get(entryId);
+    const declared = current?.type === type;
+    const entry = declared ? current : { entryId, type, name: current?.name ?? entryId, root: '.', entry: '' };
+    const target: EntryFiles = { entry, declared, history: new Footprint(), memory: new Footprint(), memories: new Map(),
+      historyDatabases: new Set(), sessions: 0, messages: 0, runs: 0 };
+    targets.set(key, target);
     // Core scopes each memory DB by project and entry, even inside a folder Bot.
-    `${createHash('sha256').update(JSON.stringify([projectId, target.entry.entryId])).digest('hex')}.sqlite`, target,
-  ]));
+    if (type === 'bot') botStores.set(`${createHash('sha256').update(JSON.stringify([projectId, entryId])).digest('hex')}.sqlite`, target);
+    return target;
+  };
+  for (const entry of entries) targetFor(entry.entryId, entry.type);
   const incomplete = () => { total.partial = true; };
   let discoveryIncomplete = false;
+  let unclassified = false;
   const missingScope = () => { discoveryIncomplete = true; incomplete(); };
   const unknown = (target: EntryFiles) => {
     target.history.partial = target.memory.partial = true;
@@ -302,7 +324,7 @@ async function measureRuntime(storage: string, projectId: string, entries: reado
     // both record kinds if unambiguous, but assign the physical files only once.
     if (shared) for (const type of ['bot', 'workflow']) {
       if (type === owner.entry.type) continue;
-      const peers = [...targets.values()].filter(target => target.entry.type === type);
+      const peers = [...targets.values()].filter(target => target.declared && target.entry.type === type);
       if (peers.length !== 1) continue;
       const [peer] = peers;
       affected.push(peer);
@@ -316,18 +338,19 @@ async function measureRuntime(storage: string, projectId: string, entries: reado
     await scan(directory, deadline, {
       file(relative, info) {
         total.add(info); locations.add(location);
-        if (baseName(relative) === history || isIn(relative, agents) || isIn(relative, 'files') || isIn(relative, 'conversation-imports')) {
-          usageOwner.history.add(info);
-        }
+        if (isHistoryFile(relative)) usageOwner.history.add(info);
         const target = memoryOwner(relative);
         if (target) rememberMemory(target, path.join(directory, relative), info, path.dirname(relative) === memories ? 'primary' : 'scoped');
       },
       link(relative) {
         const target = memoryOwner(relative);
         if (target) { target.memory.partial = true; incomplete(); }
-        else if ((shared ? botStores.size > 0 : owner.entry.type === 'bot') &&
-          (relative === memories || relative === scopedMemories || isIn(relative, scopedMemories))) {
-          for (const item of shared ? botStores.values() : [owner]) item.memory.partial = true;
+        else if (relative === runtime || relative === memories || relative === scopedMemories || isIn(relative, scopedMemories)) {
+          if (shared && botStores.size) missingMemory();
+          else if (owner.entry.type === 'bot') { owner.memory.partial = true; incomplete(); }
+        }
+        if (relative === runtime || isHistoryFile(relative)) {
+          usageOwner.history.partial = true;
           incomplete();
         }
       },
@@ -343,10 +366,25 @@ async function measureRuntime(storage: string, projectId: string, entries: reado
     for (const root of [base, path.join(base, 'release')]) {
       const project = path.join(root, 'projects', projectId), parent = path.join(project, 'entries');
       await visitChildren(storage, parent, deadline, missingScope, async child => {
-        const owner = targets.get(child.name);
-        if (!owner || folderBot && owner.entry.type !== 'bot') return;
-        if (!child.isDirectory()) { unknown(owner); return; }
-        await measure(path.join(parent, child.name), project, owner);
+        if (!isProjectEntryId(child.name)) return;
+        const current = declaredEntries.get(child.name);
+        const fallback = current && (!folderBot || current.type === 'bot') ? targetFor(current.entryId, current.type) : undefined;
+        if (instanceId !== undefined && !fallback) return;
+        if (!child.isDirectory()) { if (fallback) unknown(fallback); return; }
+        const directory = path.join(parent, child.name);
+        let identity: Awaited<ReturnType<typeof storageOwner>>;
+        try { identity = await storageOwner(storage, directory); } catch { incomplete(); }
+        if (identity && (identity.projectId !== projectId || identity.entryId !== child.name)) return;
+        if (folderBot && identity && identity.projectType !== 'bot') return;
+        const owner = identity ? targetFor(identity.entryId, identity.projectType) : fallback;
+        if (owner) await measure(directory, project, owner);
+        else {
+          // The conventional path proves project ownership even if an older writer
+          // left no entry type. Include the bytes without inventing a history count.
+          await scan(directory, deadline, {
+            file(_, info) { total.add(info); locations.add(project); unclassified = true; }, incomplete,
+          });
+        }
       });
     }
   };
@@ -354,21 +392,26 @@ async function measureRuntime(storage: string, projectId: string, entries: reado
   if (instanceId) await namespace(path.join(folderBots, instanceId.toLowerCase()), true);
   else {
     await namespace(storage, false);
-    if (botStores.size) await visitChildren(storage, folderBots, deadline, missingScope, async child => {
+    await visitChildren(storage, folderBots, deadline, missingScope, async child => {
       if (child.name === child.name.toLowerCase() && PROJECT_UUID_PATTERN.test(child.name) && child.isDirectory()) {
         await namespace(path.join(folderBots, child.name), true);
       }
     });
+    const workdirs: { directory: string; owner?: EntryFiles }[] = [];
     await visitChildren(storage, storage, deadline, missingScope, async child => {
       if (!/^[a-f0-9]{24}$/.test(child.name) || !child.isDirectory()) return;
       const directory = path.join(storage, child.name);
       let identity: Awaited<ReturnType<typeof storageOwner>>;
       try { identity = await storageOwner(storage, directory); } catch { incomplete(); return; }
       if (identity && identity.projectId !== projectId) return;
-      const owner = identity && targets.get(identity.entryId);
-      if (owner && identity?.projectType === owner.entry.type) {
-        await measure(directory, directory, owner, true);
-      } else if (botStores.size) {
+      workdirs.push({ directory, owner: identity && targetFor(identity.entryId, identity.projectType) });
+    });
+    // Index the saved entry identities before reading memories so that a retired
+    // Bot's memory-only workdir can be read regardless of directory order.
+    for (const { directory, owner } of workdirs) {
+      if (performance.now() >= deadline) { missingScope(); break; }
+      if (owner) await measure(directory, directory, owner, true);
+      else if (botStores.size) {
         // An assistant can write memory for another workspace root without opening a
         // project there. Only the exact project/entry memory store belongs to this project.
         const memoryDirectory = path.join(directory, memories);
@@ -383,10 +426,10 @@ async function measureRuntime(storage: string, projectId: string, entries: reado
           } catch { target.memory.partial = true; incomplete(); }
         });
       }
-    });
+    }
   }
   if (discoveryIncomplete) for (const target of targets.values()) unknown(target);
-  return { targets, total, location: locations.size === 1 ? locations.values().next().value : undefined };
+  return { targets, total, unclassified, location: locations.size === 1 ? locations.values().next().value : undefined };
 }
 
 async function memoryUsage(storage: string, projectId: string, target: EntryFiles, deadline: number) {
@@ -413,6 +456,7 @@ async function runtimeUsage(workdir: string, job: UsageJob, deadline: number): P
   const source = target ? target.projectDirectory && await realpath(target.projectDirectory) : workdir;
   const declaration = source ? await manifest(source) : undefined;
   const projectId = declaration?.projectId ?? target?.projectId?.toLowerCase();
+  if (job.expectedProjectId && job.expectedProjectId !== projectId) throw new Error('Project identity changed');
   if (!projectId) return { state: 'not-project', size: empty, entries: [] };
   let entries: readonly ProjectEntry[] = declaration?.entries ?? [];
   if (target) {
@@ -423,23 +467,23 @@ async function runtimeUsage(workdir: string, job: UsageJob, deadline: number): P
     if (entries.length !== 1) throw new Error('Bot entry changed');
   }
   const storage = await realpath(job.storage).catch(error => { if (absent(error)) return path.resolve(job.storage); throw error; });
-  const { targets, total, location } = await measureRuntime(storage, projectId, entries, deadline, target?.instanceId);
+  const { targets, total, unclassified, location } = await measureRuntime(storage, projectId, entries, deadline, target?.instanceId);
   const results: EntryUsage[] = [];
   for (const data of targets.values()) {
-    const { entry, sessions, messages, runs, lastRunAt } = data;
+    const { entry, declared, sessions, messages, runs, lastRunAt } = data;
     const identity = { entryId: entry.entryId, name: entry.name };
     const size = data.history.size();
     if (entry.type === 'bot') results.push({ ...identity, type: 'bot', conversation: { ...size, sessions, messages },
       memory: await memoryUsage(storage, projectId, data, deadline) });
     else if (entry.type === 'workflow') results.push({ ...identity, type: 'workflow', workflow: { ...size, runs, lastRunAt } });
-    else results.push({ ...identity, type: 'kanban', kanban: entry.webApp ? { state: 'hosted' }
+    else if (declared) results.push({ ...identity, type: 'kanban', kanban: entry.webApp ? { state: 'hosted' }
       : source && performance.now() < deadline ? await kanbanUsage(source, entry, entries, deadline) : unavailable });
   }
   const incomplete = results.some(entry => entry.type === 'bot' ? entry.conversation.state !== 'ok' || entry.memory.state !== 'ok' ||
     entry.conversation.sessions === undefined || entry.conversation.messages === undefined || entry.memory.records === undefined
     : entry.type === 'workflow' ? entry.workflow.state !== 'ok' || entry.workflow.runs === undefined
       : entry.kanban.state === 'partial' || entry.kanban.state === 'unavailable');
-  return { state: total.partial || incomplete ? 'partial' : 'ok', size: total.size(), ...(location && { location }), entries: results };
+  return { state: total.partial || unclassified || incomplete ? 'partial' : 'ok', size: total.size(), ...(location && { location }), entries: results };
 }
 
 export async function readProjectUsage(job: UsageJob, budgetMs = 25_000): Promise<ProjectUsageSnapshot> {

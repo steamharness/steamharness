@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { PROJECT_UUID_PATTERN } from '@steamharness/project-manifest';
 import type { ManagedUsageTarget, ProjectUsageSnapshot, UsagePart } from './project-usage-types';
 import type { UsageJob } from './project-usage-reader';
 
@@ -9,6 +10,7 @@ interface Task {
   uri: string;
   part: UsagePart;
   managed: boolean;
+  expectedProjectId?: string;
   controller: AbortController;
   readers: Map<string, (result: ProjectUsageSnapshot | undefined) => void>;
 }
@@ -34,12 +36,15 @@ export class ProjectUsageService {
       const url = new URL(uri);
       if (url.protocol !== 'file:' || url.host || url.search || url.hash || !path.isAbsolute(fileURLToPath(url))) return;
     } catch { return; }
-    const key = JSON.stringify([uri, part, managed === true, typeof identity === 'string' ? identity.slice(0, 128) : '']);
+    const targetIdentity = typeof identity === 'string' ? identity.slice(0, 128) : '';
+    const key = JSON.stringify([uri, part, managed === true, targetIdentity]);
     let task = this.tasks.get(key);
     if (!task) {
       const cached = this.cache.get(key);
       if (managed !== true && refresh !== true && cached && Date.now() - cached.measuredAt < 20_000) return Promise.resolve(cached);
-      task = { key, uri, part, managed: managed === true, controller: new AbortController(), readers: new Map() };
+      const projectId = targetIdentity.split(':', 1)[0];
+      const expectedProjectId = PROJECT_UUID_PATTERN.test(projectId) ? projectId.toLowerCase() : undefined;
+      task = { key, uri, part, managed: managed === true, expectedProjectId, controller: new AbortController(), readers: new Map() };
       this.tasks.set(key, task);
       this.queued.add(task);
     }
@@ -93,7 +98,7 @@ export class ProjectUsageService {
         .finally(() => signal.removeEventListener('abort', abort));
     }) : undefined;
     if (signal.aborted || (task.managed && !managed)) return;
-    const data: UsageJob = { uri: task.uri, part: task.part, managed, storage: this.storage };
+    const data: UsageJob = { uri: task.uri, part: task.part, managed, storage: this.storage, expectedProjectId: task.expectedProjectId };
     return new Promise(resolve => {
       const worker = new Worker(this.workerFile, { workerData: data, execArgv: [], name: 'Studio project usage' });
       let finished = false;

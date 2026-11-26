@@ -43,14 +43,16 @@ const declare = (directory, entries) => write(path.join(directory, 'steamharness
 const data = (storage, entryId, prefix = []) => path.join(storage, ...prefix, 'projects', projectId, 'entries', entryId);
 const memoryName = (id = projectId, entryId = 'agent') => createHash('sha256').update(JSON.stringify([id, entryId])).digest('hex') + '.sqlite';
 const memoryPath = (directory, id, entryId) => path.join(directory, 'runtime', 'memories', memoryName(id, entryId));
+const register = (directory, entryId, projectType, id = projectId) => write(path.join(directory, 'project.json'),
+  JSON.stringify({ version: 1, projectId: id, entryId, projectType }));
 
-async function putMemory(file, count) {
+async function putMemory(file, count, entryId = 'agent') {
   await mkdir(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   try {
     db.exec('CREATE TABLE bot_memories(project_id TEXT, entry_id TEXT)');
     const insert = db.prepare('INSERT INTO bot_memories VALUES (?, ?)');
-    for (let i = 0; i < count; i++) insert.run(projectId, 'agent');
+    for (let i = 0; i < count; i++) insert.run(projectId, entryId);
     insert.run(projectId, 'other');
     insert.run(unrelatedId, 'agent');
   } finally { db.close(); }
@@ -134,6 +136,30 @@ test('corrupt, linked, or busy history never looks like an empty history', async
   assert.equal((await f.read('runtime')).usage.entries[0].conversation.sessions, undefined);
 });
 
+test('bad history records do not hide readable session and run counts or a valid last-run timestamp', async t => {
+  const f = await fixture(t);
+  await declare(f.project, [bot, workflow]);
+  const conversations = await history(data(f.storage, 'agent'), [
+    ['conversation', { messages: [{}, {}] }], ['conversation', {}],
+  ]);
+  conversations.db.exec("UPDATE history SET record='not valid JSON' WHERE key='1'");
+  conversations.db.close();
+  const workflowHistory = await history(data(f.storage, 'task'), [
+    ['run', { state: { createdAt: timestamp } }], ['run', { state: { createdAt: 'not a timestamp' } }],
+    ['run', {}], ['run', { state: { createdAt: 9e15 } }],
+  ]);
+  workflowHistory.db.exec("UPDATE history SET record='not valid JSON' WHERE key='2'");
+  workflowHistory.db.close();
+
+  const { usage } = await f.read('runtime');
+  assert.equal(usage.state, 'partial');
+  const [agent, task] = usage.entries;
+  assert.equal(agent.conversation.sessions, 2);
+  assert.equal(agent.conversation.messages, undefined);
+  assert.equal(task.workflow.runs, 4);
+  assert.equal(task.workflow.lastRunAt, timestamp);
+});
+
 test('folder Bot memory usage includes the scoped stores but does not read other instances', async t => {
   const f = await fixture(t);
   await declare(f.project, [{ ...bot, folderContext: true }]);
@@ -196,22 +222,57 @@ test('project usage combines source, release and folder Bot records while an ins
   assert.equal(states[4].usage.location, path.dirname(path.dirname(data(f.storage, 'agent', ['folder-bots', instance2, 'release']))));
 });
 
+test('saved entry identities preserve retired histories and distinguish old versions of an entry with a new type', async t => {
+  const f = await fixture(t);
+  await declare(f.project, [bot]);
+  const current = data(f.storage, 'agent'), oldWorkflow = data(f.storage, 'agent', ['release']);
+  const oldBot = data(f.storage, 'retired', ['folder-bots', instance1]);
+  const wrongOwner = data(f.storage, 'foreign', ['release']);
+  await register(oldWorkflow, 'agent', 'workflow');
+  await register(oldBot, 'retired', 'bot');
+  await register(wrongOwner, 'foreign', 'bot', unrelatedId);
+  (await history(current, [['conversation', { messages: [{}, {}] }]])).db.close();
+  (await history(oldWorkflow, [['run', { state: { createdAt: timestamp } }]])).db.close();
+  (await history(oldBot, [['conversation', { messages: [{}, {}, {}] }]])).db.close();
+  (await history(wrongOwner, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
+  await putMemory(memoryPath(oldBot, projectId, 'retired'), 1, 'retired');
+
+  const { usage } = await f.read('runtime');
+  assert.equal(usage.state, 'ok');
+  assert.equal(usage.entries.length, 3);
+  assert.equal(usage.entries[0].conversation.messages, 2);
+  const workflow = usage.entries.find(entry => entry.type === 'workflow');
+  assert.equal(workflow.entryId, 'agent');
+  assert.equal(workflow.workflow.runs, 1);
+  const retired = usage.entries.find(entry => entry.entryId === 'retired');
+  assert.equal(retired.conversation.messages, 3);
+  assert.equal(retired.memory.records, 1);
+  assert.ok(usage.size.bytes >= retired.conversation.bytes + retired.memory.bytes + workflow.workflow.bytes);
+
+  const managed = { instanceId: instance1, directory: f.project, projectId, entryId: 'agent', name: 'Folder Bot', projectDirectory: f.project };
+  assert.deepEqual((await f.read('runtime', { managed })).usage.entries.map(row => [row.entryId, row.conversation.sessions]), [['agent', 0]]);
+
+  const legacy = await history(data(f.storage, 'unmarked'), [['run', { state: { createdAt: timestamp } }]]);
+  legacy.db.close();
+  const partial = (await f.read('runtime')).usage;
+  assert.equal(partial.state, 'partial');
+  assert.deepEqual(partial.size, { state: 'ok', bytes: usage.size.bytes + (await stat(legacy.file)).size });
+  assert.equal(partial.entries.length, 3);
+});
+
 test('measures assistant histories across workdirs and exact memory-only scopes without mixing projects or accounts', async t => {
   const f = await fixture(t);
   await declare(f.project, [bot, workflow]);
   function hashed(storage, workdir, id = projectId) {
     return path.join(storage, createHash('sha256').update(`assistant:${id}:${workdir}`).digest('hex').slice(0, 24));
   }
-  async function registered(directory, entry, id = projectId) {
-    await write(path.join(directory, 'project.json'), JSON.stringify({ version: 1, projectId: id, entryId: entry.entryId, projectType: entry.type }));
-  }
   const first = hashed(f.storage, f.project), second = hashed(f.storage, path.join(f.root, 'a closed workdir'));
-  await registered(first, bot, projectId.toUpperCase());
+  await register(first, bot.entryId, bot.type, projectId.toUpperCase());
   const firstHistory = await history(first, [['conversation', { messages: [{}, {}] }], ['conversation', { messages: [{}] }, 1]]);
   firstHistory.db.close();
   const firstMemory = await putMemory(memoryPath(first), 2);
   // Studio Control and the Bot can write different record kinds under the same assistant workdir.
-  await registered(second, workflow);
+  await register(second, workflow.entryId, workflow.type);
   const secondHistory = await history(second, [['conversation', { messages: [{}, {}, {}] }],
     ['run', { state: { createdAt: timestamp } }], ['run', { state: { createdAt: timestamp + 500 } }, 1]]);
   secondHistory.db.close();
@@ -221,11 +282,11 @@ test('measures assistant histories across workdirs and exact memory-only scopes 
   // Without a project marker, only the exact scoped memory file can be attributed, not arbitrary history.
   (await history(memoryOnly, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
   const otherProject = hashed(f.storage, f.project, unrelatedId);
-  await registered(otherProject, bot, unrelatedId);
+  await register(otherProject, bot.entryId, bot.type, unrelatedId);
   (await history(otherProject, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
   await putMemory(memoryPath(otherProject), 20);
   const otherAccount = hashed(path.join(f.root, 'other-account', 'runs'), f.project);
-  await registered(otherAccount, bot);
+  await register(otherAccount, bot.entryId, bot.type);
   (await history(otherAccount, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
   await symlink(otherAccount, path.join(f.storage, 'f'.repeat(24)), 'junction');
 
@@ -239,6 +300,24 @@ test('measures assistant histories across workdirs and exact memory-only scopes 
   assert.equal(agent.conversation.bytes + task.workflow.bytes, (await stat(firstHistory.file)).size + (await stat(secondHistory.file)).size);
   assert.equal(usage.size.bytes, agent.conversation.bytes + task.workflow.bytes + agent.memory.bytes +
     (await stat(path.join(first, 'project.json'))).size + (await stat(path.join(second, 'project.json'))).size);
+});
+
+test('resolves a retired workdir Bot before attributing its separate memory-only directory', async t => {
+  const f = await fixture(t);
+  await declare(f.project, [workflow]);
+  const memoryOnly = path.join(f.storage, '1'.repeat(24));
+  const priorWorkdir = path.join(f.storage, 'f'.repeat(24));
+  const entryId = 'retired';
+  const bytes = await putMemory(memoryPath(memoryOnly, projectId, entryId), 1, entryId);
+  await register(priorWorkdir, entryId, 'bot');
+  (await history(priorWorkdir, [['conversation', { messages: [{}] }]])).db.close();
+
+  const { usage } = await f.read('runtime');
+  assert.equal(usage.state, 'ok');
+  const retired = usage.entries.find(entry => entry.entryId === entryId);
+  assert.equal(retired.conversation.messages, 1);
+  assert.equal(retired.memory.records, 1);
+  assert.equal(retired.memory.bytes, bytes);
 });
 
 test('does not count the same cold history or memory database twice across runtime roots', async t => {
@@ -272,6 +351,12 @@ test('an unreadable scope or linked memory database is not reported as empty', a
   assert.equal(linked.usage.state, 'partial');
   assert.equal(linked.usage.entries[0].memory.created, undefined);
   assert.equal(linked.usage.entries[0].memory.records, undefined);
+  await rm(path.join(local, 'runtime'), { recursive: true });
+  await symlink(path.join(outside, 'runtime'), path.join(local, 'runtime'), 'junction');
+  const linkedRuntime = await f.read('runtime');
+  assert.equal(linkedRuntime.usage.state, 'partial');
+  assert.equal(linkedRuntime.usage.entries[0].memory.created, undefined);
+  assert.equal(linkedRuntime.usage.entries[0].memory.records, undefined);
   const timedOut = await readProjectUsage({ uri: f.uri, storage: f.storage, part: 'runtime' }, 0);
   assert.equal(timedOut.usage.state, 'partial');
   assert.equal(timedOut.usage.entries[0].conversation.sessions, undefined);
@@ -293,4 +378,9 @@ test('worker service shares measurements, isolates cancellation and honors expli
   assert.equal((await request('refreshed', { refresh: true })).usage.bytes, 3);
   assert.equal(request('remote', { uri: 'file://remote.invalid/folder' }), undefined);
   assert.equal(request('non-file', { uri: 'vscode-remote://remote/project' }), undefined);
+
+  await declare(f.project, [bot]);
+  const usage = (id, identity) => service.request({ id, uri: f.uri, part: 'runtime', identity, refresh: true });
+  assert.equal((await usage('matching', `${projectId}:source`)).usage.state, 'ok');
+  assert.equal((await usage('stale', `${unrelatedId}:release`)).usage.state, 'unavailable');
 });
