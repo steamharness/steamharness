@@ -26,11 +26,11 @@ export class Controller {
   private outputFailure?: Error;
   private eventSave?: ReturnType<typeof setTimeout>;
 
-  constructor(readonly project: Project, private readonly runtime: Runtime, saved: Partial<WorkspaceContract>, private readonly options: Options) {
+  constructor(readonly project: Project, private readonly runtime: Runtime, saved: Partial<WorkspaceContract>, private readonly options: Options, observing = false) {
     this.workspace = { version: 1, runs: [], drafts: {}, ...saved };
     for (const record of this.workspace.runs) {
       delete record.submittingInput;
-      if (record.status === 'running' || record.status === 'waiting_for_input') {
+      if (!observing && (record.status === 'running' || record.status === 'waiting_for_input')) {
         record.status = record.schedule && record.pendingInput ? 'waiting_for_input' : 'interrupted';
         if (record.status === 'interrupted') record.error = t("Run interrupted");
         this.clearTimers(record);
@@ -41,9 +41,10 @@ export class Controller {
     if (!this.workspace.runs.some(record => record.id === this.workspace.selectedId)) { delete this.workspace.selectedId; }
   }
 
-  replace(saved: Partial<WorkspaceContract>): void {
+  replace(saved: Partial<WorkspaceContract>, options?: { observing?: boolean; preserveSelection?: boolean }): void {
     if (this.task) throw new Error('Stop executions before replacing workflow history.');
-    const restored = new Controller(this.project, this.runtime, saved, this.options);
+    const restored = new Controller(this.project, this.runtime, options?.preserveSelection ? { ...saved, selectedId: this.workspace.selectedId } : saved,
+      this.options, options?.observing);
     for (const key of Object.keys(this.workspace)) delete (this.workspace as unknown as Record<string, unknown>)[key];
     Object.assign(this.workspace, restored.workspace);
   }
@@ -65,9 +66,10 @@ export class Controller {
       void this.persist().catch(error => this.options.log(String(error)));
     }, 100);
   }
-  async select(id?: string): Promise<void> {
+  async select(id?: string, persist = true): Promise<void> {
     if (id && !this.runs.some(record => record.id === id)) { throw new Error('Run no longer exists.'); }
-    this.workspace.selectedId = id; this.changed(); await this.persist();
+    this.workspace.selectedId = id; this.changed();
+    if (persist) await this.persist();
   }
   async updateDraft(entrypointId: string | undefined, draft: Partial<Omit<Draft, 'scopeId'>>): Promise<void> {
     Object.assign(this.draft(entrypointId), draft); this.changed(); await this.persist();
@@ -229,6 +231,7 @@ export class Controller {
       delete record.submittingInput;
       if (!record.pendingInput || this.disposed) { delete this.workspace.occupiedId; }
       if (record.status !== 'running') { this.clearTimers(record); }
+      clearTimeout(this.eventSave); this.eventSave = undefined;
       record.updatedAt = Date.now(); this.task = undefined; this.changed(); await this.persist();
     }
   }

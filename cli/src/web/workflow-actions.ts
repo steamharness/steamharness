@@ -6,7 +6,7 @@ import {
 } from './workflow-types';
 
 type Message = Record<string, any>;
-export function createProjectActions(controller: Controller, runtime: Runtime, project: Project, revision: () => number, changed: () => void) {
+export function createProjectActions(controller: Controller, runtime: Runtime, project: Project, revision: () => number, changed: () => void, localSelection = false) {
   const states = new Map<string, Record<string, ParamState>>();
   const epochs = new Map<string, number>();
   let limit = 30, query = '';
@@ -68,7 +68,7 @@ export function createProjectActions(controller: Controller, runtime: Runtime, p
           if (query !== nextQuery || !message.more) { limit = 30; } else { limit = Math.min(limit + 30, 30_000); }
           query = nextQuery; changed(); break;
         }
-        case 'workflow-select': await controller.select(message.id ? String(message.id) : undefined); break;
+        case 'workflow-select': await controller.select(message.id ? String(message.id) : undefined, !localSelection); break;
         case 'workflow-output-page': {
           try { replies.push({ type: 'workflow-output-page', requestId: message.requestId, ...(await controller.outputPage(String(message.runId), message.page, message.pageSize ?? 100)) }); }
           catch (error) { replies.push({ type: 'workflow-output-page', requestId: message.requestId, runId: message.runId, error: (error as Error).message }); }

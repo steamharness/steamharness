@@ -3,6 +3,7 @@ import { assertProjectDataDirectory } from "@steamharness/project-manifest/node"
 import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
+import { StudioWorkflowAccess } from './studio-workflow-access';
 import { studioPreviewMount } from './studio-preview-mount';
 import { EntryWorkflows } from './entry-workflows';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
@@ -472,7 +473,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       pendingSave = workflowHistory.save(workspace); return pendingSave;
     },
   }) : undefined;
-  const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
+  const workflowAccess = hostKind === 'studio' && projectController && workflowHistory
+    ? new StudioWorkflowAccess(workflowHistory, projectController, () => storageReady && !closing, broadcast) : undefined;
+  const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast, !!workflowAccess) : undefined;
   const entryWorkflows = projectController ? new EntryWorkflows(projectController, project, runtime) : undefined;
   const scheduleKey = hostKind === 'studio' && !options.host?.assistant && !folderBot ? options.host?.workflowScheduleKey : undefined;
   const schedule = scheduleKey && projectController && workflowHistory ? workflowScheduleHandler(project, projectController, workflowHistory,
@@ -504,7 +507,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const resetting = storageReset.then(async () => {
       await conversationHistory?.reset(); await workflowHistory?.reset(); await ownership?.reset();
       conversationController?.replace(await conversationHistory?.read() ?? {});
-      projectController?.replace(await workflowHistory?.read() ?? {});
+      projectController?.replace(await workflowHistory?.read() ?? {}, { observing: !!workflowAccess });
       // CLI Web sign-in reloads the same local history; keep its per-page selection.
       if (hostManaged || signedOut) selections.clear();
     });
@@ -525,7 +528,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const runs = await workflowHistory?.read();
       if (epoch !== storageEpoch) return;
       if (history) { saved = history; conversationController?.replace(history); }
-      if (runs) projectController?.replace(runs);
+      if (runs) projectController?.replace(runs, { observing: !!workflowAccess });
       storageIdentity = identity; storageReady = true; storageError = undefined;
     } catch (error) {
       if (epoch !== storageEpoch) return;
@@ -774,7 +777,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         id: preview.id, url: `${preview.url}&resourceRef=${encodeURIComponent(JSON.stringify(reference))}`, card, project: preview.data.project }];
     }
     if (kanbanController && !['ready', 'verify', 'logout', 'usage'].includes(message.type)) { return kanbanController.handle(message); }
-    if (projectActions && !['ready', 'verify', 'logout', 'usage'].includes(message.type)) { return publicValue(await projectActions.handle(message)); }
+    if (projectActions && !['ready', 'verify', 'logout', 'usage'].includes(message.type)) {
+      const action = () => projectActions.handle(message);
+      const read = ['workflow-history', 'workflow-select', 'workflow-output-page', 'workflow-trace', 'workflow-export'].includes(message.type);
+      // A stop must still cancel the locally running operation while a resolver holds the queue.
+      if (workflowAccess && message.type === 'workflow-stop' && workflowHistory?.ownsHistory && projectController?.running) return publicValue(await action());
+      return publicValue(await (workflowAccess ? workflowAccess.run(read ? 'read' : 'write', action) : action()));
+    }
     if (message.type === 'navigate') {
       await refreshHistory();
       if (!conversationController || typeof message.id !== 'string' || !Array.isArray(message.updates) || message.updates.length > 1000
@@ -835,7 +844,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const entrypointId = typeof message.entrypointId === 'string' && message.entrypointId ? message.entrypointId : project.defaultEntrypoint;
     if (entrypointId && !project.entrypoints.some(entry => entry.id === entrypointId)) { throw new Error('Unknown entrypoint.'); }
     switch (message.type) {
-      case 'ready': replies.push(state(message.clientId)); break;
+      case 'ready': await workflowAccess?.refresh(); replies.push(state(message.clientId)); break;
       case 'agent-command': {
         if (!message.command || typeof message.command.requestId !== 'string' || message.command.requestId.length > 256) throw new Error('Invalid agent command.');
         if ((credentialConversationHost || credentialAutomaticHost) && !allowCredentials && message.command.type === 'submit') {
@@ -1097,7 +1106,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             || bearer.length !== scheduleKey.length || !/^[a-f0-9]{64}$/u.test(bearer)
             || !timingSafeEqual(Buffer.from(bearer), Buffer.from(scheduleKey))) { json(response, 404, { code: 'WORKFLOW_SCHEDULE_UNAVAILABLE' }); return; }
           const body = await readBody(request, 32_768);
-          const result = await schedule(body);
+          const result = await (workflowAccess ? workflowAccess.run('schedule', () => schedule(body)) : schedule(body));
           json(response, 200, result.status === 'view' ? { ...result, viewUrl: `${origin}${options.mount?.basePath ?? ''}/#session=${capability}` } : result); return;
         }
         const readSession = request.method === 'GET' && (url.pathname === '/api/events' || url.pathname.startsWith('/api/file/')) ? url.searchParams.get('session') ?? '' : '';
@@ -1171,6 +1180,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             }
           }
           await refreshHistory();
+          await workflowAccess?.refresh();
           if (closing) { json(response, 503, { message: t('The project is already reloading. Try again shortly.') }); return; }
           const disconnectKanban = kanbanController?.methods.connect(clientId);
           clientIds.set(response, clientId);
@@ -1252,6 +1262,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     }).catch(error => process.stderr.write(`Conversation history: ${String(error)}\n`)).finally(() => { refreshingHistory = false; });
   }, 1_000) : undefined;
   historyPoll?.unref();
+  let refreshingWorkflow = false;
+  const workflowPoll = workflowAccess && setInterval(() => {
+    if (refreshingWorkflow || closing || !clients.size && !workflowHistory?.ownsHistory) return;
+    refreshingWorkflow = true;
+    void workflowAccess.refresh().catch(error => process.stderr.write(`Workflow history: ${String(error)}\n`))
+      .finally(() => { refreshingWorkflow = false; });
+  }, 1_000);
+  workflowPoll?.unref();
   return {
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
     hostTurn: async (input: Record<string, unknown>) => {
@@ -1322,7 +1340,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       call.abortSignal?.throwIfAborted();
       if (call.action === 'workflow-control') {
         if (!entryWorkflows) throw new Error('The target is not a Workflow.');
-        return publicValue(await entryWorkflows.invoke(call.input, call.sourceEntryId, call.readOnly));
+        const action = () => entryWorkflows.invoke(call.input, call.sourceEntryId, call.readOnly);
+        const write = !call.readOnly && (call.input.action === 'start' || call.input.action === 'stop');
+        return publicValue(await (workflowAccess ? workflowAccess.run(write ? 'write' : 'read', action) : action()));
       }
       if (call.action === 'workflow') {
         if (project.projectType !== 'workflow') throw new Error('The target is not a Workflow.');
@@ -1479,6 +1499,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       projectCreation.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);
+      clearInterval(workflowPoll);
       configurations.close(); resources.close(); if (broadcastTimer) { clearTimeout(broadcastTimer); } unsubscribeLogin(); if (!options.mount) browserLogin.cancel(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
       await kanbanController?.close();
       for (const client of clients) { client.end(); }

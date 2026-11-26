@@ -47,20 +47,27 @@ export class WorkflowHistory {
     return acquiring;
   }
   get ownsHistory(): boolean { return !!this.lease; }
-  async prepareScheduledWrite(): Promise<WorkspaceContract | undefined> {
+  async prepareWrite(): Promise<WorkspaceContract | undefined> {
     await this.pending;
     const alreadyOwned = this.ownsHistory;
     await this.acquire();
     return alreadyOwned ? undefined : this.read();
   }
   read(): Promise<WorkspaceContract> {
-    const next = this.pending.then(() => this.load());
+    const next = this.pending.then(() => this.load(false));
     this.pending = next.catch(() => undefined); return next;
   }
-  private async load(): Promise<WorkspaceContract> {
+  readChanged(): Promise<WorkspaceContract | undefined> {
+    const next = this.pending.then(() => this.load(true));
+    this.pending = next.catch(() => undefined); return next;
+  }
+  private load(onlyChanged: false): Promise<WorkspaceContract>;
+  private load(onlyChanged: true): Promise<WorkspaceContract | undefined>;
+  private async load(onlyChanged: boolean): Promise<WorkspaceContract | undefined> {
     const [runs, workspaces] = await Promise.all([this.backend().list('run'), this.backend().list('workflow')]);
     const meta = workspaces.find(record => record.key === 'workspace');
-    this.records = new Map([...runs, ...workspaces].map(record => [`${record.kind}:${record.key}`, record]));
+    const records = new Map([...runs, ...workspaces].map(record => [`${record.kind}:${record.key}`, record]));
+    if (onlyChanged && records.size === this.records.size && [...records].every(([key, record]) => this.records.get(key)?.revision === record.revision)) return;
     const restored: RunRecord[] = [];
     for (const record of runs) {
       const page = await this.backend().readRunOutputPage?.(record.key, 1, 1);
@@ -69,6 +76,7 @@ export class WorkflowHistory {
           : { items: record.messages.map(item => item.value), events: record.events.map(item => item.value) }),
       } as unknown as RunRecord);
     }
+    this.records = records;
     return { version: 1, runs: restored.sort((a, b) => b.createdAt - a.createdAt),
       drafts: Object.fromEntries((meta?.values ?? []).map(item => [item.id, item.value])), ...meta?.state } as unknown as WorkspaceContract;
   }
@@ -98,9 +106,15 @@ export class WorkflowHistory {
     });
     this.pending = next.catch(() => undefined); return next;
   }
+  async release(): Promise<void> {
+    await this.pending;
+    const lease = this.lease;
+    this.lease = undefined;
+    if (lease) await (await lease).close();
+  }
   async reset(): Promise<void> {
-    this.epoch++; await this.pending;
-    try { if (this.lease) await (await this.lease).close(); }
-    finally { this.lease = undefined; this.records.clear(); }
+    this.epoch++;
+    try { await this.release(); }
+    finally { this.records.clear(); }
   }
 }

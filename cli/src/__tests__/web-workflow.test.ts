@@ -15,6 +15,7 @@ import { layoutProjectGraph } from '../web/workflow-graph';
 import { t } from '../web/localization';
 import { createWebRuntime } from '../web/runtime';
 import { startEntryWebServer as startWebServer } from './web-test-storage';
+import { startEntryWebServer as startDiskWebServer } from '../web/server';
 import type { Project, Runtime, Report, InputRequest, ConversationSession, ParamState } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 
@@ -57,6 +58,43 @@ async function service(legacy?: ConversationSession[]) {
 }
 
 describe('Workflow workspace controller', () => {
+  it('shows the same history in two live Studio hosts and gives the idle write lease to the next runner', async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-workflow-sharing-'))); folders.push(directory);
+    const source = path.join(directory, 'project'), dataDir = path.join(directory, 'runs');
+    await mkdir(source);
+    await writeProjectFixture(path.join(source, 'package.json'), JSON.stringify({ id: project.id, name: 'test-workflow', version: '0.1.0', entries: project.entries, defaultEntry: 'main' }));
+    await writeFile(path.join(source, 'index.ts'), 'export {};');
+    vi.stubEnv('STEAMHARNESS_WEB_HOST', 'studio');
+    vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
+    const open = async () => {
+      const executor = runtime(); vi.mocked(executor.inspect).mockResolvedValue({ projects: [{ ...project, folderPath: source, entryRoot: source }], errors: [] });
+      const app = await startDiskWebServer({ projectDir: source, dataDir, runtime: executor, host: { surface: 'editor', platform: true } }); services.push(app);
+      const token = new URL(app.url).hash.slice('#session='.length);
+      const post = (type: string, message = {}) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ type, ...message }) });
+      return { app, executor, post, state: async () => (await (await post('ready')).json()).messages[0] };
+    };
+    const desktop = await open(), web = await open();
+    let release!: () => void;
+    const running = new Promise<void>(resolve => { release = resolve; });
+    vi.mocked(desktop.executor.run).mockImplementationOnce(async () => { await running; return { status: 'success', output: { items: [] }, nodes: [] }; });
+    try {
+      expect((await desktop.post('workflow-run', { entrypointId: 'other', params: {} })).status).toBe(200);
+      const first = (await web.state()).runs[0];
+      expect(first.status).toBe('running');
+      expect((await web.post('workflow-select', { id: first.id })).status).toBe(200);
+      expect((await web.post('workflow-run', { entrypointId: 'other', params: {} })).status).toBe(400);
+      expect(web.executor.run).not.toHaveBeenCalled();
+      release(); await desktop.app.projectController!.idle();
+      expect((await desktop.state()).runs[0].status).toBe('success'); // Observe idle release without closing the Desktop host.
+      expect((await web.state()).run).toMatchObject({ id: first.id, status: 'success' });
+      expect((await web.post('workflow-run', { entrypointId: 'other', params: {} })).status).toBe(200);
+      await web.app.projectController!.idle(); await web.state();
+      const runs = (await desktop.state()).runs;
+      expect(runs.map((run: RunRecord) => run.status)).toEqual(['success', 'success']);
+      expect(runs[1].id).toBe(first.id);
+    } finally { release(); }
+  });
+
   it('starts the worker only after the same durable write has admitted the run', async () => {
     const first = controller();
     first.save.mockRejectedValueOnce(new Error('Storage is unavailable'));

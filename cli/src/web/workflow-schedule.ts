@@ -57,7 +57,7 @@ export function workflowScheduleHandler(project: Project, controller: Controller
     if (starting) return reply('skipped_overlap', 'entry-active');
     starting = true;
     try {
-      const saved = await history.prepareScheduledWrite();
+      const saved = await history.prepareWrite();
       if (saved) controller.replace(saved);
       const previous = controller.runs.find(run => run.id === input.fireId);
       if (previous) return previous.schedule?.scheduleId === input.scheduleId ? state(previous) : reply('skipped_invalid_target', 'invalid-receipt');
