@@ -2,10 +2,17 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
+import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
-const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-auth.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const compiled = await build({ stdin: { resolveDir: process.cwd(), contents: `
+  export { AccountController } from './extensions/studio-workstation/src/workflow-auth.ts';
+  export { LocalAccountSessions } from './extensions/studio-workstation/src/account-sessions-node.ts';
+` }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const compiledUserSettings = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-user-settings.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 class Emitter {
@@ -15,7 +22,7 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false, serverUrl = 'http://127.0.0.1:7126', uiKind = 1, productInfo } = {}) {
+async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false, serverUrl = 'http://127.0.0.1:7126', uiKind = 1, localStoragePath, productInfo } = {}) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, requestUrls: [], statuses: [], messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
   const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': 'https://obsolete.example.test' };
@@ -88,6 +95,7 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, {
     module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, URLSearchParams, btoa, Error, AbortSignal, AbortController, structuredClone, crypto: globalThis.crypto, setTimeout, clearTimeout,
+    process: { platform: process.platform },
     fetch: async (url, options) => {
       f.requests++;
       f.requestUrls.push(url);
@@ -101,14 +109,16 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
   });
+  const localSessions = localStoragePath ? new module.exports.LocalAccountSessions(localStoragePath) : undefined;
+  const unavailable = () => { if (localSessions) throw new Error('OS keychain is unavailable'); };
   const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [], secrets: {
-    get: async key => { secretReads.push(key); return saved.has(key) ? saved.get(key) : key.startsWith('studio.project') ? stored : undefined; },
-    store: async (key, value) => { saved.set(key, value); }, delete: async key => { saved.set(key, undefined); }, onDidChange: secretsChanged.event } };
-  const controller = new module.exports.AccountController(context, undefined, platform, serverUrl, value => createHash('sha256').update(value).digest('hex'));
+    get: async key => { secretReads.push(key); unavailable(); return saved.has(key) ? saved.get(key) : key.startsWith('studio.project') ? stored : undefined; },
+    store: async (key, value) => { unavailable(); saved.set(key, value); }, delete: async key => { unavailable(); saved.set(key, undefined); }, onDidChange: secretsChanged.event } };
+  const controller = new module.exports.AccountController(context, undefined, platform, serverUrl, value => createHash('sha256').update(value).digest('hex'), undefined, localSessions);
   await controller.initialize();
-  t.after(() => controller.dispose());
+  t.after(() => { controller.dispose(); localSessions?.dispose(); });
   if (connect) await controller.connect();
-  return Object.assign(f, { controller, intervals, sessions, vscode, user, workspace, writes, secretReads, saved,
+  return Object.assign(f, { controller, intervals, sessions, vscode, user, workspace, writes, secretReads, saved, localSessions,
     secretChanged: key => secretsChanged.fire({ key }),
     focus: focused => { vscode.window.state.focused = focused; focus.fire({ focused }); },
     poll: () => { for (const timer of intervals) { timer.callback(); } },
@@ -341,6 +351,51 @@ test('successful login updates the shared session and returns to the existing ac
   assert.equal((await f.provider.getSessions([], {}))[0].accessToken, 'test-token');
   assert.doesNotMatch(JSON.stringify(f.messages), /fixture-password|test-token/);
   await f.commands.get('studio.openLogin')(); assert.equal(f.panel, settings); assert.equal(f.panels.length, 2);
+});
+
+test('desktop launchpad signs in, restores, and signs out across windows without using the keychain', async t => {
+  const localStoragePath = await mkdtemp(path.join(tmpdir(), 'studio-account-'));
+  try {
+    const f = await fixture(t, { launchpad: true, localStoragePath });
+    assert.equal(f.controller.getState().status, 'signed-out', 'Do not read the old OS-backed session');
+    await f.commands.get('studio.openLogin')();
+    await f.panel.message({ type: 'login' });
+    assert.equal(f.controller.getState().status, 'authenticated');
+    const other = await fixture(t, { launchpad: true, localStoragePath });
+    assert.equal(other.controller.getConnection()?.accessToken, 'test-token');
+    const directory = path.join(localStoragePath, 'account-sessions');
+    const files = await readdir(directory);
+    assert.equal(files.length, 1);
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(directory)).mode & 0o777, 0o700);
+      assert.equal((await stat(path.join(directory, files[0]))).mode & 0o777, 0o600);
+    }
+
+    await f.commands.get('studio.logout')();
+    const deadline = Date.now() + 5000;
+    while (other.controller.getConnection() && Date.now() < deadline) await delay(25);
+    assert.equal(other.controller.getState().status, 'signed-out');
+    assert.deepEqual(await readdir(directory), []);
+    assert.deepEqual(f.secretReads, []);
+    assert.deepEqual(other.secretReads, []);
+  } finally { await rm(localStoragePath, { recursive: true, force: true }); }
+});
+
+test('desktop AI-only sign-in persists independently and protected model keys load only on demand', async t => {
+  const localStoragePath = await mkdtemp(path.join(tmpdir(), 'studio-ai-account-'));
+  try {
+    const f = await fixture(t, { launchpad: true, localStoragePath });
+    assert.equal((await f.controller.connectAi())?.accessToken, 'test-token');
+    assert.equal(f.controller.getConnection(), undefined);
+    const reopened = await fixture(t, { launchpad: true, localStoragePath });
+    assert.equal((await reopened.controller.connectAi())?.accessToken, 'test-token');
+    assert.deepEqual(reopened.opened, []);
+    assert.deepEqual(reopened.secretReads, []);
+    await reopened.controller.disconnectAi();
+    assert.deepEqual(await readdir(path.join(localStoragePath, 'account-sessions')), []);
+    await reopened.controller.loadUserModels();
+    assert.deepEqual(reopened.secretReads, ['studio.agent.models']);
+  } finally { await rm(localStoragePath, { recursive: true, force: true }); }
 });
 
 test('Studio Web polls for approval and signs in without requesting a desktop callback', async t => {

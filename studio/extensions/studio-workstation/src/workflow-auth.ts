@@ -16,6 +16,7 @@ import type { ProjectSidebar } from './project-sidebar';
 import { UserModels, USER_MODELS_SECRET } from './user-models';
 import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
 import type { RemoteAccessHandler, RemoteAccessAction } from './remote-access-types';
+import type { AccountSessions } from './account-sessions-node';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account, AuthError, ServerClient, normalizeProjectServerUrl,
@@ -32,6 +33,7 @@ export class AccountController implements vscode.Disposable {
   private readonly modelChanges = new vscode.EventEmitter<void>();
   readonly onDidChangeUserModels = this.modelChanges.event;
   private readonly userModels: UserModels;
+  private userModelsLoad?: Promise<void>;
   private readonly change = new vscode.EventEmitter<AccountState>();
   readonly onDidChange = this.change.event;
   private readonly sessionChange = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
@@ -70,19 +72,20 @@ export class AccountController implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false,
     private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL, private readonly digest?: (value: string) => string,
-    private readonly remoteAccess?: RemoteAccessHandler) {
+    private readonly remoteAccess?: RemoteAccessHandler, private readonly sessions: AccountSessions = context.secrets) {
     this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
       modelWriteLock);
     this.account = new Account(this.configuredServer(), {
       get: async () => {
-        const current = await context.secrets.get(SECRET_KEY);
-        if (current !== undefined) return current || undefined;
+        const current = await this.sessions.get(SECRET_KEY);
+        // Never read the previous OS-backed credential during desktop restore.
+        if (current !== undefined || this.sessions !== context.secrets) return current || undefined;
         const legacy = await context.secrets.get(LEGACY_SECRET_KEY);
         try { if (legacy && new ServerClient(JSON.parse(legacy).serverUrl).serverUrl === new ServerClient(this.configuredServer()).serverUrl) return legacy; } catch {}
         return undefined;
       },
-      store: (value) => context.secrets.store(SECRET_KEY, value),
-      delete: () => context.secrets.store(SECRET_KEY, ''),
+      store: (value) => this.sessions.store(SECRET_KEY, value),
+      delete: () => this.sessions === context.secrets ? this.sessions.store(SECRET_KEY, '') : this.sessions.delete(SECRET_KEY),
     }, () => {
       this.syncPlatformConnection();
       const state = this.getState();
@@ -184,13 +187,15 @@ export class AccountController implements vscode.Disposable {
           this.attachPanel(panel);
         },
       }),
-      context.secrets.onDidChange((event) => {
+      this.sessions.onDidChange((event) => {
         if (this.onlineOpened && event.key === SECRET_KEY) { void this.account.restore().catch(() => undefined); }
         if (this.platform && event.key === this.aiKey(this.account.getState().serverUrl)) {
           const revision = ++this.aiSecretRevision;
           if (this.aiSession) void this.reconcileAiSession(event.key, this.aiSession, revision);
         }
-        if (event.key === USER_MODELS_SECRET) { void this.userModels.reload(); }
+      }),
+      context.secrets.onDidChange((event) => {
+        if (event.key === USER_MODELS_SECRET && this.userModelsLoad) { void this.userModels.reload(); }
       }),
       vscode.workspace.onDidChangeConfiguration(() => this.scheduleSettings()),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.scheduleSettings()),
@@ -237,7 +242,8 @@ export class AccountController implements vscode.Disposable {
     await vscode.commands.executeCommand('setContext', 'studio.accountAvailable', this.platform);
     await vscode.commands.executeCommand('setContext', 'studio.platformAvailable', this.platform);
     await this.readLanguagePreference();
-    await this.userModels.reload();
+    // Rendering the launchpad or signing in does not need third-party model keys.
+    if (this.sessions === this.context.secrets) await this.loadUserModels();
     if (this.platform && vscode.env.uiKind === vscode.UIKind.Web) {
       // Restore even when no Account view or platform extension has requested a connection yet.
       void this.connect().catch(() => undefined);
@@ -262,6 +268,7 @@ export class AccountController implements vscode.Disposable {
     return this.platform && state.status === 'authenticated' ? accountScopeKey(state, this.digest) : undefined;
   }
   getUserAgentModels() { return this.userModels.models(); }
+  loadUserModels(): Promise<void> { return this.userModelsLoad ??= this.userModels.reload(); }
   getSystemModelCatalog(signal: AbortSignal) { return this.userModels.catalog(signal); }
   registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable {
     const disposable = this.userModels.registerCatalogProvider(provider);
@@ -304,26 +311,26 @@ export class AccountController implements vscode.Disposable {
   }
   private async reconcileAiSession(key: string, session: LoginSession, revision: number): Promise<void> {
     let saved: Connection | undefined;
-    try { saved = this.parseCachedAiSession(await this.context.secrets.get(key), session.serverUrl); } catch { /* Treat an unreadable changed credential as unavailable. */ }
+    try { saved = this.parseCachedAiSession(await this.sessions.get(key), session.serverUrl); } catch { /* Treat an unreadable changed credential as unavailable. */ }
     if (this.lifetime.signal.aborted || this.aiSession !== session || this.aiSecretRevision !== revision) return;
     if (saved?.accessToken !== session.accessToken) this.publishAiSession(undefined);
   }
   private async readCachedAiSession(client: ServerClient, signal: AbortSignal): Promise<LoginSession | undefined> {
     const key = this.aiKey(client.serverUrl);
-    const encoded = await this.context.secrets.get(key);
+    const encoded = await this.sessions.get(key);
     signal.throwIfAborted();
     const saved = this.parseCachedAiSession(encoded, client.serverUrl);
     if (!saved) return;
     try {
       const verified = await client.verify(saved, signal);
-      if (await this.context.secrets.get(key) === encoded) return verified;
+      if (await this.sessions.get(key) === encoded) return verified;
     }
     catch (error) {
       signal.throwIfAborted();
       if (!(error instanceof AuthError) || error.status !== 401) throw error;
-      if (await this.context.secrets.get(key) === encoded) {
+      if (await this.sessions.get(key) === encoded) {
         signal.throwIfAborted();
-        await this.context.secrets.delete(key);
+        await this.sessions.delete(key);
       }
     }
   }
@@ -378,7 +385,7 @@ export class AccountController implements vscode.Disposable {
         const receipt = await client.poll(started, signal);
         const session = await new ServerClient(client.serverUrl).verify({ serverUrl: client.serverUrl, accessToken: receipt.accessToken }, signal);
         signal.throwIfAborted();
-        await this.context.secrets.store(key, JSON.stringify({ serverUrl: session.serverUrl, accessToken: session.accessToken }));
+        await this.sessions.store(key, JSON.stringify({ serverUrl: session.serverUrl, accessToken: session.accessToken }));
         signal.throwIfAborted();
         this.publishAiSession(session);
         return this.getAiConnection();
@@ -395,7 +402,7 @@ export class AccountController implements vscode.Disposable {
     this.aiLoginAbort?.abort();
     await this.aiLogin?.catch(() => undefined);
     this.publishAiSession(undefined);
-    await this.context.secrets.delete(this.aiKey(this.account.getState().serverUrl));
+    await this.sessions.delete(this.aiKey(this.account.getState().serverUrl));
   }
   private cancelAiRestore(): void {
     this.aiRestoreAbort?.abort();
@@ -405,13 +412,13 @@ export class AccountController implements vscode.Disposable {
   private logout(): Promise<void> {
     if (this.pendingLogout) return this.pendingLogout;
     this.cancelLogin();
-    // A pending device flow may be finishing a keychain write when sign-out starts.
+    // A pending device flow may be finishing a session write when sign-out starts.
     this.aiLoginAbort?.abort();
     const login = this.aiLogin;
     this.aiSession = undefined;
     this.expirePlatformConnection();
     const key = this.aiKey(normalizeProjectServerUrl(this.configuredServer()));
-    this.pendingLogout = Promise.all([this.account.logout(), Promise.resolve(login).catch(() => undefined).then(() => this.context.secrets.delete(key))])
+    this.pendingLogout = Promise.all([this.account.logout(), Promise.resolve(login).catch(() => undefined).then(() => this.sessions.delete(key))])
       .then(() => undefined).finally(() => { this.pendingLogout = undefined; });
     return this.pendingLogout;
   }
@@ -608,7 +615,9 @@ export class AccountController implements vscode.Disposable {
   private publishModels(forcePlans = false): void {
     const panel = this.panel;
     if (!panel) return;
-    const plans = panel.visible && this.viewState.section === 'models' ? this.userModels.refreshPlans(forcePlans) : undefined;
+    const visible = panel.visible && this.viewState.section === 'models';
+    if (visible) void this.loadUserModels();
+    const plans = visible ? this.userModels.refreshPlans(forcePlans) : undefined;
     const post = () => { void this.panel?.webview.postMessage({ type: 'settings-models', state: this.userModels.state() }); };
     post();
     if (plans) void plans.then(post);
@@ -736,6 +745,7 @@ export class AccountController implements vscode.Disposable {
       if (message.type === 'settings-models' && typeof message.requestId === 'string' && message.requestId.length <= 100) {
         const generation = pageGeneration, signal = modelsAbort.signal;
         try {
+          await this.loadUserModels();
           if (message.action === 'catalog') {
             if (this.platform) await this.restoreAiConnection();
             const catalog = await this.userModels.refreshCatalog(true);
@@ -876,8 +886,8 @@ export class AccountController implements vscode.Disposable {
 }
 
 export async function activateProjectAccount(context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, platform = false,
-  serverUrl?: string, digest?: (value: string) => string, remoteAccess?: RemoteAccessHandler): Promise<AccountController> {
-  const account = new AccountController(context, modelWriteLock, platform, serverUrl, digest, remoteAccess);
+  serverUrl?: string, digest?: (value: string) => string, remoteAccess?: RemoteAccessHandler, sessions?: AccountSessions): Promise<AccountController> {
+  const account = new AccountController(context, modelWriteLock, platform, serverUrl, digest, remoteAccess, sessions);
   context.subscriptions.push(account);
   await account.initialize();
   return account;

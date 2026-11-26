@@ -76,6 +76,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const abort = () => startup.abort(signal.reason);
       signal.addEventListener('abort', abort, { once: true });
       try {
+        await account.loadUserModels?.();
         return await startProjectCli({ projectDir: target.directory, expectedProjectId: target.projectId, entryId: target.entryId,
           nodePath: runtime.nodePath, runtime, theme: 'dark', locale: vscode.env.language, surface: 'editor', userSettings: settingsSnapshot(),
           dataDir: webDataDirectory, authRoot, workflowScheduleKey, signal: AbortSignal.any([startup.signal, controller.signal]) });
@@ -89,6 +90,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   }
   const configurationService = {
     systemModelCatalog: async (signal: AbortSignal) => {
+      await account.loadUserModels?.();
       const catalog = await account.getSystemModelCatalog(AbortSignal.any([signal, controller.signal]));
       const preferred = account.getUserAgentModels()[0];
       return { ...catalog, ...(preferred?.source === 'system' ? { defaultModel: { credentialId: preferred.credentialId, model: preferred.model } } : {}) };
@@ -392,6 +394,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           bridge = await startStudioControlBridge(createStudioAnalysisHandler(readAnalysis, runSignal), runSignal);
           studioControl = { url: bridge.url, token: bridge.token };
         }
+        // Prewarming hosted Web apps in the launchpad does not use local model keys.
+        if (project.entries.some(entry => !entry.webApp)) await account.loadUserModels?.();
+        runSignal.throwIfAborted();
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: runtime.nodePath, runtime,
           assistantProjectDir: assistant ? project.folderPath : undefined,
           folderBot: project.folderBot,
