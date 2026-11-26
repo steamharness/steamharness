@@ -104,6 +104,10 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   const folderBot = configuration.folderBot === undefined ? undefined : parseFolderBot(configuration.folderBot);
   if (folderBot && configuration.surface !== 'editor') throw new Error('A local folder Bot requires the editor host.');
   const backgroundBotCredentials = configuration.backgroundBotCredentials === true && configuration.surface === 'editor' && folderBot?.background !== false;
+  if (assistant?.storageScope !== undefined && (assistant.storageScope !== 'managed-project'
+    || assistant.standalone !== true || assistant.workdir !== assistantProjectDir || assistant.roots.length !== 1)) {
+    throw new Error('Invalid managed project storage scope.');
+  }
   const localBotCredentials = !backgroundBotCredentials && configuration.localBotCredentials === true && !folderBot?.background;
   const connections = parseHostAuthentication(configuration);
   return { ...(configuration.webApps === undefined ? {} : { webApps: parseWebAppBindings(configuration.webApps) }), surface: configuration.surface, assistant, assistantProjectDir,

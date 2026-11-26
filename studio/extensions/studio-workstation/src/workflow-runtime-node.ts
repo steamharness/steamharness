@@ -40,6 +40,7 @@ import { canAccessBotCredentialStorage, createBotCredentialInteraction } from '.
 import { createBotCredentialListReader } from './bot-credential-list';
 import { registerBotManagementView } from './bot-management-view';
 import type { AccountWorkspace } from './account-workspace-data';
+import { prepareManagedProjectStorage } from './managed-project-storage';
 
 interface RuntimeScope {
   workspace?: AccountWorkspace;
@@ -225,6 +226,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     currentOwner: () => account.workspace?.()?.owner ?? null,
     target: { assistantId: DEVELOPER_ASSISTANT_PROJECT_ID, isBuiltinProjectDirectory, localAssistantDirectory: assistantDirectory,
       resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
+      prepareManagedStorage: options => prepareManagedProjectStorage({ ...options, builds: releaseStorageDir }),
       trusted: directory => vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false),
     },
   }));
@@ -429,7 +431,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       // A launch from the library uses the release's own folder, never an unrelated open workspace.
       const ownFolder = !project.assistant && project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.distribution === 'release'
         && isBuiltinProjectDirectory(project.folderPath) && roots.find(root => root.folderPath === project.folderPath);
-      const assistant = project.assistant ?? (ownFolder ? { standalone: true, workdir: ownFolder.folderPath, roots: [ownFolder] } : undefined);
+      const workspaceAssistant = project.assistant ?? (ownFolder ? { standalone: true, workdir: ownFolder.folderPath, roots: [ownFolder] } : undefined);
+      const managedWorkspace = workspaceAssistant?.standalone === true && !project.folderBot && project.distribution === 'release'
+        && isBuiltinProjectDirectory(project.folderPath) && workspaceAssistant.workdir === project.folderPath && workspaceAssistant.roots.length === 1;
+      const assistant = workspaceAssistant && { ...workspaceAssistant, storageScope: managedWorkspace ? 'managed-project' as const : undefined };
       if (project.assistant?.standalone) {
         if (project.folderPath !== await assistantDirectory()) { throw new Error('Invalid standalone assistant scope.'); }
         assertAvailable(); assertAssistantWorkspace(project.assistant);
@@ -439,6 +444,18 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       let bridge: StudioControlBridge | undefined;
       try {
         const workflowSchedules = scope.schedules;
+        if (managedWorkspace) {
+          try {
+            await prepareManagedProjectStorage({ storage: scope.data, builds: releaseStorageDir, projectId: project.id,
+              entryId: project.entryId, projectType: project.projectType, signal: runSignal });
+          } catch (error) {
+            runSignal.throwIfAborted();
+            if ((error as NodeJS.ErrnoException).code === 'MANAGED_PROJECT_STORAGE_BUSY') {
+              throw new Error(t('Close the older project window before opening this build. The saved data has not changed.'));
+            }
+            throw new Error(t('Could not restore this project’s local data. The original data has not changed.'), { cause: error });
+          }
+        }
         const workflowScheduleKey = workflowSchedules && !project.assistant && !project.folderBot && project.distribution !== 'release'
           && !isBuiltinProjectDirectory(project.folderPath) && project.entries.some(entry => entry.type === 'workflow') ? WorkflowScheduleRuntime.capability() : undefined;
         let studioControl: StudioControlConfiguration | undefined;

@@ -225,9 +225,8 @@ try {
     }
     await send('result', { projects, errors });
   } else if (request.project?.folderPath) {
-    const { assistantDataDirectory, botMemoryDirectoryScope, createWebBotMemoryDirectories, projectDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
-    const dataDir = request.project.assistant ? assistantDataDirectory(request.storageDir, request.project.id, request.project.assistant.workdir)
-      : await projectDataDirectory(request.storageDir, request.project.folderPath, request.project.id, request.project.entryId);
+    const { botMemoryDirectoryScope, createWebBotMemoryDirectories, runtimeDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
+    const dataDir = runtimeDataDirectory(request.storageDir, request.project.folderPath, request.project);
     if (request.project.assistant) {
       const assistant = request.project.assistant;
       const primary = assistant.roots.find(root => root.folderPath === assistant.workdir);
@@ -242,7 +241,8 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
-      localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
+      localKey: createHash('sha256').update(request.project.assistant?.storageScope === 'managed-project'
+        ? `managed-project:${request.project.id.toLowerCase()}` : request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
     const { createLocalRuntimePersistence, BOT_MEMORY_DIRECTORY_VERSION } = await import(resolve('steamharness/runtime-storage', coreUrl));
     const runtimeDirectory = path.join(dataDir, 'runtime');
     runtimePersistence = createLocalRuntimePersistence({ directory: runtimeDirectory,

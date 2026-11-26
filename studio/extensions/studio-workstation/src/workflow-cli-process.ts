@@ -229,6 +229,9 @@ export async function startProjectCli(options: {
             if (options.folderBot && message.folderBotProtocolVersion !== 1) throw new Error('Update the project CLI and SDK to run a local folder Bot.');
             if (options.folderBot?.profileRecord && message.folderBotProfileVersion !== 1) throw new Error(t('Update the project CLI and SDK to use this folder Bot profile.'));
             if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
+            if (options.assistant?.storageScope === 'managed-project' && message.managedProjectStorageVersion !== 1) {
+              throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
+            }
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
             settle(undefined, message); return;

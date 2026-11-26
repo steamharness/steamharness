@@ -88,7 +88,7 @@ export function registerBotManagementView(context: vscode.ExtensionContext, opti
         const scope = await options.captureScope().catch(() => undefined);
         if (!scope || (scope.workspace?.owner ?? null) !== input.owner || lifetime.signal.aborted) return;
         const signal = AbortSignal.any([lifetime.signal, scope.lifetime.signal]);
-        const target = await resolveBotStorageTarget(input, { ...options.target, storage: scope.data }).catch(() => undefined);
+        const target = await resolveBotStorageTarget(input, { ...options.target, storage: scope.data, signal }).catch(() => undefined);
         if (signal.aborted || !vscode.workspace.isTrusted || input.owner !== options.currentOwner()) return;
         return target && target !== 'untrusted' ? { target, signal } : target;
       };

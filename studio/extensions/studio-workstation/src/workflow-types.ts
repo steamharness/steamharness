@@ -85,7 +85,7 @@ export interface Project extends Parameters {
   artifactEntry?: string;
   requiresLogin?: boolean;
   builtin?: 'analysis';
-  assistant?: { workdir: string; roots: AssistantWorkspaceFolder[]; standalone?: boolean };
+  assistant?: { workdir: string; roots: AssistantWorkspaceFolder[]; standalone?: boolean; storageScope?: 'managed-project' };
   conversation?: {
     footer?: ConversationFooterItem[];
     attachments?: { images?: boolean; videos?: boolean; files?: boolean };

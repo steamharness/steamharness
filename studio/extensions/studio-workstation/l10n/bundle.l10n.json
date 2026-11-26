@@ -541,6 +541,8 @@
   "The selected folder's project UUID does not match the related project.": "The selected folder's project UUID does not match the related project.",
   "The selected folder's project version does not match the downloaded project group.": "The selected folder's project version does not match the downloaded project group.",
   "The server address must use HTTP or HTTPS and contain no credentials or query parameters.": "The server address must use HTTP or HTTPS and contain no credentials or query parameters.",
+  "Close the older project window before opening this build. The saved data has not changed.": "Close the older project window before opening this build. The saved data has not changed.",
+  "Could not restore this project’s local data. The original data has not changed.": "Could not restore this project’s local data. The original data has not changed.",
   "The server did not return desktop sign-in credentials.": "The server did not return desktop sign-in credentials.",
   "The server did not return valid account information.": "The server did not return valid account information.",
   "The server returned an invalid response.": "The server returned an invalid response.",

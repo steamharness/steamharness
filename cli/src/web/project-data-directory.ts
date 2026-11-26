@@ -2,7 +2,7 @@ import { readProjectReleaseSync } from "@steamharness/project-manifest/release-n
 import { createHash } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { projectEntryKey } from '@steamharness/project-manifest';
+import { PROJECT_UUID_PATTERN, projectEntryKey } from '@steamharness/project-manifest';
 import type { BotMemoryDirectories, createLocalRuntimePersistence, RuntimePersistence } from 'steamharness/runtime-storage';
 
 export function webProjectDataDirectory(storageDir: string, projectId: string, entryId: string): string {
@@ -23,6 +23,20 @@ export async function projectDataDirectory(storageDir: string, projectDir: strin
 const digest = (input: string) => createHash('sha256').update(input).digest('hex');
 export function assistantDataDirectory(storageDir: string, projectId: string, workdir: string): string {
   return path.join(storageDir, digest(`assistant:${projectId}:${workdir}`).slice(0, 24));
+}
+
+/** A managed build is replaceable. Its assistant data must not be keyed by an executable path. */
+export function managedProjectDataDirectory(storageDir: string, projectId: string): string {
+  if (!PROJECT_UUID_PATTERN.test(projectId)) throw new Error('Invalid managed project identity.');
+  return path.join(storageDir, digest(`managed-project:${projectId.toLowerCase()}`).slice(0, 24));
+}
+
+export function runtimeDataDirectory(storageDir: string, projectDir: string, project: {
+  id: string; entryId: string; assistant?: { workdir: string; storageScope?: 'managed-project' };
+}): string {
+  if (!project.assistant) return projectDataDirectorySync(storageDir, projectDir, project.id, project.entryId);
+  return project.assistant.storageScope === 'managed-project' ? managedProjectDataDirectory(storageDir, project.id)
+    : assistantDataDirectory(storageDir, project.id, project.assistant.workdir);
 }
 
 export type WebBotMemoryDirectoryScope = Pick<BotMemoryDirectories, 'kind' | 'primary' | 'roots'>;

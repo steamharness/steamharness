@@ -12,6 +12,7 @@ import type { ProjectUsageSnapshot } from './project-usage-types';
 export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
   assistantProtocolVersion?: number;
+  managedProjectStorageVersion?: number;
   accountProtocolVersion?: number;
   webAppProtocolVersion?: number;
   studioPreviewProtocolVersion?: number;

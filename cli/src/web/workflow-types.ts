@@ -112,7 +112,7 @@ export interface Project extends Parameters {
   kanban?: KanbanArtifactConfig;
   projectInfo?: ProjectInfoContract;
   requiresLogin?: boolean;
-  assistant?: { workdir: string; roots: AssistantWorkspaceFolder[]; standalone?: boolean };
+  assistant?: { workdir: string; roots: AssistantWorkspaceFolder[]; standalone?: boolean; storageScope?: 'managed-project' };
   conversation?: {
     engine?: 'agent' | 'llm';
     collapseIntermediate?: boolean;

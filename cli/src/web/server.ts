@@ -46,7 +46,7 @@ import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
 import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
-import { assistantDataDirectory, botMemoryDirectoryError, botMemoryDirectoryScope, createWebBotMemoryDirectories, folderBotDataRoot, projectDataDirectory } from './project-data-directory';
+import { botMemoryDirectoryError, botMemoryDirectoryScope, createWebBotMemoryDirectories, folderBotDataRoot, runtimeDataDirectory } from './project-data-directory';
 import { readFolderBotProfile } from './folder-bot-profile';
 import { previewRunDraft } from './workflow-draft';
 import { workflowScheduleHandler } from './workflow-schedule';
@@ -234,8 +234,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     project.entrypoints = view.entrypoints?.map(entry => ({ ...entry, tools: entry.tools?.filter(toolVisible) }));
   };
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast(), options.mount?.basePath);
-  const activityDirectory = project.assistant ? assistantDataDirectory(storageDir, project.id, project.assistant.workdir)
-    : await projectDataDirectory(storageDir, projectDir, project.id, project.entryId);
+  const activityDirectory = runtimeDataDirectory(storageDir, projectDir, project);
   const key = path.relative(storageDir, activityDirectory);
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   let pendingSave = Promise.resolve();

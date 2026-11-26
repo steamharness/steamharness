@@ -31,7 +31,10 @@ test('creation defers local ID allocation to the project window regardless of ac
     } }] });
   const account = { platform: true, getConnection: () => assert.fail('ID allocation does not read the account') };
   const module = { exports: {} };
-  const vscode = { env: { language: 'en', uiKind: 1 }, UIKind: { Desktop: 1 }, workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) } };
+  const disposable = { dispose() {} };
+  const vscode = { env: { language: 'en', uiKind: 1 }, UIKind: { Desktop: 1 },
+    Uri: { joinPath: (base, part) => ({ fsPath: path.join(base.fsPath, part) }) }, window: { registerWebviewViewProvider: () => disposable },
+    workspace: { onDidChangeConfiguration: () => disposable, isTrusted: true, getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) } };
   runInNewContext(allocationRuntime.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
     fetch: () => assert.fail('ID allocation does not contact the platform'),
@@ -71,9 +74,9 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   const disposable = { dispose() {} };
   const vscode = {
     env: { language: 'en', appName: 'Studio', uiKind: 1 }, UIKind: { Desktop: 1 }, version: '1.140.0', extensions: { all: [] },
-    Uri: { file: filename => ({ toString: () => pathToFileURL(filename).href }) },
+    Uri: { file: filename => ({ toString: () => pathToFileURL(filename).href }), joinPath: (base, part) => ({ fsPath: path.join(base.fsPath, part) }) },
     workspace: { onDidChangeConfiguration: () => disposable, isTrusted: true, workspaceFolders: [{ uri: { scheme: 'file', fsPath: workdir, toString: () => target.uri }, name: target.name }], getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
-    window: { activeColorTheme: { kind: 2 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
+    window: { activeColorTheme: { kind: 2 }, registerWebviewViewProvider: () => disposable }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports,
@@ -106,6 +109,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   assert.equal(session.ready.project.id, assistant.id);
   const configuration = JSON.parse(await readFile(path.join(source.projectDir, 'assistant.json'), 'utf8'));
   assert.equal(configuration.assistant.workdir, workdir);
+  assert.equal(configuration.assistant.storageScope, undefined, 'An actual workspace must keep its own history.');
   assert.equal(configuration.assistant.roots[0].uri, target.uri);
   assert.equal(configuration.studioControl.hasToken, true);
   assert.equal(configuration.studioControl.mcpServer.id, 'workflow-studio');

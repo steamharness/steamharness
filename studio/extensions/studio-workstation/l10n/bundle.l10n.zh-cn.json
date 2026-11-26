@@ -541,6 +541,8 @@
   "The selected folder's project UUID does not match the related project.": "所选目录的项目 UUID 与关联项目不匹配。",
   "The selected folder's project version does not match the downloaded project group.": "所选目录的项目版本与下载项目组的锁定版本不匹配。",
   "The server address must use HTTP or HTTPS and contain no credentials or query parameters.": "服务器地址需要使用 HTTP 或 HTTPS，且不包含凭据或查询参数。",
+  "Close the older project window before opening this build. The saved data has not changed.": "请先关闭旧构建的项目窗口，再打开当前构建。已保存的数据未变动。",
+  "Could not restore this project’s local data. The original data has not changed.": "无法恢复此项目的本机数据。原数据未变动。",
   "The server did not return desktop sign-in credentials.": "服务器未返回桌面端登录凭据。",
   "The server did not return valid account information.": "服务器未返回有效的账号信息。",
   "The server returned an invalid response.": "服务器返回了无效的响应。",

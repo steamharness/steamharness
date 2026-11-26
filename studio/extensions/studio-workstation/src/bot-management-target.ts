@@ -19,6 +19,7 @@ interface TargetOptions {
   assistantId: string;
   isBuiltinProjectDirectory(directory: string): boolean;
   localAssistantDirectory(): Promise<string>;
+  prepareManagedStorage?(options: { storage: string; projectId: string; entryId: string; projectType: 'bot'; signal?: AbortSignal }): Promise<string>;
   resolveManaged?(uri: string): PromiseLike<ManagedUsageTarget | undefined>;
   trusted(directory: string): PromiseLike<boolean>;
 }
@@ -60,12 +61,14 @@ async function readBinding(input: TargetInput, options: TargetOptions) {
     release: await releaseStamp(canonical) };
 }
 
-export async function resolveBotStorageTarget(input: TargetInput, options: TargetOptions & { storage: string }): Promise<BotStorageTarget | 'untrusted' | undefined> {
+export async function resolveBotStorageTarget(input: TargetInput, options: TargetOptions & { storage: string; signal?: AbortSignal }): Promise<BotStorageTarget | 'untrusted' | undefined> {
   const binding = await readBinding(input, options);
   if (!binding || binding === 'untrusted') return binding;
   const { canonical, directory, instanceId, bot, assistant, release, name } = binding;
   const root = instanceId === undefined ? options.storage : folderBotDataRoot(options.storage, instanceId);
-  const location = assistant ? assistantDataDirectory(root, bot.projectId, canonical) : projectDataDirectorySync(root, canonical, bot.projectId, bot.entryId);
+  const location = assistant && release && options.prepareManagedStorage
+    ? await options.prepareManagedStorage({ storage: root, ...bot, projectType: 'bot', signal: options.signal })
+    : assistant ? assistantDataDirectory(root, bot.projectId, canonical) : projectDataDirectorySync(root, canonical, bot.projectId, bot.entryId);
   const directories = directory ? { kind: 'folder-context' as const, primary: directory, roots: [directory] }
     : assistant ? { kind: 'workspace-roots' as const, primary: canonical, roots: [canonical] } : undefined;
   return { storage: { root, runtimeDirectory: path.join(location, 'runtime'), bot, directories }, name, instance: instanceId !== undefined,

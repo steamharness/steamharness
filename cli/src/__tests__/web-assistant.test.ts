@@ -86,6 +86,17 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   } finally { await app.close(); }
 });
 
+it('only accepts the project-stable assistant scope for a dedicated managed build', () => {
+  const folderPath = path.resolve('managed-build');
+  const workdir = path.resolve('a-real-workspace');
+  const root = (folderPath: string) => ({ uri: `file:///${path.basename(folderPath)}`, folderPath, name: 'Workspace' });
+  const host = { type: 'configure', surface: 'assistant', assistantProjectDir: folderPath,
+    assistant: { standalone: true, workdir: folderPath, roots: [root(folderPath)], storageScope: 'managed-project' } };
+  expect(parseHostConfiguration(host).assistant?.storageScope).toBe('managed-project');
+  expect(() => parseHostConfiguration({ ...host, assistant: { ...host.assistant, workdir, roots: [root(workdir)] } })).toThrow('Invalid managed project storage scope');
+  expect(() => parseHostConfiguration({ ...host, assistant: { ...host.assistant, roots: [root(folderPath), root(workdir)] } })).toThrow('Invalid managed project storage scope');
+});
+
 it('runs assistant skills locally, isolates workspaces and preserves independent AI authentication', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-assistant-runtime-')); temporary.push(directory);
   const workdir = path.join(directory, 'workspace');
