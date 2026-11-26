@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "a7bbc1ec9449fbaa49c1c292b31cb6f2262fbf86",
+  "commit": "8dd7026c5ab771e4e1174945e82fc3ce9271d5fd",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -169,6 +169,8 @@
     "0172-studio-protected-bot-credentials.patch": "861821241c48c9c103d5cb7426b7e91076d4d8c0dabdfa947d770fcf8b057d21",
     "0173-studio-web-prepared-template.patch": "fdd45a5a5fdf5e400e95d1f1385c5ae8735fcd2c91a682a2aaefe786a4e354ba",
     "0174-studio-bot-credential-list.patch": "1afd6587446df93afc2cc10f96e2ef4830ad8868c92640f6d13c15f61c61b68f",
-    "0175-studio-unified-project-details.patch": "c1d77bcb717db55c2e2eeb5c0b39eb2d1c8995bb1af92d048b6b2cb72a23868c"
+    "0175-studio-unified-project-details.patch": "c1d77bcb717db55c2e2eeb5c0b39eb2d1c8995bb1af92d048b6b2cb72a23868c",
+    "0176-studio-about-version.patch": "ff064cfd897959d486c99dd03360d4c9fc83b4e88feeb8952d226fce1a5f8177",
+    "0177-studio-project-usage-details.patch": "6ccabe6800a115443aaa024687e1b4677104392da27e55356d43db87f57705ad"
   }
 }

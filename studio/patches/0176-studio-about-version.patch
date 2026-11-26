@@ -1,0 +1,90 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 58c8666ff861f2b2dcc38ad26d5b6a31032b5bae..1533501a87c9467164a44599b81f2518d1fad9fc 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -12,7 +12,9 @@ import { IClipboardService } from '../../../../platform/clipboard/common/clipboa
+ import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { IStorageService } from '../../../../platform/storage/common/storage.js';
++import { STEAMHARNESS_ICON_DATA_URI } from '../../../common/studioBranding.js';
+ import { projectDetails, type StudioProjectDetails } from '../../studioProjectDetails.js';
+ import { projectUsageBridge, projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from '../../studioProjectUsage.js';
+ import './media/studioStart.css';
+@@ -92,6 +94,11 @@ class StudioStartService extends Disposable implements IStudioStartService {
+ }
+ registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);
+ 
++CommandsRegistry.registerCommand('studio.internalGetProductInfo', accessor => ({
++	studioVersion: accessor.get(IProductService).studioVersion,
++	logo: STEAMHARNESS_ICON_DATA_URI,
++}));
++
+ /** Project overview shared by empty editor groups and the Start editor. */
+ export class StudioStartView extends Disposable {
+ 	readonly element: HTMLElement;
+diff --git a/src/vs/workbench/browser/studioLaunchpadUpdate.ts b/src/vs/workbench/browser/studioLaunchpadUpdate.ts
+index c9f763a45d14d11ba76150a6641afdbee28bc44a..e2ad03a29307ad43432aeb5a0a5af79d338c1845 100644
+--- a/src/vs/workbench/browser/studioLaunchpadUpdate.ts
++++ b/src/vs/workbench/browser/studioLaunchpadUpdate.ts
+@@ -11,7 +11,8 @@ type LaunchpadUpdater = Pick<IUpdateService, 'state' | 'onStateChange' | 'checkF
+ type UpdateAction = 'check' | 'download' | 'apply' | 'restart';
+ 
+ export interface LaunchpadVersion {
+-	version: string;
++	version?: string;
++	openAbout(): void;
+ 	updater?: LaunchpadUpdater;
+ }
+ 
+@@ -24,11 +25,13 @@ export class StudioLaunchpadUpdate extends Disposable {
+ 	private running = false;
+ 	private failed = false;
+ 
+-	constructor(private readonly t: StudioLabel, { version, updater }: LaunchpadVersion) {
++	constructor(private readonly t: StudioLabel, { version, openAbout, updater }: LaunchpadVersion) {
+ 		super();
+ 		this.element.classList.toggle('lp-managed-release', !!updater);
+-		const label = element('span', 'lp-release-version', `v${version}`);
+-		label.title = `${t('Studio version', 'Studio 版本')} ${version}`;
++		const about = t('About SteamHarness Studio', '关于 SteamHarness Studio');
++		const label = button(version ? `v${version}` : t('About', '关于'), '', openAbout, 'lp-release-version');
++		label.title = version ? `${about} (v${version})` : about;
++		label.setAttribute('aria-label', label.title);
+ 		this.status.setAttribute('role', 'status');
+ 		this.progress.max = 100;
+ 		this.progress.setAttribute('aria-label', t('Update download progress', '更新下载进度'));
+diff --git a/src/vs/workbench/browser/studioWebLaunchpad.ts b/src/vs/workbench/browser/studioWebLaunchpad.ts
+index e86b934b8a7f648f8561059bdee9e9b637f2d7ce..5e8654f4393704904c126662f3aadf0fc55cdc27 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpad.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpad.ts
+@@ -159,7 +159,10 @@ export class StudioWebLaunchpad extends Disposable {
+ 			},
+ 			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
+ 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
+-		}, { version: product.studioVersion ?? product.version }));
++		}, {
++			version: product.studioVersion,
++			openAbout: () => run(commands.executeCommand('studio.openSettings', { section: 'about', target: 'user' })),
++		}));
+ 
+ 		const root = layout.mainContainer;
+ 		root.append(this.view.element);
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 96d44d4be8ce20c5bdf76dbc584d4a7dd027c5b9..3d78459706fe1411c98ec932be749a69e670268f 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -206,7 +206,11 @@ export class StudioLaunchpad extends Disposable {
+ 			},
+ 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+ 			openStore: () => run(commands.executeCommand('studio.openStore')),
+-		}, { version: product.studioVersion ?? product.version, updater: product.updateUrl ? updates : undefined }));
++		}, {
++			version: product.studioVersion,
++			openAbout: () => run(commands.executeCommand('studio.openSettings', { section: 'about', target: 'user' })),
++			updater: product.updateUrl ? updates : undefined,
++		}));
+ 		const zh = this.language.startsWith('zh');
+ 		this.settings = this._register(new StudioLaunchpadSettings(layout.mainContainer, (en, cn) => zh ? cn : en, () => this.showHome(), () => {
+ 			this.view.closePicker();

@@ -1,0 +1,930 @@
+diff --git a/src/vs/workbench/browser/media/studioProjectDetails.css b/src/vs/workbench/browser/media/studioProjectDetails.css
+index 00c1403dcbeebd2bf8b778a459650d137a516639..38ef7293284f3d23616a092d6ed2461c3841c91c 100644
+--- a/src/vs/workbench/browser/media/studioProjectDetails.css
++++ b/src/vs/workbench/browser/media/studioProjectDetails.css
+@@ -5,60 +5,12 @@
+ 
+ .monaco-workbench .lp-project-details .lp-detail-title[tabindex="-1"]:focus { outline: none; }
+ .lp-detail-actions { --detail-action-size: 32px; }
+-.lp-detail-secondary { display: grid; gap: 8px; border-top: 1px solid var(--detail-line); padding-block: 12px; }
+-.lp-detail-secondary[hidden], .lp-detail-action-group[hidden] { display: none; }
+-.lp-detail-action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+-.lp-detail-action-group h2 { min-inline-size: min(100%,max(90px,22%)); max-inline-size: 100%; margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+-.lp-detail-group-actions { display: flex; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+-.lp-detail-group-actions > .studio-project-action { box-sizing: border-box; min-block-size: 32px; }
+ .lp-bot-credential-list { flex: 1 0 100%; min-width: 0; margin-block: 4px; user-select: text; }
+ .lp-bot-credential-list table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+ .lp-bot-credential-list th, .lp-bot-credential-list td { padding: 5px 8px; border-bottom: 1px solid var(--detail-line); text-align: start; overflow-wrap: anywhere; }
+ .lp-bot-credential-list th { color: var(--detail-muted); font-weight: 600; }
+ .lp-bot-credential-list th:first-child { width: 60%; }
+ .lp-credential-status { margin: 4px 0; color: var(--detail-muted); }
+-.lp-project-usage { border-top: 1px solid var(--detail-line); padding-block: 13px 14px; min-width: 0; }
+-.lp-project-usage [hidden], .lp-project-usage:has(.lp-usage-metrics:empty) .lp-usage-metrics { display: none; }
+-.lp-usage-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; }
+-.lp-usage-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+-.lp-usage-status, .lp-usage-muted, .lp-usage-metrics dt, .lp-usage-metrics small, .lp-usage-entry-head small, .lp-usage-entries li > small { color: var(--detail-muted); }
+-.lp-usage-status { margin-inline-start: auto; font-size: 11px; }
+-.lp-project-details .studio-project-action.lp-usage-tool { box-sizing: border-box; flex: none; inline-size: 26px; block-size: 26px; padding: 0; }
+-.lp-usage-tool[aria-disabled="true"] { opacity: .55; cursor: default; }
+-.lp-usage-metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,125px),1fr)); gap: 10px 14px; margin: 9px 0 10px; }
+-.lp-usage-metric { min-width: 0; overflow-wrap: anywhere; }
+-.lp-usage-metric dt { font-size: 11px; }
+-.lp-usage-metric dd, .lp-usage-folders dd { margin: 0; }
+-.lp-usage-value { display: block; margin-block: 2px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+-.lp-usage-metric small { display: block; }
+-.lp-usage-details { margin-block-start: 4px; }
+-.lp-usage-details summary { width: fit-content; max-width: 100%; border-radius: 4px; padding: 3px 5px; cursor: pointer; overflow-wrap: anywhere; }
+-.lp-usage-details summary:hover { background: var(--vscode-toolbar-hoverBackground); }
+-.lp-usage-details summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+-.lp-usage-details > div { margin-block: 4px 8px; }
+-.lp-usage-path { display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) auto; align-items: center; gap: 5px 8px; min-width: 0; }
+-.lp-usage-path > span { color: var(--detail-muted); font-size: 11px; overflow-wrap: anywhere; }
+-.lp-usage-path code { min-width: 0; font: 11px/1.4 var(--vscode-editor-font-family,monospace); overflow-wrap: anywhere; }
+-.lp-usage-folders { margin: 4px 0; }
+-.lp-usage-folders > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--detail-line); }
+-.lp-usage-folders dt, .lp-usage-entries li { overflow-wrap: anywhere; }
+-.lp-usage-folders dd { text-align: end; font-variant-numeric: tabular-nums; }
+-.lp-usage-entries { list-style: none; margin: 4px 0; padding: 0; }
+-.lp-usage-entries li { display: grid; gap: 3px; padding: 6px; border-bottom: 1px solid var(--detail-line); }
+-.lp-usage-entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 9px; }
+-.lp-project-details .studio-project-action {
+-	display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent;
+-	background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; user-select: text;
+-	padding: 4px 7px; border-radius: 4px; max-width: 100%; overflow-wrap: anywhere;
+-}
+-.lp-project-details .studio-project-action > .codicon { flex: none; color: var(--vscode-icon-foreground,var(--detail-fg)); }
+-.lp-project-details .studio-project-action:disabled { opacity: .55; cursor: default; }
+-.lp-project-details .studio-project-action:hover:not(:disabled) { background: var(--vscode-list-hoverBackground,var(--vscode-toolbar-hoverBackground)); }
+-.lp-project-details .studio-project-action:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+-.lp-project-details .studio-project-action.lp-outline { border-color: var(--vscode-contrastBorder,var(--vscode-widget-border,color-mix(in srgb,var(--detail-fg) 25%,transparent))); }
+-.lp-project-details .studio-project-action.lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground,#fff); padding-inline: 12px; }
+-.lp-project-details .studio-project-action.lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
+-.lp-project-details .studio-project-action.lp-primary > .codicon { color: inherit; }
+ .lp-project-details .lp-detail-actions > .studio-project-action {
+ 	box-sizing: border-box; min-block-size: var(--detail-action-size); padding: 4px 10px; text-align: center;
+ }
+diff --git a/src/vs/workbench/browser/media/studioProjectDetailsView.css b/src/vs/workbench/browser/media/studioProjectDetailsView.css
+index 0b87093a7a30ce9be03111b410330205ad7dc061..d806dce546156b9838e5d9ea68cf454e5f530d45 100644
+--- a/src/vs/workbench/browser/media/studioProjectDetailsView.css
++++ b/src/vs/workbench/browser/media/studioProjectDetailsView.css
+@@ -40,3 +40,51 @@
+ .lp-detail-disclosure > summary:hover { background: var(--vscode-toolbar-hoverBackground); }
+ .lp-detail-disclosure > summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+ .lp-detail-disclosure > .lp-detail-facts { margin: 4px 0 0; }
++.lp-detail-secondary { display: grid; gap: 8px; border-top: 1px solid var(--detail-line); padding-block: 12px; }
++.lp-detail-secondary[hidden], .lp-detail-action-group[hidden] { display: none; }
++.lp-detail-action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
++.lp-detail-action-group > :is(h2,h4) { min-inline-size: min(100%,max(90px,22%)); max-inline-size: 100%; margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
++.lp-detail-group-actions { display: flex; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
++.lp-detail-group-actions > .studio-project-action { box-sizing: border-box; min-block-size: 32px; }
++.lp-project-usage { border-top: 1px solid var(--detail-line); padding-block: 13px 14px; min-width: 0; }
++.lp-project-usage [hidden], .lp-project-usage:has(.lp-usage-metrics:empty) .lp-usage-metrics { display: none; }
++.lp-usage-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; }
++.lp-usage-head .lp-usage-title { margin: 0; font-size: 17px; font-weight: 600; }
++.lp-usage-status, .lp-usage-muted, .lp-usage-metrics dt, .lp-usage-metrics small, .lp-usage-entry-head small, .lp-usage-entries li > small { color: var(--detail-muted); }
++.lp-usage-status { margin-inline-start: auto; font-size: 11px; }
++.lp-project-details .studio-project-action.lp-usage-tool { box-sizing: border-box; flex: none; inline-size: 26px; block-size: 26px; padding: 0; }
++.lp-usage-tool[aria-disabled="true"] { opacity: .55; cursor: default; }
++.lp-usage-metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,125px),1fr)); gap: 10px 14px; margin: 9px 0 10px; }
++.lp-usage-metric { min-width: 0; overflow-wrap: anywhere; }
++.lp-usage-metric dt { font-size: 11px; }
++.lp-usage-metric dd, .lp-usage-folders dd { margin: 0; }
++.lp-usage-value { display: block; margin-block: 2px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
++.lp-usage-metric small { display: block; }
++.lp-usage-details { margin-block-start: 4px; }
++.lp-usage-details summary { width: fit-content; max-width: 100%; border-radius: 4px; padding: 3px 5px; cursor: pointer; overflow-wrap: anywhere; }
++.lp-usage-details summary:hover { background: var(--vscode-toolbar-hoverBackground); }
++.lp-usage-details summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
++.lp-usage-details > div { margin-block: 4px 8px; }
++.lp-usage-path { display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) auto; align-items: center; gap: 5px 8px; min-width: 0; }
++.lp-usage-path > span { color: var(--detail-muted); font-size: 11px; overflow-wrap: anywhere; }
++.lp-usage-path code { min-width: 0; font: 11px/1.4 var(--vscode-editor-font-family,monospace); overflow-wrap: anywhere; }
++.lp-usage-folders { margin: 4px 0; }
++.lp-usage-folders > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--detail-line); }
++.lp-usage-folders dt, .lp-usage-entries li { overflow-wrap: anywhere; }
++.lp-usage-folders dd { text-align: end; font-variant-numeric: tabular-nums; }
++.lp-usage-entries { list-style: none; margin: 4px 0; padding: 0; }
++.lp-usage-entries li { display: grid; gap: 3px; padding: 6px; border-bottom: 1px solid var(--detail-line); }
++.lp-usage-entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 9px; }
++.lp-project-details .studio-project-action {
++	display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent;
++	background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; user-select: text;
++	padding: 4px 7px; border-radius: 4px; max-width: 100%; overflow-wrap: anywhere;
++}
++.lp-project-details .studio-project-action > .codicon { flex: none; color: var(--vscode-icon-foreground,var(--detail-fg)); }
++.lp-project-details .studio-project-action:disabled { opacity: .55; cursor: default; }
++.lp-project-details .studio-project-action:hover:not(:disabled) { background: var(--vscode-list-hoverBackground,var(--vscode-toolbar-hoverBackground)); }
++.lp-project-details .studio-project-action:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
++.lp-project-details .studio-project-action.lp-outline { border-color: var(--vscode-contrastBorder,var(--vscode-widget-border,color-mix(in srgb,var(--detail-fg) 25%,transparent))); }
++.lp-project-details .studio-project-action.lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground,#fff); padding-inline: 12px; }
++.lp-project-details .studio-project-action.lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
++.lp-project-details .studio-project-action.lp-primary > .codicon { color: inherit; }
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index b163980cb8a0c3023d3517f7feefc69db586da8f..37924bbb60e036df033a3b1a00cfbff2e82c503d 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -11,6 +11,7 @@ import { IContextMenuService } from '../../platform/contextview/browser/contextV
+ import type { IHoverService } from '../../platform/hover/browser/hover.js';
+ import { studioBotIcon } from '../common/studioProjectIcons.js';
+ import { projectDetails } from './studioProjectDetails.js';
++import { projectBotAction, projectBotManagementLabel, projectDetailActionGroup } from './studioProjectDetailsView.js';
+ import { projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from './studioProjectUsage.js';
+ import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
+ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+@@ -286,10 +287,7 @@ export class LaunchpadLibrary extends Disposable {
+ 	}
+ 
+ 	private detailActionGroup(project: LaunchpadProject, label: string, defaultIcon: string, alwaysVisible = false) {
+-		const group = element('section', 'lp-detail-action-group');
+-		group.setAttribute('aria-label', label);
+-		const controls = element('div', 'lp-detail-group-actions');
+-		group.append(element('h2', '', label), controls);
++		const { group, controls } = projectDetailActionGroup(document, label);
+ 		let rendered: string | undefined;
+ 		return {
+ 			element: group,
+@@ -437,12 +435,12 @@ export class LaunchpadLibrary extends Disposable {
+ 			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
+ 			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
+ 			const canManageBot = (this.actions.openBotArtifacts || this.actions.openBotMemory || this.actions.readBotCredentials) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
+-			const label = t('Bot management', 'Bot 管理');
++			const label = projectBotManagementLabel(t);
+ 			const management = canManageBot && selected.managed ? this.detailActionGroup(selected, label, 'settings-gear', true) : undefined;
+ 			if (canManageBot) {
+-				const group = management?.element ?? element('section', 'lp-detail-action-group');
+-				group.setAttribute('aria-label', label);
+-				const controls = element('div', 'lp-detail-group-actions');
++				const staticGroup = management ? undefined : projectDetailActionGroup(document, label);
++				const group = management?.element ?? staticGroup!.group;
++				const controls = staticGroup?.controls ?? element('div', 'lp-detail-group-actions');
+ 				for (const entry of botEntries) {
+ 					const add = (key: string, title: string, icon: string, action: () => void) => {
+ 						const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, icon, action, 'studio-project-action lp-outline');
+@@ -450,17 +448,16 @@ export class LaunchpadLibrary extends Disposable {
+ 						controls.append(open);
+ 						return open;
+ 					};
+-					if (this.actions.openBotArtifacts) { add('bot-artifacts', t('Artifact library', '产物库'), 'archive', () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
+-					if (this.actions.openBotMemory) { add('bot-memory', t('Memory management', '记忆管理'), 'database', () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
++					if (this.actions.openBotArtifacts) { add('bot-artifacts', ...projectBotAction('artifacts', t), () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
++					if (this.actions.openBotMemory) { add('bot-memory', ...projectBotAction('memory', t), () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
+ 					if (this.actions.readBotCredentials) {
+-						const open = add('bot-credentials', t('Credential management', '凭据管理'), 'key', () => this.toggleBotCredentials(selected, entry?.entryId));
++						const open = add('bot-credentials', ...projectBotAction('credentials', t), () => this.toggleBotCredentials(selected, entry?.entryId));
+ 						const list = this.credentialList;
+ 						open.setAttribute('aria-expanded', String(!!list && list.entryId === entry?.entryId));
+ 						if (list && list.entryId === entry?.entryId) { open.setAttribute('aria-controls', list.panel.id); }
+ 					}
+ 				}
+-				if (!management) { group.append(element('h2', '', label)); }
+-				group.append(controls);
++				if (management) { group.append(controls); }
+ 				if (this.credentialList) { group.append(this.credentialList.panel); }
+ 				secondaryActions.append(group);
+ 			}
+diff --git a/src/vs/workbench/browser/studioProjectDetailsView.ts b/src/vs/workbench/browser/studioProjectDetailsView.ts
+index 1d38e82c21b7a24007bec44134fa7be562360fd0..36f5dc6bd772733361833e9309664bfcce9bfd4c 100644
+--- a/src/vs/workbench/browser/studioProjectDetailsView.ts
++++ b/src/vs/workbench/browser/studioProjectDetailsView.ts
+@@ -41,6 +41,37 @@ export interface ProjectDetailSection {
+ 	expanded?: boolean;
+ }
+ 
++export type ProjectBotAction = 'artifacts' | 'memory' | 'credentials';
++
++export function projectBotManagementLabel(t: ProjectDetailsLabel): string {
++	return t('Bot management', 'Bot 管理');
++}
++
++export function projectBotAction(kind: ProjectBotAction, t: ProjectDetailsLabel): [label: string, icon: string] {
++	switch (kind) {
++		case 'artifacts': return [t('Artifact library', '产物库'), 'archive'];
++		case 'memory': return [t('Memory management', '记忆管理'), 'database'];
++		case 'credentials': return [t('Credential management', '凭据管理'), 'key'];
++	}
++}
++
++export function projectDetailActionGroup(doc: Document, label: string, heading: 'h2' | 'h4' = 'h2') {
++	const group = element(doc, 'section', 'lp-detail-action-group');
++	group.setAttribute('aria-label', label);
++	const controls = element(doc, 'div', 'lp-detail-group-actions');
++	group.append(element(doc, heading, '', label), controls);
++	return { group, controls };
++}
++
++export function projectDetailButton(doc: Document, label: string, glyph: string, action: (button: HTMLButtonElement) => void, className = 'studio-project-action lp-outline'): HTMLButtonElement {
++	const button = element(doc, 'button', className);
++	button.type = 'button';
++	if (glyph) { button.append(icon(doc, glyph)); }
++	button.append(label);
++	button.addEventListener('click', () => action(button));
++	return button;
++}
++
+ interface EntryListOptions {
+ 	heading?: 'h2' | 'h4';
+ 	uri?: string;
+@@ -168,11 +199,9 @@ export function renderProjectEntryList(doc: Document, entries: readonly ProjectD
+ 			row.append(element(doc, 'small', 'lp-entry-unavailable', t('Unavailable', '不可用')));
+ 		} else if (entryId && openEntry) {
+ 			const label = t('Open entry', '打开入口');
+-			const button = element(doc, 'button', 'lp-outline studio-project-action');
+-			button.type = 'button'; button.append(icon(doc, 'play'), label);
++			const button = projectDetailButton(doc, label, 'play', () => openEntry(entryId));
+ 			button.setAttribute('aria-label', `${label}: ${entry.name}`);
+ 			button.dataset.key = `entry:${options.uri}:${entryId}`;
+-			button.addEventListener('click', () => openEntry(entryId));
+ 			row.append(button);
+ 		}
+ 		list.append(row);
+diff --git a/src/vs/workbench/browser/studioProjectUsage.ts b/src/vs/workbench/browser/studioProjectUsage.ts
+index b02e1c018390ecdd9c9ac2e731f6865d09eee6d4..6ef99382e7b91a78265c25e1db925ef0be89d698 100644
+--- a/src/vs/workbench/browser/studioProjectUsage.ts
++++ b/src/vs/workbench/browser/studioProjectUsage.ts
+@@ -3,45 +3,13 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { RunOnceScheduler } from '../../base/common/async.js';
+-import { Disposable } from '../../base/common/lifecycle.js';
+ import { generateUuid } from '../../base/common/uuid.js';
+ import type { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
+ import type { ICommandService } from '../../platform/commands/common/commands.js';
+ import { type IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
+-import { button, element, type StudioLabel } from './studioUiElements.js';
++import { projectUsageKey, type ProjectUsageBridge, type UsagePart as Part, type ProjectUsageSnapshot as Snapshot, type ProjectUsageTarget as UsageTarget } from './studioProjectUsageView.js';
+ 
+-type Part = 'directory' | 'runtime';
+-type State = 'ok' | 'partial' | 'unavailable';
+-interface Size { state: State; bytes?: number }
+-interface DirectoryUsage extends Size {
+-	path?: string;
+-	files?: number;
+-	directories?: number;
+-	folders: Array<Size & { name: string }>;
+-	omittedFolders?: number;
+-}
+-interface ConversationUsage extends Size { sessions?: number; messages?: number }
+-interface MemoryUsage extends Size { records?: number; location?: string; created?: boolean }
+-interface WorkflowUsage extends Size { runs?: number; lastRunAt?: number }
+-interface KanbanUsage { state: State | 'unbuilt' | 'shared' | 'hosted'; bytes?: number; location?: string }
+-type Entry = { entryId: string; name: string } & (
+-	| { type: 'bot'; conversation: ConversationUsage; memory: MemoryUsage }
+-	| { type: 'workflow'; workflow: WorkflowUsage }
+-	| { type: 'kanban'; kanban: KanbanUsage }
+-);
+-interface RuntimeUsage { state: State | 'not-project'; size: Size; location?: string; entries: Entry[] }
+-type Snapshot = { measuredAt: number } & ({ part: 'directory'; usage: DirectoryUsage } | { part: 'runtime'; usage: RuntimeUsage });
+-type Snapshots = Partial<Record<Part, Snapshot>>;
+-
+-interface UsageTarget { uri: string; projectId?: string; distribution?: string; managed?: boolean; missing?: boolean; kind?: 'folder' | 'workspace' }
+-export interface ProjectUsageBridge {
+-	cached(target: UsageTarget): Snapshots;
+-	remember(target: UsageTarget, snapshot: Snapshot): void;
+-	read(target: UsageTarget, part: Part, id: string): Promise<Snapshot | undefined>;
+-	cancel(id: string): void;
+-	copy(path: string): void;
+-}
++export { ProjectUsageView as StudioProjectUsage, projectUsageKey, type ProjectUsageBridge } from './studioProjectUsageView.js';
+ 
+ const cachePrefix = 'studio.projectUsage.v1:';
+ const cacheLimit = 32;
+@@ -55,6 +23,7 @@ export function projectUsageBridge(commands: ICommandService, clipboard: IClipbo
+ 		catch { return undefined; }
+ 	};
+ 	return {
++		requestId: generateUuid,
+ 		cached: target => {
+ 			const directory = readCache(cacheKey(target, 'directory')), runtime = readCache(cacheKey(target, 'runtime'));
+ 			return {
+@@ -89,285 +58,3 @@ export function projectUsageBridge(commands: ICommandService, clipboard: IClipbo
+ 		copy: path => { void clipboard.writeText(path).catch(() => undefined); },
+ 	};
+ }
+-
+-export function projectUsageKey(target: UsageTarget): string {
+-	return JSON.stringify([target.uri, target.projectId, target.distribution, !!target.managed, !!target.missing, target.kind ?? 'folder']);
+-}
+-
+-const parts: Part[] = ['directory', 'runtime'];
+-const ranks = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+-
+-function usable(snapshot: Snapshot): boolean {
+-	const { usage } = snapshot;
+-	if (usage.state === 'unavailable') { return false; }
+-	// A scan that could not inspect any of the directory should not replace a previous result.
+-	return snapshot.part !== 'directory' || snapshot.usage.state === 'ok' || Boolean(snapshot.usage.files || snapshot.usage.directories);
+-}
+-
+-interface Reading { snapshot?: Snapshot; id?: string; failed?: boolean }
+-
+-/** Owns the repeated measurements independently of the existing detail and entry buttons. */
+-export class StudioProjectUsage extends Disposable {
+-	readonly element = element('section', 'lp-project-usage');
+-	private readonly metrics = element('dl', 'lp-usage-metrics');
+-	private readonly status = element('span', 'lp-usage-status');
+-	private readonly refresh: HTMLButtonElement;
+-	private readonly folders = element('details', 'lp-usage-details');
+-	private readonly folderBody = element('div');
+-	private readonly entries = element('details', 'lp-usage-details');
+-	private readonly entryBody = element('div');
+-	private readonly readings: Record<Part, Reading>;
+-	private readonly revalidate = this._register(new RunOnceScheduler(() => this.load(), 100));
+-	private readonly enabled: boolean;
+-	private readonly locale: string;
+-	private readonly number: Intl.NumberFormat;
+-	private readonly keyPrefix: string;
+-	private visible = false;
+-	private allFolders = false;
+-
+-	constructor(private readonly target: UsageTarget, private readonly t: StudioLabel, private readonly bridge: ProjectUsageBridge) {
+-		super();
+-		this.enabled = target.uri.startsWith('file:') && !target.missing && (target.managed === true || target.kind !== 'workspace');
+-		const cached = this.enabled ? bridge.cached(target) : {};
+-		this.readings = { directory: { snapshot: cached.directory }, runtime: { snapshot: cached.runtime } };
+-		this.locale = t('en', 'zh-CN');
+-		this.number = new Intl.NumberFormat(this.locale, { maximumFractionDigits: 1 });
+-		this.keyPrefix = 'usage:' + target.uri + ':';
+-		const header = element('header', 'lp-usage-head');
+-		this.refresh = button('', 'refresh', () => this.load(), 'studio-project-action lp-usage-tool');
+-		this.refresh.title = t('Refresh usage', '刷新用量');
+-		this.refresh.setAttribute('aria-label', this.refresh.title);
+-		this.refresh.dataset.key = this.keyPrefix + 'refresh';
+-		this.status.setAttribute('role', 'status');
+-		header.append(element('h2', '', t('Local usage', '本机用量')), this.status, this.refresh);
+-		const details = (node: HTMLDetailsElement, body: HTMLElement, key: string, label: string) => {
+-			const summary = element('summary', '', label);
+-			summary.dataset.key = this.keyPrefix + key;
+-			node.append(summary, body);
+-		};
+-		details(this.folders, this.folderBody, 'folders', t('Folder sizes', '文件夹大小'));
+-		details(this.entries, this.entryBody, 'entries', t('Entry usage and storage locations', '入口用量与存储位置'));
+-		this.element.append(header, this.metrics, this.folders, this.entries);
+-		this.render();
+-	}
+-
+-	setVisible(visible: boolean): void {
+-		if (this.visible === visible) { return; }
+-		this.visible = visible;
+-		if (!visible) { this.cancel(); }
+-		else if (this.enabled) {
+-			this.revalidate.schedule();
+-			this.renderStatus();
+-		}
+-	}
+-
+-	override dispose(): void { this.setVisible(false); super.dispose(); }
+-
+-	private cancel(): void {
+-		this.revalidate.cancel();
+-		for (const reading of Object.values(this.readings)) {
+-			const id = reading.id;
+-			reading.id = undefined;
+-			if (id) { this.bridge.cancel(id); }
+-		}
+-	}
+-
+-	private load(): void {
+-		if (!this.visible || !this.enabled || parts.some(part => this.readings[part].id)) { return; }
+-		this.revalidate.cancel();
+-		for (const part of parts) {
+-			const reading = this.readings[part];
+-			const id = reading.id = generateUuid();
+-			void this.bridge.read(this.target, part, id).catch(() => undefined).then(snapshot => {
+-				if (reading.id !== id) { return; }
+-				reading.id = undefined;
+-				if (snapshot?.part === part && usable(snapshot)) {
+-					reading.snapshot = snapshot;
+-					reading.failed = false;
+-					this.bridge.remember(this.target, snapshot);
+-				} else { reading.failed = true; }
+-				this.render();
+-			});
+-		}
+-		this.renderStatus();
+-	}
+-
+-	private size(metric: Size): string {
+-		if (metric.bytes === undefined || (metric.bytes === 0 && metric.state === 'partial')) { return this.t('Unavailable', '无法读取'); }
+-		let bytes = metric.bytes, index = 0;
+-		while (bytes >= 1024 && index < ranks.length - 1) { bytes /= 1024; index++; }
+-		return `${metric.state === 'partial' ? '≥ ' : ''}${this.number.format(bytes)} ${ranks[index]}`;
+-	}
+-
+-	private count(value: number | undefined): string { return value === undefined ? '—' : this.number.format(value); }
+-
+-	private time(value: number): string {
+-		return new Date(value).toLocaleString(this.locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+-	}
+-
+-	private metric(label: string, value: string, hint?: string, title?: string): void {
+-		const row = element('div', 'lp-usage-metric'), caption = element('dt', '', label), info = element('dd');
+-		if (title) { caption.title = title; }
+-		info.append(element('span', 'lp-usage-value', value));
+-		if (hint) { info.append(element('small', '', hint)); }
+-		row.append(caption, info); this.metrics.append(row);
+-	}
+-
+-	private pathRow(parent: HTMLElement, label: string, value: string, key: string): void {
+-		const row = element('div', 'lp-usage-path');
+-		const copy = button('', 'copy', () => this.bridge.copy(value), 'studio-project-action lp-usage-tool');
+-		copy.title = this.t('Copy path', '复制路径');
+-		copy.setAttribute('aria-label', `${copy.title}: ${label}`);
+-		copy.dataset.key = this.keyPrefix + key;
+-		row.append(element('span', '', label), element('code', '', value), copy);
+-		parent.append(row);
+-	}
+-
+-	private renderFolders(directory: DirectoryUsage | undefined): void {
+-		if (!directory?.path) { this.folders.hidden = true; return; }
+-		this.folders.hidden = false;
+-		this.folderBody.replaceChildren();
+-		this.pathRow(this.folderBody, this.t('Working directory', '工作目录'), directory.path, 'workdir');
+-		const list = element('dl', 'lp-usage-folders');
+-		for (const folder of directory.folders.slice(0, this.allFolders ? undefined : 8)) {
+-			const row = element('div');
+-			row.append(element('dt', '', folder.name), element('dd', '', this.size(folder)));
+-			list.append(row);
+-		}
+-		this.folderBody.append(list);
+-		if (!directory.folders.length) { this.folderBody.append(element('small', 'lp-usage-muted', directory.state === 'ok' ? this.t('No subfolders', '无子目录') : this.t('Folder sizes unavailable', '目录明细不可用'))); }
+-		if (directory.folders.length > 8) {
+-			const toggle = button(this.allFolders ? this.t('Show largest 8', '仅显示前 8 项') : this.t('Show all', '显示全部'),
+-				this.allFolders ? 'chevron-up' : 'chevron-down', () => {
+-					this.allFolders = !this.allFolders;
+-					this.renderFolders(directory);
+-					this.folderBody.querySelector<HTMLButtonElement>('.lp-usage-show-all')?.focus({ preventScroll: true });
+-				}, 'studio-project-action lp-usage-show-all');
+-			toggle.setAttribute('aria-expanded', String(this.allFolders));
+-			toggle.dataset.key = this.keyPrefix + 'show-all';
+-			this.folderBody.append(toggle);
+-		}
+-		if (directory.omittedFolders) { this.folderBody.append(element('small', 'lp-usage-muted', `${this.count(directory.omittedFolders)} ${this.t('additional folders not listed', '个目录未列出')}`)); }
+-	}
+-
+-	private kanbanSize(kanban: KanbanUsage): string {
+-		switch (kanban.state) {
+-			case 'hosted': return this.t('Hosted data excluded', '托管数据未统计');
+-			case 'shared': return this.t('Shared directory', '共用目录');
+-			case 'unbuilt': return this.t('Not built', '未构建');
+-			default: return this.size(kanban as Size);
+-		}
+-	}
+-
+-	private sum(values: readonly Size[]): Size {
+-		const known = values.filter(value => value.bytes !== undefined);
+-		return !known.length ? { state: 'unavailable' } : {
+-			state: values.some(value => value.state !== 'ok') ? 'partial' : 'ok',
+-			bytes: known.reduce((total, value) => total + (value.bytes ?? 0), 0),
+-		};
+-	}
+-
+-	private sumCount(values: Array<number | undefined>): string {
+-		const counts = values.filter(value => value !== undefined);
+-		return !counts.length ? this.count(undefined) : `${counts.length < values.length ? '≥ ' : ''}${this.count(counts.reduce((a, b) => a + b, 0))}`;
+-	}
+-
+-	private renderRuntime(runtime: RuntimeUsage): void {
+-		const t = this.t;
+-		if (!runtime.entries.length && runtime.state === 'not-project') { return; }
+-		this.metric(t('Studio data', 'Studio 运行数据'), this.size(runtime.size));
+-		const bots = runtime.entries.filter(entry => entry.type === 'bot');
+-		const workflows = runtime.entries.filter(entry => entry.type === 'workflow');
+-		const boards = runtime.entries.filter(entry => entry.type === 'kanban');
+-		const sessionText = (count: string) => this.locale === 'zh-CN' ? `${count} 个会话` : `${count} sessions`;
+-		const messageText = (count: string) => this.locale === 'zh-CN' ? `${count} 条消息` : `${count} messages`;
+-		const memoryText = (count: string) => this.locale === 'zh-CN' ? `${count} 条记忆` : `${count} records`;
+-		const recent = (stamp: number) => `${t('Last run', '最近运行')} ${this.time(stamp)}`;
+-		if (bots.length) {
+-			this.metric(t('Bot conversations', 'Bot 对话'), this.size(this.sum(bots.map(entry => entry.conversation))),
+-				`${sessionText(this.sumCount(bots.map(entry => entry.conversation.sessions)))} · ${messageText(this.sumCount(bots.map(entry => entry.conversation.messages)))}`);
+-			this.metric(t('Bot memory', 'Bot 记忆'), this.size(this.sum(bots.map(entry => entry.memory))),
+-				bots.every(entry => entry.memory.created === false) ? t('Not created', '尚未创建') : memoryText(this.sumCount(bots.map(entry => entry.memory.records))));
+-		}
+-		if (workflows.length) {
+-			const count = this.sumCount(workflows.map(entry => entry.workflow.runs));
+-			const last = Math.max(0, ...workflows.map(entry => entry.workflow.lastRunAt ?? 0));
+-			this.metric(t('Saved Workflow runs', '已保存工作流运行'), count, last ? recent(last) : undefined);
+-		}
+-		if (boards.length) {
+-			const sizes = boards.map(entry => entry.kanban).filter((item): item is Size => item.bytes !== undefined);
+-			const excluded = boards.length - sizes.length;
+-			const value = sizes.length ? this.size(this.sum(sizes)) : boards.length === 1 ? this.kanbanSize(boards[0].kanban) : t('Not measured', '未单列统计');
+-			this.metric(t('Kanban assets', '看板产物'), value, sizes.length ? (excluded ? t('Some entries not measured', '部分入口未单列') : t('Included in working directory', '已计入工作目录')) : undefined);
+-		}
+-		if (!runtime.entries.length) { return; }
+-		this.entries.hidden = false;
+-		if (runtime.location && (runtime.size.bytes ?? 0) > 0) { this.pathRow(this.entryBody, t('Studio data', 'Studio 运行数据'), runtime.location, 'runtime'); }
+-		const list = element('ul', 'lp-usage-entries');
+-		for (const entry of runtime.entries) {
+-			const row = element('li'), head = element('div', 'lp-usage-entry-head');
+-			const label = entry.type === 'bot' ? 'Bot' : entry.type === 'workflow' ? t('Workflow', '工作流') : t('Kanban', '看板');
+-			head.append(element('strong', '', entry.name), element('small', '', label)); row.append(head);
+-			if (entry.type === 'bot') {
+-				const { conversation, memory } = entry;
+-				row.append(element('small', '', `${t('Conversations', '对话')} ${this.size(conversation)} · ${sessionText(this.count(conversation.sessions))} · ${messageText(this.count(conversation.messages))}`));
+-				row.append(element('small', '', `${t('Memory', '记忆')} ${memory.created === false ? t('Not created', '尚未创建') : this.size(memory) + ' · ' + memoryText(this.count(memory.records))}`));
+-				if (memory.location) { this.pathRow(row, t('Memory database', '记忆数据库'), memory.location, `memory:${entry.entryId}`); }
+-			} else if (entry.type === 'workflow') {
+-				const stats = entry.workflow;
+-				const when = stats.lastRunAt ? ` · ${recent(stats.lastRunAt)}` : '';
+-				row.append(element('small', '', `${t('Saved runs', '已保存运行')} ${this.count(stats.runs)} · ${t('History and outputs', '历史与输出')} ${this.size(stats)}${when}`));
+-			} else {
+-				row.append(element('small', '', this.kanbanSize(entry.kanban)));
+-				if (entry.kanban.location) { this.pathRow(row, t('Local assets', '本地产物'), entry.kanban.location, `kanban:${entry.entryId}`); }
+-			}
+-			list.append(row);
+-		}
+-		this.entryBody.append(list);
+-	}
+-
+-	private renderStatus(): void {
+-		const { directory, runtime } = this.readings;
+-		const directoryState = directory.snapshot?.usage.state;
+-		const runtimeState = runtime.snapshot?.usage.state;
+-		const hasData = directoryState === 'ok' || directoryState === 'partial' || runtimeState === 'ok' || runtimeState === 'partial';
+-		const showingPrevious = (directory.failed && directory.snapshot) || (runtime.failed && runtime.snapshot && runtimeState !== 'not-project');
+-		const busy = this.revalidate.isScheduled() || Boolean(directory.id || runtime.id);
+-		const t = this.t;
+-		this.refresh.hidden = !this.enabled;
+-		this.refresh.setAttribute('aria-disabled', String(busy));
+-		let label: string;
+-		if (!this.enabled) { label = t('Unavailable for this location', '此位置无法统计'); }
+-		else if (busy) { label = hasData ? t('Updating…', '正在更新…') : t('Measuring…', '正在统计…'); }
+-		else if (showingPrevious) { label = t('Update failed; showing previous data', '更新失败，显示上次结果'); }
+-		else if (directory.failed || runtime.failed) { label = hasData ? t('Some measurements unavailable', '部分统计不可用') : t('Unable to measure', '无法读取用量'); }
+-		else if (directoryState === 'partial' || runtimeState === 'partial') { label = t('Partial measurement', '仅部分统计'); }
+-		else {
+-			const measuredAt = Math.max(directory.snapshot?.measuredAt ?? 0, runtime.snapshot?.measuredAt ?? 0);
+-			label = measuredAt ? `${t('Measured', '统计于')} ${this.time(measuredAt)}` : '';
+-		}
+-		if (this.status.textContent !== label) { this.status.textContent = label; }
+-	}
+-
+-	private render(): void {
+-		this.renderStatus();
+-		const active = this.element.ownerDocument.activeElement as HTMLElement | null;
+-		const focus = this.element.contains(active) ? active?.dataset.key : undefined;
+-		const { directory, runtime } = this.readings;
+-		const t = this.t;
+-		this.metrics.replaceChildren();
+-		this.folders.hidden = this.entries.hidden = true;
+-		this.entryBody.replaceChildren();
+-		if (this.enabled) {
+-			const stat = directory.snapshot?.part === 'directory' ? directory.snapshot.usage : undefined;
+-			const count = (value?: number) => `${stat?.state === 'partial' ? '≥ ' : ''}${this.count(value)}`;
+-			const hint = stat?.files === undefined ? undefined : t(`${count(stat.files)} files · ${count(stat.directories)} folders`, `${count(stat.files)} 个文件 · ${count(stat.directories)} 个目录`);
+-			this.metric(t('Working directory', '工作目录'), stat ? this.size(stat) : directory.failed ? t('Unavailable', '无法读取') : '—', hint,
+-				t('Logical file sizes, including hidden files and dependencies; links are not followed.', '文件逻辑大小，含隐藏文件和依赖；不跟随符号链接。'));
+-			this.renderFolders(stat);
+-			if (runtime.snapshot?.part === 'runtime') { this.renderRuntime(runtime.snapshot.usage); }
+-			else if (runtime.failed) { this.metric(t('Studio data', 'Studio 运行数据'), t('Unavailable', '无法读取')); }
+-		}
+-		if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(node => node.dataset.key === focus)?.focus({ preventScroll: true }); }
+-	}
+-}
+diff --git a/src/vs/workbench/browser/studioProjectUsageView.ts b/src/vs/workbench/browser/studioProjectUsageView.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..73b952cec6d3f5b1e2a29a122f6812eec64ac3ad
+--- /dev/null
++++ b/src/vs/workbench/browser/studioProjectUsageView.ts
+@@ -0,0 +1,339 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++/* Generated from shared/project-info/local-usage.ts. Run node studio/scripts/sync-project-details.mjs --write to update. */
++
++import { projectDetailButton, type ProjectDetailsLabel } from './studioProjectDetailsView.js';
++
++export type UsagePart = 'directory' | 'runtime';
++export type UsageState = 'ok' | 'partial' | 'unavailable';
++export interface UsageSize { state: UsageState; bytes?: number }
++export interface DirectoryUsage extends UsageSize {
++	path?: string;
++	files?: number;
++	directories?: number;
++	folders: Array<UsageSize & { name: string }>;
++	omittedFolders?: number;
++}
++export interface ConversationUsage extends UsageSize { sessions?: number; messages?: number }
++export interface MemoryUsage extends UsageSize { records?: number; location?: string; created?: boolean }
++export interface WorkflowUsage extends UsageSize { runs?: number; lastRunAt?: number }
++export interface KanbanUsage { state: UsageState | 'unbuilt' | 'shared' | 'hosted'; bytes?: number; location?: string }
++export type EntryUsage = { entryId: string; name: string } & (
++	| { type: 'bot'; conversation: ConversationUsage; memory: MemoryUsage }
++	| { type: 'workflow'; workflow: WorkflowUsage }
++	| { type: 'kanban'; kanban: KanbanUsage }
++);
++export interface RuntimeUsage { state: UsageState | 'not-project'; size: UsageSize; location?: string; entries: EntryUsage[] }
++export type ProjectUsageSnapshot = { measuredAt: number } & ({ part: 'directory'; usage: DirectoryUsage } | { part: 'runtime'; usage: RuntimeUsage });
++export type ProjectUsageSnapshots = Partial<Record<UsagePart, ProjectUsageSnapshot>>;
++
++export interface ProjectUsageTarget { uri: string; projectId?: string; distribution?: string; managed?: boolean; missing?: boolean; kind?: 'folder' | 'workspace' }
++export interface ProjectUsageBridge {
++	requestId?(): string;
++	cached(target: ProjectUsageTarget): ProjectUsageSnapshots;
++	remember(target: ProjectUsageTarget, snapshot: ProjectUsageSnapshot): void;
++	read(target: ProjectUsageTarget, part: UsagePart, id: string): Promise<ProjectUsageSnapshot | undefined>;
++	cancel(id: string): void;
++	copy(path: string): void;
++}
++
++export function isProjectUsageSnapshot(value: unknown): value is ProjectUsageSnapshot {
++	const snapshot = value as ProjectUsageSnapshot | undefined;
++	return Number.isFinite(snapshot?.measuredAt) && !!snapshot && (snapshot.part === 'directory' ? Array.isArray(snapshot.usage?.folders)
++		: snapshot.part === 'runtime' && !!snapshot.usage?.size && Array.isArray(snapshot.usage.entries));
++}
++
++export function projectUsageKey(target: ProjectUsageTarget): string {
++	return JSON.stringify([target.uri, target.projectId, target.distribution, !!target.managed, !!target.missing, target.kind ?? 'folder']);
++}
++
++const parts: UsagePart[] = ['directory', 'runtime'];
++const ranks = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
++
++function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
++	const node = document.createElement(tag);
++	node.className = className; node.textContent = text;
++	return node;
++}
++
++function usable(snapshot: ProjectUsageSnapshot): boolean {
++	const { usage } = snapshot;
++	if (usage.state === 'unavailable') { return false; }
++	// A scan that could not inspect any of the directory should not replace a previous result.
++	return snapshot.part !== 'directory' || snapshot.usage.state === 'ok' || Boolean(snapshot.usage.files || snapshot.usage.directories);
++}
++
++interface Reading { snapshot?: ProjectUsageSnapshot; id?: string; failed?: boolean }
++
++/** Owns the repeated measurements independently of the existing detail and entry buttons. */
++export class ProjectUsageView {
++	readonly element = element('section', 'lp-project-usage');
++	private readonly metrics = element('dl', 'lp-usage-metrics');
++	private readonly status = element('span', 'lp-usage-status');
++	private readonly refresh: HTMLButtonElement;
++	private readonly folders = element('details', 'lp-usage-details');
++	private readonly folderBody = element('div');
++	private readonly entries = element('details', 'lp-usage-details');
++	private readonly entryBody = element('div');
++	private readonly readings: Record<UsagePart, Reading>;
++	private revalidate?: ReturnType<typeof setTimeout>;
++	private readonly enabled: boolean;
++	private readonly locale: string;
++	private readonly number: Intl.NumberFormat;
++	private readonly keyPrefix: string;
++	private visible = false;
++	private allFolders = false;
++
++	constructor(private readonly target: ProjectUsageTarget, private readonly t: ProjectDetailsLabel, private readonly bridge: ProjectUsageBridge, heading: 'h2' | 'h4' = 'h2') {
++		this.enabled = target.uri.startsWith('file:') && !target.missing && (target.managed === true || target.kind !== 'workspace');
++		const cached = this.enabled ? bridge.cached(target) : {};
++		this.readings = { directory: { snapshot: cached.directory }, runtime: { snapshot: cached.runtime } };
++		this.locale = t('en', 'zh-CN');
++		this.number = new Intl.NumberFormat(this.locale, { maximumFractionDigits: 1 });
++		this.keyPrefix = 'usage:' + target.uri + ':';
++		const header = element('header', 'lp-usage-head');
++		this.refresh = projectDetailButton(document, '', 'refresh', () => this.load(), 'studio-project-action lp-usage-tool');
++		this.refresh.title = t('Refresh usage', '刷新用量');
++		this.refresh.setAttribute('aria-label', this.refresh.title);
++		this.refresh.dataset.key = this.keyPrefix + 'refresh';
++		this.status.setAttribute('role', 'status');
++		header.append(element(heading, 'lp-usage-title', t('Local usage', '本机用量')), this.status, this.refresh);
++		const details = (node: HTMLDetailsElement, body: HTMLElement, key: string, label: string) => {
++			const summary = element('summary', '', label);
++			summary.dataset.key = this.keyPrefix + key;
++			node.append(summary, body);
++		};
++		details(this.folders, this.folderBody, 'folders', t('Folder sizes', '文件夹大小'));
++		details(this.entries, this.entryBody, 'entries', t('Entry usage and storage locations', '入口用量与存储位置'));
++		this.element.append(header, this.metrics, this.folders, this.entries);
++		this.render();
++	}
++
++	setVisible(visible: boolean): void {
++		if (this.visible === visible) { return; }
++		this.visible = visible;
++		if (!visible) { this.cancel(); }
++		else if (this.enabled) {
++			this.revalidate = setTimeout(() => this.load(), 100);
++			this.renderStatus();
++		}
++	}
++
++	dispose(): void { this.setVisible(false); }
++
++	private cancelRevalidation(): void {
++		clearTimeout(this.revalidate);
++		this.revalidate = undefined;
++	}
++
++	private cancel(): void {
++		this.cancelRevalidation();
++		for (const reading of Object.values(this.readings)) {
++			const id = reading.id;
++			reading.id = undefined;
++			if (id) { this.bridge.cancel(id); }
++		}
++	}
++
++	private load(): void {
++		if (!this.visible || !this.enabled || parts.some(part => this.readings[part].id)) { return; }
++		this.cancelRevalidation();
++		for (const part of parts) {
++			const reading = this.readings[part];
++			const id = reading.id = this.bridge.requestId?.() ?? globalThis.crypto.randomUUID();
++			void this.bridge.read(this.target, part, id).catch(() => undefined).then(snapshot => {
++				if (reading.id !== id) { return; }
++				reading.id = undefined;
++				if (snapshot?.part === part && usable(snapshot)) {
++					reading.snapshot = snapshot;
++					reading.failed = false;
++					this.bridge.remember(this.target, snapshot);
++				} else { reading.failed = true; }
++				this.render();
++			});
++		}
++		this.renderStatus();
++	}
++
++	private size(metric: UsageSize): string {
++		if (metric.bytes === undefined || (metric.bytes === 0 && metric.state === 'partial')) { return this.t('Unavailable', '无法读取'); }
++		let bytes = metric.bytes, index = 0;
++		while (bytes >= 1024 && index < ranks.length - 1) { bytes /= 1024; index++; }
++		return `${metric.state === 'partial' ? '≥ ' : ''}${this.number.format(bytes)} ${ranks[index]}`;
++	}
++
++	private count(value: number | undefined): string { return value === undefined ? '—' : this.number.format(value); }
++
++	private time(value: number): string {
++		return new Date(value).toLocaleString(this.locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
++	}
++
++	private metric(label: string, value: string, hint?: string, title?: string): void {
++		const row = element('div', 'lp-usage-metric'), caption = element('dt', '', label), info = element('dd');
++		if (title) { caption.title = title; }
++		info.append(element('span', 'lp-usage-value', value));
++		if (hint) { info.append(element('small', '', hint)); }
++		row.append(caption, info); this.metrics.append(row);
++	}
++
++	private pathRow(parent: HTMLElement, label: string, value: string, key: string): void {
++		const row = element('div', 'lp-usage-path');
++		const copy = projectDetailButton(document, '', 'copy', () => this.bridge.copy(value), 'studio-project-action lp-usage-tool');
++		copy.title = this.t('Copy path', '复制路径');
++		copy.setAttribute('aria-label', `${copy.title}: ${label}`);
++		copy.dataset.key = this.keyPrefix + key;
++		row.append(element('span', '', label), element('code', '', value), copy);
++		parent.append(row);
++	}
++
++	private renderFolders(directory: DirectoryUsage | undefined): void {
++		if (!directory?.path) { this.folders.hidden = true; return; }
++		this.folders.hidden = false;
++		this.folderBody.replaceChildren();
++		this.pathRow(this.folderBody, this.t('Working directory', '工作目录'), directory.path, 'workdir');
++		const list = element('dl', 'lp-usage-folders');
++		for (const folder of directory.folders.slice(0, this.allFolders ? undefined : 8)) {
++			const row = element('div');
++			row.append(element('dt', '', folder.name), element('dd', '', this.size(folder)));
++			list.append(row);
++		}
++		this.folderBody.append(list);
++		if (!directory.folders.length) { this.folderBody.append(element('small', 'lp-usage-muted', directory.state === 'ok' ? this.t('No subfolders', '无子目录') : this.t('Folder sizes unavailable', '目录明细不可用'))); }
++		if (directory.folders.length > 8) {
++			const toggle = projectDetailButton(document, this.allFolders ? this.t('Show largest 8', '仅显示前 8 项') : this.t('Show all', '显示全部'),
++				this.allFolders ? 'chevron-up' : 'chevron-down', () => {
++					this.allFolders = !this.allFolders;
++					this.renderFolders(directory);
++					this.folderBody.querySelector<HTMLButtonElement>('.lp-usage-show-all')?.focus({ preventScroll: true });
++				}, 'studio-project-action lp-usage-show-all');
++			toggle.setAttribute('aria-expanded', String(this.allFolders));
++			toggle.dataset.key = this.keyPrefix + 'show-all';
++			this.folderBody.append(toggle);
++		}
++		if (directory.omittedFolders) { this.folderBody.append(element('small', 'lp-usage-muted', `${this.count(directory.omittedFolders)} ${this.t('additional folders not listed', '个目录未列出')}`)); }
++	}
++
++	private kanbanSize(kanban: KanbanUsage): string {
++		switch (kanban.state) {
++			case 'hosted': return this.t('Hosted data excluded', '托管数据未统计');
++			case 'shared': return this.t('Shared directory', '共用目录');
++			case 'unbuilt': return this.t('Not built', '未构建');
++			default: return this.size(kanban as UsageSize);
++		}
++	}
++
++	private sum(values: readonly UsageSize[]): UsageSize {
++		const known = values.filter(value => value.bytes !== undefined);
++		return !known.length ? { state: 'unavailable' } : {
++			state: values.some(value => value.state !== 'ok') ? 'partial' : 'ok',
++			bytes: known.reduce((total, value) => total + (value.bytes ?? 0), 0),
++		};
++	}
++
++	private sumCount(values: Array<number | undefined>): string {
++		const counts = values.filter(value => value !== undefined);
++		return !counts.length ? this.count(undefined) : `${counts.length < values.length ? '≥ ' : ''}${this.count(counts.reduce((a, b) => a + b, 0))}`;
++	}
++
++	private renderRuntime(runtime: RuntimeUsage): void {
++		const t = this.t;
++		if (!runtime.entries.length && runtime.state === 'not-project') { return; }
++		this.metric(t('Studio data', 'Studio 运行数据'), this.size(runtime.size));
++		const bots = runtime.entries.filter(entry => entry.type === 'bot');
++		const workflows = runtime.entries.filter(entry => entry.type === 'workflow');
++		const boards = runtime.entries.filter(entry => entry.type === 'kanban');
++		const sessionText = (count: string) => this.locale === 'zh-CN' ? `${count} 个会话` : `${count} sessions`;
++		const messageText = (count: string) => this.locale === 'zh-CN' ? `${count} 条消息` : `${count} messages`;
++		const memoryText = (count: string) => this.locale === 'zh-CN' ? `${count} 条记忆` : `${count} records`;
++		const recent = (stamp: number) => `${t('Last run', '最近运行')} ${this.time(stamp)}`;
++		if (bots.length) {
++			this.metric(t('Bot conversations', 'Bot 对话'), this.size(this.sum(bots.map(entry => entry.conversation))),
++				`${sessionText(this.sumCount(bots.map(entry => entry.conversation.sessions)))} · ${messageText(this.sumCount(bots.map(entry => entry.conversation.messages)))}`);
++			this.metric(t('Bot memory', 'Bot 记忆'), this.size(this.sum(bots.map(entry => entry.memory))),
++				bots.every(entry => entry.memory.created === false) ? t('Not created', '尚未创建') : memoryText(this.sumCount(bots.map(entry => entry.memory.records))));
++		}
++		if (workflows.length) {
++			const count = this.sumCount(workflows.map(entry => entry.workflow.runs));
++			const last = Math.max(0, ...workflows.map(entry => entry.workflow.lastRunAt ?? 0));
++			this.metric(t('Saved Workflow runs', '已保存工作流运行'), count, last ? recent(last) : undefined);
++		}
++		if (boards.length) {
++			const sizes = boards.map(entry => entry.kanban).filter((item): item is UsageSize => item.bytes !== undefined);
++			const excluded = boards.length - sizes.length;
++			const value = sizes.length ? this.size(this.sum(sizes)) : boards.length === 1 ? this.kanbanSize(boards[0].kanban) : t('Not measured', '未单列统计');
++			this.metric(t('Kanban assets', '看板产物'), value, sizes.length ? (excluded ? t('Some entries not measured', '部分入口未单列') : t('Included in working directory', '已计入工作目录')) : undefined);
++		}
++		if (!runtime.entries.length) { return; }
++		this.entries.hidden = false;
++		if (runtime.location && (runtime.size.bytes ?? 0) > 0) { this.pathRow(this.entryBody, t('Studio data', 'Studio 运行数据'), runtime.location, 'runtime'); }
++		const list = element('ul', 'lp-usage-entries');
++		for (const entry of runtime.entries) {
++			const row = element('li'), head = element('div', 'lp-usage-entry-head');
++			const label = entry.type === 'bot' ? 'Bot' : entry.type === 'workflow' ? t('Workflow', '工作流') : t('Kanban', '看板');
++			head.append(element('strong', '', entry.name), element('small', '', label)); row.append(head);
++			if (entry.type === 'bot') {
++				const { conversation, memory } = entry;
++				row.append(element('small', '', `${t('Conversations', '对话')} ${this.size(conversation)} · ${sessionText(this.count(conversation.sessions))} · ${messageText(this.count(conversation.messages))}`));
++				row.append(element('small', '', `${t('Memory', '记忆')} ${memory.created === false ? t('Not created', '尚未创建') : this.size(memory) + ' · ' + memoryText(this.count(memory.records))}`));
++				if (memory.location) { this.pathRow(row, t('Memory database', '记忆数据库'), memory.location, `memory:${entry.entryId}`); }
++			} else if (entry.type === 'workflow') {
++				const stats = entry.workflow;
++				const when = stats.lastRunAt ? ` · ${recent(stats.lastRunAt)}` : '';
++				row.append(element('small', '', `${t('Saved runs', '已保存运行')} ${this.count(stats.runs)} · ${t('History and outputs', '历史与输出')} ${this.size(stats)}${when}`));
++			} else {
++				row.append(element('small', '', this.kanbanSize(entry.kanban)));
++				if (entry.kanban.location) { this.pathRow(row, t('Local assets', '本地产物'), entry.kanban.location, `kanban:${entry.entryId}`); }
++			}
++			list.append(row);
++		}
++		this.entryBody.append(list);
++	}
++
++	private renderStatus(): void {
++		const { directory, runtime } = this.readings;
++		const directoryState = directory.snapshot?.usage.state;
++		const runtimeState = runtime.snapshot?.usage.state;
++		const hasData = directoryState === 'ok' || directoryState === 'partial' || runtimeState === 'ok' || runtimeState === 'partial';
++		const showingPrevious = (directory.failed && directory.snapshot) || (runtime.failed && runtime.snapshot && runtimeState !== 'not-project');
++		const busy = this.revalidate !== undefined || Boolean(directory.id || runtime.id);
++		const t = this.t;
++		this.refresh.hidden = !this.enabled;
++		this.refresh.setAttribute('aria-disabled', String(busy));
++		let label: string;
++		if (!this.enabled) { label = t('Unavailable for this location', '此位置无法统计'); }
++		else if (busy) { label = hasData ? t('Updating…', '正在更新…') : t('Measuring…', '正在统计…'); }
++		else if (showingPrevious) { label = t('Update failed; showing previous data', '更新失败，显示上次结果'); }
++		else if (directory.failed || runtime.failed) { label = hasData ? t('Some measurements unavailable', '部分统计不可用') : t('Unable to measure', '无法读取用量'); }
++		else if (directoryState === 'partial' || runtimeState === 'partial') { label = t('Partial measurement', '仅部分统计'); }
++		else {
++			const measuredAt = Math.max(directory.snapshot?.measuredAt ?? 0, runtime.snapshot?.measuredAt ?? 0);
++			label = measuredAt ? `${t('Measured', '统计于')} ${this.time(measuredAt)}` : '';
++		}
++		if (this.status.textContent !== label) { this.status.textContent = label; }
++	}
++
++	private render(): void {
++		this.renderStatus();
++		const active = this.element.ownerDocument.activeElement as HTMLElement | null;
++		const focus = this.element.contains(active) ? active?.dataset.key : undefined;
++		const { directory, runtime } = this.readings;
++		const t = this.t;
++		this.metrics.replaceChildren();
++		this.folders.hidden = this.entries.hidden = true;
++		this.entryBody.replaceChildren();
++		if (this.enabled) {
++			const stat = directory.snapshot?.part === 'directory' ? directory.snapshot.usage : undefined;
++			const count = (value?: number) => `${stat?.state === 'partial' ? '≥ ' : ''}${this.count(value)}`;
++			const hint = stat?.files === undefined ? undefined : t(`${count(stat.files)} files · ${count(stat.directories)} folders`, `${count(stat.files)} 个文件 · ${count(stat.directories)} 个目录`);
++			this.metric(t('Working directory', '工作目录'), stat ? this.size(stat) : directory.failed ? t('Unavailable', '无法读取') : '—', hint,
++				t('Logical file sizes, including hidden files and dependencies; links are not followed.', '文件逻辑大小，含隐藏文件和依赖；不跟随符号链接。'));
++			this.renderFolders(stat);
++			if (runtime.snapshot?.part === 'runtime') { this.renderRuntime(runtime.snapshot.usage); }
++			else if (runtime.failed) { this.metric(t('Studio data', 'Studio 运行数据'), t('Unavailable', '无法读取')); }
++		}
++		if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(node => node.dataset.key === focus)?.focus({ preventScroll: true }); }
++	}
++}
