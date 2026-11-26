@@ -4,13 +4,15 @@ import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 
 const kernel = fileURLToPath(new URL('../upstream/vscode/', import.meta.url));
+const codicons = fileURLToPath(new URL('../node_modules/@vscode/codicons/dist/codicon.css', import.meta.url));
 const bundle = await build({ stdin: { resolveDir: kernel, sourcefile: 'usage-fixture.ts', contents: `
   export { StudioStartView } from './src/vs/workbench/browser/parts/editor/studioStart.ts';
   export { StudioLaunchpadView } from './src/vs/workbench/browser/studioLaunchpadView.ts';
   export { projectUsageBridge } from './src/vs/workbench/browser/studioProjectUsage.ts';
   export { InMemoryStorageService } from './src/vs/platform/storage/common/storage.ts';
+  import ${JSON.stringify(codicons)};
   import './src/vs/workbench/browser/media/studioLaunchpad.css';` },
-  bundle: true, platform: 'browser', format: 'iife', globalName: 'usageFixture', write: false, outdir: 'unused', loader: { '.woff2': 'dataurl' } });
+  bundle: true, platform: 'browser', format: 'iife', globalName: 'usageFixture', write: false, outdir: 'unused', loader: { '.ttf': 'dataurl', '.woff2': 'dataurl' } });
 const script = bundle.outputFiles.find(file => file.path.endsWith('.js')).text;
 const styles = bundle.outputFiles.find(file => file.path.endsWith('.css')).text;
 
@@ -24,7 +26,8 @@ try {
     await page.setContent(`<style>
       :root { --vscode-foreground: ${light ? '#222' : '#ddd'}; --vscode-descriptionForeground: ${light ? '#555' : '#aaa'};
         --vscode-editor-background: ${light ? '#fff' : '#1f1f1f'}; --vscode-sideBar-background: ${light ? '#f6f6f6' : '#252526'};
-        --vscode-panel-border: ${light ? '#ddd' : '#393939'}; --vscode-focusBorder: #007acc; --vscode-button-background: #006ab1; }
+        --vscode-panel-border: ${light ? '#ddd' : '#393939'}; --vscode-widget-border: ${light ? '#d0d4d9' : '#4a4d54'};
+        --vscode-focusBorder: #007acc; --vscode-button-background: #006ab1; }
       body { margin: 0; } .monaco-workbench { position: fixed; inset: 0; overflow: auto; background: var(--vscode-editor-background); }
       .studio-launchpad { position: fixed; inset: 0; } #overview { height: 100%; }
       </style><div class="monaco-workbench ${light ? 'vs' : 'vs-dark'}"><div id="launchpad"></div><div id="overview" hidden></div></div>`);
@@ -92,16 +95,26 @@ try {
       window.showCredentialFixture = () => {
         document.getElementById('overview').hidden = true;
         const requests = window.credentialRequests = [];
+        const zh = window._VSCODE_NLS_LANGUAGE === 'zh-cn';
+        const folderBot = { uri: 'file:///FolderBot.code-workspace', kind: 'workspace', name: 'Folder Bot', path: '/projects/Folder Bot',
+          projectType: 'bot', managed: true, entries: [assistant.entries[0]] };
         const library = new StudioLaunchpadView(window._VSCODE_NLS_LANGUAGE, {
           hoverService: { setupDelayedHover: () => ({ dispose() {} }) },
+          openBotArtifacts: () => {}, openBotMemory: () => {},
+          detailActions: async (project, source) => project.uri === folderBot.uri ? (source === 'local' ? [
+            ['profile', zh ? '分身档案…' : 'Profile…', 'settings-gear'], ['clone', zh ? '复制分身…' : 'Clone…', 'copy'],
+            ['export', zh ? '导出模板…' : 'Export template…', 'export'], ['import', zh ? '导入模板…' : 'Import template…', 'cloud-upload'],
+          ] : [['contact', zh ? '添加到 IM 通讯录' : 'Add to IM contacts', 'comment-discussion']])
+            .map(([id, label, icon]) => ({ id, label, icon })) : undefined,
           readBotCredentials: async (project, entryId) => {
             requests.push([project.uri, entryId]);
-            return { status: 'ok', rows: [{ name: 'fixture-credential-' + 'long-'.repeat(8), type: window._VSCODE_NLS_LANGUAGE === 'zh-cn' ? '结构化凭据' : 'Structured credential' }] };
+            return { status: 'ok', rows: [{ name: 'fixture-credential-' + 'long-'.repeat(8), type: zh ? '结构化凭据' : 'Structured credential' }] };
           },
         });
         document.getElementById('launchpad').append(library.element);
-        library.update({ ...state, recent: [], builtinProjects: [assistant] });
+        library.update({ ...state, platform: true, account: { signedIn: true }, recent: [folderBot], builtinProjects: [assistant] });
         library.select('library', assistant.uri);
+        window.showManagedActions = () => library.select('library', folderBot.uri);
       };
     });
     assert.equal(await page.locator('.lp-project-usage').count(), 0);
@@ -206,6 +219,39 @@ try {
     assert.equal(await credentials.evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1), true);
     await credentialButton.click();
     await credentials.waitFor({ state: 'detached' });
+
+    await page.evaluate(() => window.showManagedActions());
+    const actions = management.locator('.lp-detail-group-actions');
+    await actions.locator('[data-detail-action=import]').waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    assert.equal(await actions.count(), 1);
+    assert.deepEqual(await actions.getByRole('button').allTextContents(), zh
+      ? ['产物库', '记忆管理', '凭据管理', '分身档案…', '复制分身…', '导出模板…', '导入模板…']
+      : ['Artifact library', 'Memory management', 'Credential management', 'Profile…', 'Clone…', 'Export template…', 'Import template…']);
+    for (const width of [1440, 850, 410]) {
+      await page.setViewportSize({ width, height: 840 });
+      const layout = await management.evaluate(group => {
+        const heading = group.querySelector('h2').getBoundingClientRect();
+        const toolbar = group.querySelector('.lp-detail-group-actions');
+        const controls = toolbar.getBoundingClientRect();
+        const value = group.closest('article').querySelector('.lp-detail-facts dd').getBoundingClientRect();
+        const buttons = [...toolbar.querySelectorAll('button')].map(button => button.getBoundingClientRect());
+        const gap = parseFloat(getComputedStyle(toolbar).columnGap);
+        const rows = new Map();
+        const fits = buttons.every(rect => {
+          if (!rows.has(rect.top)) rows.set(rect.top, rect.left);
+          return rect.left >= controls.left - 1 && rect.right <= controls.right + 1;
+        });
+        const fitsOneRow = buttons.reduce((width, rect) => width + rect.width, (buttons.length - 1) * gap) <= controls.width;
+        return { fits, rows: rows.size, leftAligned: [...rows.values()].every(left => Math.abs(left - controls.left) < 1),
+          fitsOneRow, followsHeading: heading.bottom <= controls.top, alignsWithFacts: Math.abs(value.left - controls.left) < 1, sameTop: Math.abs(heading.top - controls.top) < 1 };
+      });
+      assert.ok(layout.fits && layout.leftAligned, JSON.stringify({ width, layout }));
+      if (width === 410) assert.ok(layout.followsHeading && layout.rows > 1, JSON.stringify({ width, layout }));
+      else assert.ok(layout.alignsWithFacts && layout.sameTop, JSON.stringify({ width, layout }));
+      assert.equal(layout.rows === 1, layout.fitsOneRow, JSON.stringify({ width, layout }));
+      if (process.env.STUDIO_USAGE_SCREENSHOTS) await details.screenshot({ path: `${process.env.STUDIO_USAGE_SCREENSHOTS}/detail-actions-${language}-${width}.png` });
+    }
     assert.deepEqual(errors, []);
     await page.close();
     console.log(`Project usage and credential list UI passed (${language}, ${light ? 'light' : 'dark'}, wide and 410px)`);

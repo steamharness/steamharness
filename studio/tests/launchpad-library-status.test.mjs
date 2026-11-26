@@ -37,6 +37,7 @@ for (const language of ['en', 'zh-cn']) {
     const release = f.project('release', { distribution: 'release', projectType: 'aggregate', entries });
     f.library.update([source, release], [], true, '');
     f.library.show(source.uri);
+    assert.equal(f.library.element.querySelectorAll('.lp-detail-secondary').length, 1);
     const controls = [...f.library.element.querySelectorAll('.lp-detail-secondary button[data-key^="workflow-schedules:"]')];
     const title = language === 'zh-cn' ? 'Workflow 定时计划' : 'Workflow schedules';
     assert.deepEqual(controls.map(button => button.textContent.trim()), [`${title} · Build`, `${title} · Review`]);
@@ -66,6 +67,35 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(f.library.element.querySelector('.lp-detail-actions button[data-key^="bot-memory:"]'), null);
     memory[0].click();
     assert.deepEqual(calls, [[bot.uri, 'qa'], [bot.uri, 'ops', 'memory']]);
+  });
+
+  test(`folder Bot actions join the existing toolbar without moving focus (${language})`, async t => {
+    let resolveLocal;
+    const local = new Promise(resolve => { resolveLocal = resolve; });
+    const calls = [], f = fixture(t, language, {
+      openBotArtifacts: (project, entry) => calls.push([project.uri, entry]),
+      openBotMemory: () => {}, readBotCredentials: async () => ({ status: 'ok', rows: [] }),
+      detailActions: (_project, source) => source === 'local' ? local : undefined,
+      runDetailAction: async (project, id) => { calls.push([project.uri, id]); },
+    });
+    const bot = f.project('folder-bot', { kind: 'workspace', projectType: 'bot', managed: true,
+      entries: [{ type: 'bot', entryId: 'agent', name: 'Agent', primary: true }] });
+    f.library.update([bot], [], true, '');
+    f.library.show(bot.uri);
+    const group = f.library.element.querySelector('.lp-detail-action-group[aria-label="' + (language === 'zh-cn' ? 'Bot 管理' : 'Bot management') + '"]');
+    const toolbar = group.querySelector('.lp-detail-group-actions');
+    const initial = [...toolbar.children];
+    initial[0].focus();
+    resolveLocal([{ id: 'profile', label: 'Profile' }, { id: 'clone', label: 'Clone' }]);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(group.querySelectorAll('.lp-detail-group-actions').length, 1);
+    assert.deepEqual([...toolbar.children].slice(0, 3), initial);
+    assert.deepEqual([...toolbar.children].slice(3).map(button => button.dataset.detailAction), ['profile', 'clone']);
+    assert.equal(f.window.document.activeElement, initial[0]);
+    initial[0].click();
+    toolbar.lastElementChild.click();
+    assert.deepEqual(calls, [[bot.uri, 'agent'], [bot.uri, 'clone']]);
+    await new Promise(resolve => setImmediate(resolve));
   });
 
   test(`the credential list follows the selected Bot entry and ignores late responses (${language})`, async t => {
