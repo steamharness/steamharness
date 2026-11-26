@@ -1,9 +1,10 @@
 import type { AgentSessionTurn } from 'steamharness/agent';
-import { outputText, type ConversationMessage, type ConversationQueuedInput, type ConversationSession, type OutputItem } from '../workflow-types';
+import { conversationMessageRequestId, conversationModelName, outputText, type ConversationMessage, type ConversationQueuedInput, type ConversationSession, type OutputItem } from '../workflow-types';
 
 export interface ConversationTimelineRow {
   id: string;
   message: ConversationMessage;
+  replaces?: string;
   previous?: boolean;
   progress?: ConversationMessage;
 }
@@ -24,17 +25,21 @@ export class ConversationTimeline {
 
   project(scope: string, session: ConversationSession, promoted: ConversationQueuedInput[] = []): ConversationTimelineRow[] {
     if (this.scope !== scope) { this.scope = scope; this.cuts.clear(); }
+    const promotionRequests = new Set(promoted.map(input => input.requestId ?? input.id));
+    const confirmed = promotionRequests.size ? new Set(session.messages.map(conversationMessageRequestId)) : undefined;
+    const awaitingPromotion = promoted.filter(input => !confirmed?.has(input.requestId ?? input.id));
+    const pendingPromotions = new Set(awaitingPromotion.map(input => input.requestId ?? input.id));
     const turns = session.agent?.turns.filter(turn => turn.conversationId === (session.agentConversationId ?? session.agent?.conversationId)) ?? [];
     const boundaries = new Map<string, Boundary>();
     for (const message of session.messages) {
       if (message.role !== 'user' || message.status !== 'steer') continue;
-      const requestId = message.sessionRequestId ?? message.input?.requestId ?? message.id?.replace(/^steer:/, '');
+      const requestId = conversationMessageRequestId(message);
       if (requestId) boundaries.set(requestId, { requestId, message, turn: turns.find(turn => turn.requestId === requestId) });
     }
     const queued = session.queuedInputs ?? [];
-    const pending = [...promoted, ...turns.filter(turn => turn.mode === 'steer' && turn.status === 'queued' && !turn.hiddenInput)
+    const pending = turns.filter(turn => turn.mode === 'steer' && turn.status === 'queued' && !turn.hiddenInput && !pendingPromotions.has(turn.requestId))
       .map(turn => queued.find(input => (input.requestId ?? input.id) === turn.requestId)
-        ?? { id: turn.requestId, text: turn.prompt, params: {}, attachments: [], createdAt: turn.startedAt ?? session.updatedAt ?? 0 })];
+        ?? { id: turn.requestId, text: turn.prompt, params: {}, attachments: [], createdAt: turn.startedAt ?? session.updatedAt ?? 0 });
     for (const input of pending) {
       const requestId = input.requestId ?? input.id;
       if (boundaries.has(requestId) || session.messages.some(message => message.role === 'user'
@@ -64,8 +69,10 @@ export class ConversationTimeline {
     for (const [index, message] of session.messages.entries()) {
       if (message.role === 'user' && message.status === 'steer') continue;
       const id = message.id ?? `${index}:${message.role}`;
+      const requestId = promotionRequests.size ? conversationMessageRequestId(message) : undefined;
+      const replaces = requestId && promotionRequests.has(requestId) && promotionId(requestId, message.role);
       const list = byAnswer.get(message);
-      if (!list?.length) { rows.push({ id, message }); continue; }
+      if (!list?.length) { rows.push({ id, message, ...(replaces && { replaces }) }); continue; }
       list.sort((a, b) => a.turn?.entryId !== undefined && b.turn?.entryId !== undefined
         ? a.turn.entryId - b.turn.entryId : (a.message.createdAt ?? 0) - (b.message.createdAt ?? 0));
       const cuts = list.map(boundary => {
@@ -100,7 +107,7 @@ export class ConversationTimeline {
           const end = previous ? cuts[i].text : message.content;
           content = end.startsWith(start) ? end.slice(start.length) : end;
         }
-        rows.push({ id: i ? `${id}:after:${list[i - 1].requestId}` : id, previous, progress: previous ? undefined : message, message: {
+        rows.push({ id: i ? `${id}:after:${list[i - 1].requestId}` : id, ...(!i && replaces && { replaces }), previous, progress: previous ? undefined : message, message: {
           ...message, items: segments[i], content,
           ...(previous ? { status: 'interrupted', error: undefined, pendingInput: undefined, submittingInput: undefined,
             cancelRequested: false, tokenUsage: undefined, timers: undefined, resolvedInputs: undefined } : {}),
@@ -108,6 +115,18 @@ export class ConversationTimeline {
       }
     }
     for (const boundary of unassigned) rows.push({ id: `steer:${boundary.requestId}`, message: boundary.message });
+    // Send now starts a new reply. Never project cancellation of the old reply onto the preview.
+    for (const input of awaitingPromotion) {
+      const requestId = input.requestId ?? input.id;
+      rows.push({ id: promotionId(requestId, 'user'), message: { role: 'user', content: input.text, createdAt: input.createdAt,
+        attachments: input.attachments, references: input.references } },
+      { id: promotionId(requestId, 'assistant'), message: { role: 'assistant', content: '', status: 'sending',
+        createdAt: input.createdAt, model: conversationModelName(input) } });
+    }
     return rows;
   }
+}
+
+function promotionId(requestId: string, role: ConversationMessage['role']): string {
+  return `promotion:${requestId}:${role}`;
 }

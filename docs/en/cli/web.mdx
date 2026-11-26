@@ -13,9 +13,9 @@ pnpm exec steamharness web .
 
 ## CLI Web
 
-During a Bot reply, click **Send now** beside a queued message to display it immediately at the current conversation position. Earlier output folds into **Previous response**, which you can expand. Subsequent output continues below the new message. The queue no longer shows a Send requested row, and refreshing or reopening history preserves these sections.
+During a Bot reply, click **Send now** beside a queued message to move it below the current reply immediately. The Bot stops the current reply and starts a new one below the message. Any output already shown stays in the conversation, and other messages remain queued.
 
-The Agent receives the message through the existing queue rules. If the send request fails, the queued message returns with an error and a **Retry** action.
+If sending fails, the message returns to the queue with an error and a **Retry** action. Pressing Enter with no text, attachments, or path references neither sends a message nor stops a task.
 
 Click **Stop** to show stopping progress immediately in the reply and task plan. Displayed content and the composer draft are preserved, and the input queue pauses. You can send a new message once execution ends. Stopping a child conversation leaves the parent's other work running.
 

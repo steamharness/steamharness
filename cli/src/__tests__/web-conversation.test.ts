@@ -96,6 +96,27 @@ it.each(['removeQueued', 'promoteQueued'] as const)('resolves edited ordinary qu
   controller.dispose();
 });
 
+it('stops an ordinary Bot run promptly and starts only the chosen queued input after cancellation', async () => {
+  const { controller, runtime } = fixture({}, { inputQueue: { enabled: true } });
+  let finishFirst!: (report: Report) => void, finishNext!: (report: Report) => void;
+  vi.mocked(runtime.run).mockImplementationOnce(async () => new Promise(resolve => { finishFirst = resolve; }))
+    .mockImplementationOnce(async () => new Promise(resolve => { finishNext = resolve; }));
+  const send = (id: string) => controller.send({ text: id, params: {}, attachments: [] }, controller.current, true, id);
+  await send('first'); await send('remain'); await send('interrupt');
+  const action = controller.promoteQueued('interrupt');
+  try {
+    await vi.waitFor(() => expect(runtime.cancel).toHaveBeenCalledExactlyOnceWith('first'));
+    expect(runtime.run).toHaveBeenCalledOnce();
+    finishFirst({ status: 'aborted' }); await action;
+    expect(controller.current.messages.map(({ content, status }) => status ?? content)).toEqual(['first', 'aborted', 'interrupt', 'running']);
+    expect(controller.current.queuedInputs?.map(input => input.id)).toEqual(['remain']);
+    expect(vi.mocked(runtime.run).mock.calls.map(([run]) => run.runId)).toEqual(['first', 'interrupt']);
+  } finally {
+    finishFirst({ status: 'aborted' }); finishNext?.({ status: 'failed' });
+    await controller.idle(); controller.dispose();
+  }
+});
+
 it('retains queued inputs while Server setup is required and waits for an explicit action to drain them', async () => {
   let available = true;
   const { controller, runtime } = fixture({ canStart: () => available });

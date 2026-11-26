@@ -357,6 +357,11 @@ export function messageSettled(message: ConversationMessage): boolean {
     && !message.pendingInput && !message.submittingInput && !message.cancelRequested;
 }
 
+export function conversationMessageRequestId(message: ConversationMessage): string | undefined {
+  const agentInput = message.role === 'user' ? message.id?.match(/^session:\d+:(.+):input$/)?.[1] : undefined;
+  return message.sessionRequestId ?? message.input?.requestId ?? agentInput ?? message.id?.replace(/^steer:/, '');
+}
+
 export function sessionRunning(session: ConversationSession): boolean {
   if (session.agentInterrupted || session.recoveryPaused) return false;
   if (!session.agent) return !!session.activeRunId;

@@ -39,8 +39,8 @@ async function fixture(query = '', saved?: object) {
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
   const emit = (message: object) => window.dispatchEvent(new MessageEvent('message', { data: message }));
-  const receive = (sessions: ConversationSession[], activeId = 'running', conversationAccess: ConversationAccess = { readOnly: activeId === 'running' }, conversationUi?: KanbanConversationUi) => {
-    emit({ type: 'state', project, sessions, activeId, running: activeId === 'running', conversationAccess, conversationUi });
+  const receive = (sessions: ConversationSession[], activeId = 'running', conversationAccess: ConversationAccess = { readOnly: activeId === 'running' }, conversationUi?: KanbanConversationUi, running = activeId === 'running') => {
+    emit({ type: 'state', project, sessions, activeId, running, conversationAccess, conversationUi });
     const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0);
   };
   const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate');
@@ -217,7 +217,58 @@ it('folds the earlier reply before a correction and streams into a new section a
   expect(correction?.nextElementSibling).toBe(continuation);
 });
 
-it('shows Send now in the transcript before confirmation, restores a failed action, and avoids duplicate input bubbles', async () => {
+it.each([false, true])('reuses Send now rows across stop and restart snapshots (manual stop=%s)', async manualStop => {
+  const f = await fixture();
+  const entry: ConversationSession = { ...session('chat'), activeRunId: 'worker', messages: [
+    { id: 'input', role: 'user', content: 'Task', createdAt: 10 },
+    { id: 'reply', role: 'assistant', content: 'Partial output', status: 'running', createdAt: 10 },
+  ], queuedInputs: [{ id: 'correction', text: 'Correction', params: {}, attachments: [], createdAt: 20 },
+    { id: 'later', text: 'Wait for success', params: {}, attachments: [], createdAt: 30 }] };
+  const state = (running: boolean) => f.receive([structuredClone(entry)], entry.id, { readOnly: false }, undefined, running);
+  const row = (id: string) => document.querySelector(`[data-message-id="${id}"]`);
+  const send = document.querySelector<HTMLButtonElement>('#send')!;
+  state(true);
+  const oldReply = row('reply');
+  if (manualStop) send.click();
+  document.querySelector<HTMLButtonElement>('#input-queue [data-id="correction"] button[title="Send now"]')!.click();
+  await Promise.resolve();
+  const bubble = row('promotion:correction:user'), pending = row('promotion:correction:assistant');
+  expect(bubble?.previousElementSibling).toBe(oldReply);
+  expect(bubble?.textContent).toContain('Correction');
+  expect(pending?.querySelector('.pending')?.textContent).toBe('Sending message...');
+  expect(document.querySelector('.conversation-segment')).toBeNull();
+  expect(document.querySelector('#input-queue [data-id="later"]')).not.toBeNull();
+  const operations = host.postMessage.mock.calls.map(([message]) => message).filter(message => ['queue-promote', 'stop'].includes(message.type));
+  expect(operations.map(message => message.type)).toEqual(manualStop ? ['stop', 'queue-promote'] : ['queue-promote']);
+  if (manualStop) f.emit({ ...operations[0], type: 'stopped' });
+
+  delete entry.activeRunId; entry.queuedInputs!.shift();
+  Object.assign(entry.messages[1], { status: 'aborted', error: 'Stopped' });
+  state(false);
+  f.emit({ ...operations.at(-1), type: 'queue-updated' });
+  await Promise.resolve();
+  expect(row('promotion:correction:user')).toBe(bubble);
+  expect(row('promotion:correction:assistant')).toBe(pending);
+  expect(pending?.textContent).not.toContain('Stopped');
+  expect(oldReply?.textContent).toContain('Stopped');
+  expect(document.querySelector<HTMLElement>('#stop-feedback')!.hidden).toBe(true);
+  expect(send.ariaLabel).toBe('Sending');
+
+  entry.activeRunId = 'new-worker';
+  entry.messages.push({ id: 'new-input', role: 'user', content: 'Correction', sessionRequestId: 'correction' },
+    { id: 'new-reply', role: 'assistant', content: '', status: 'running', sessionRequestId: 'correction' });
+  state(true);
+  expect(row('new-input')).toBe(bubble);
+  expect(row('new-reply')).toBe(pending);
+  expect(bubble?.previousElementSibling).toBe(oldReply);
+  expect(bubble?.nextElementSibling).toBe(pending);
+  expect(document.querySelectorAll('#transcript .message.user')).toHaveLength(2);
+  expect(pending?.querySelector('.pending')?.textContent).toBe('Responding...');
+  expect(document.querySelector<HTMLElement>('#stop-feedback')!.hidden).toBe(true);
+  expect(send.ariaLabel).toBe('Stop');
+});
+
+it('restores a queued message and discards its preview if Send now fails', async () => {
   const f = await fixture();
   const entry: ConversationSession = { ...session('chat'), activeRunId: 'worker', messages: [
     { id: 'input', role: 'user', content: 'Task', createdAt: 10 },
@@ -226,14 +277,14 @@ it('shows Send now in the transcript before confirmation, restores a failed acti
   f.receive([entry], entry.id, { readOnly: false });
   document.querySelector<HTMLButtonElement>('#input-queue button[title="Send now"]')!.click();
   await Promise.resolve();
-  const correction = document.querySelector('[data-message-id="steer:correction"]');
+  const correction = document.querySelector('[data-message-id="promotion:correction:user"]');
   expect(correction?.textContent).toContain('Correction');
-  expect(document.querySelector('.conversation-segment')).not.toBeNull();
+  expect(document.querySelector('.conversation-segment')).toBeNull();
   expect(document.querySelector('#input-queue')?.textContent).not.toContain('Send requested');
   const action = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'queue-promote');
   f.emit({ ...action, type: 'error', requestType: 'queue-promote', message: 'Not accepted' });
   await Promise.resolve();
-  expect(document.querySelector('[data-message-id="steer:correction"]')).toBeNull();
+  expect(document.querySelector('[data-message-id="promotion:correction:user"]')).toBeNull();
   expect(document.querySelector('.conversation-segment')).toBeNull();
   expect(document.querySelector('#input-queue')?.textContent).toContain('Not accepted');
 });

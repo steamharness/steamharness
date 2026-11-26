@@ -33,23 +33,43 @@ it('splits a consumed correction at its ledger position during streaming and his
   expect(answer.items).toEqual(original.messages.at(-1)!.items);
 });
 
-it('shows Send now immediately and reconciles queued and consumed snapshots without moving its bubble', () => {
+it('keeps an independent Send now preview until the new turn is materialized', () => {
+  const { session, answer, turns } = fixture();
+  session.messages.splice(1, 1); turns.splice(1); answer.items = [text(2, 'Before')];
+  const timeline = new ConversationTimeline();
+  const promoted = { id: 'older-queue-row', requestId: 'correction', text: 'Correction', createdAt: 20, params: {}, attachments: [] };
+  const ids = ['input', 'answer', 'promotion:correction:user', 'promotion:correction:assistant'];
+  for (const status of ['running', 'aborted']) {
+    answer.status = status;
+    const rows = timeline.project('project:chat', session, [promoted]);
+    expect(rows.map(row => row.id)).toEqual(ids);
+    expect(rows[1]).toMatchObject({ message: { status } });
+    expect(rows[1].previous).toBeUndefined();
+    expect(rows[3]).toMatchObject({ message: { status: 'sending', content: '' } });
+  }
+  session.messages.push({ id: 'session:1:correction:input', role: 'user', content: 'Correction' },
+    { id: 'new-reply', role: 'assistant', sessionRequestId: 'correction', status: 'running', content: '' });
+  const confirmed = timeline.project('project:chat', session, [promoted]);
+  expect(confirmed.map(row => row.id)).toEqual(['input', 'answer', 'session:1:correction:input', 'new-reply']);
+  expect(confirmed.slice(2).map(row => row.replaces)).toEqual(ids.slice(2));
+});
+
+it('reconciles queued and consumed steering snapshots at the existing reply boundary', () => {
   const { session, answer, turns } = fixture();
   session.messages.splice(1, 1); turns.splice(1); answer.items = [text(2, 'Before')];
   const timeline = new ConversationTimeline();
   const promoted = { id: 'correction', text: 'Correction', createdAt: 20, params: {}, attachments: [] };
-  const immediate = timeline.project('project:chat', session, [promoted]);
-  expect(immediate.map(row => row.id)).toEqual(['input', 'answer', 'steer:correction', 'answer:after:correction']);
-  expect(immediate[1].previous).toBe(true);
   turns.push({ requestId: 'correction', conversationId: 1, prompt: 'Correction', mode: 'steer', status: 'queued', epoch: 0, items: [] });
   session.queuedInputs = [promoted];
-  expect(timeline.project('project:chat', structuredClone(session)).map(row => row.id)).toEqual(immediate.map(row => row.id));
+  const queued = timeline.project('project:chat', structuredClone(session));
+  expect(queued.map(row => row.id)).toEqual(['input', 'answer', 'steer:correction', 'answer:after:correction']);
+  expect(queued[1].previous).toBe(true);
   turns[1] = { ...turns[1], status: 'placed', entryId: 3, startedAt: 20 };
   session.queuedInputs = [];
   session.messages.splice(1, 0, { id: 'steer:correction', role: 'user', status: 'steer', sessionRequestId: 'correction', content: 'Correction', createdAt: 20 });
   answer.items.push(text(4, 'After'));
   const consumed = timeline.project('project:chat', session);
-  expect(consumed.map(row => row.id)).toEqual(immediate.map(row => row.id));
+  expect(consumed.map(row => row.id)).toEqual(queued.map(row => row.id));
   expect(consumed.at(-1)!.message.content).toBe('After');
   expect(new ConversationTimeline().project('project:chat', session)).toEqual(consumed);
 });
@@ -67,15 +87,16 @@ it('keeps multiple corrections in separate sections and preserves ordinary and h
   expect(rows.at(-1)?.message.content).toBe('Background result');
 });
 
-it('uses a live cut for unstructured output and restores the original reply after a failed promotion', () => {
-  const { session, answer } = fixture();
-  session.messages.splice(1, 1); session.agent = undefined; answer.items = undefined; answer.content = 'Before';
+it('uses a live cut for unstructured output and restores the original reply when a queued steer is removed', () => {
+  const { session, answer, turns } = fixture();
+  session.messages.splice(1, 1); answer.items = undefined; answer.content = 'Before';
+  turns[1] = { ...turns[1], status: 'queued', entryId: undefined };
   const timeline = new ConversationTimeline();
-  const input = { id: 'correction', text: 'Correction', createdAt: 20, params: {}, attachments: [] };
-  timeline.project('project:chat', session, [input]);
+  timeline.project('project:chat', session);
   answer.content += ' After';
-  const rows = timeline.project('project:chat', session, [input]);
+  const rows = timeline.project('project:chat', session);
   expect(rows[1].message.content).toBe('Before'); expect(rows.at(-1)?.message.content).toBe(' After');
+  expect(timeline.project('another:chat', session)[1].message.content).toBe('Before After');
+  turns.pop();
   expect(timeline.project('project:chat', session).map(row => row.message)).toEqual(session.messages);
-  expect(timeline.project('another:chat', session, [input])[1].message.content).toBe('Before After');
 });

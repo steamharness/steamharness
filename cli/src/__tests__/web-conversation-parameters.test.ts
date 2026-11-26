@@ -279,8 +279,42 @@ it.each(['queue-promote', 'queue-remove'] as const)('handles unsent local %s whi
   f.emit({ type: 'navigated', requestId: navigation.requestId, activeId: navigation.id });
   const sends = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'send');
   expect(sends.map(message => message.text)).toEqual(type === 'queue-remove' ? ['First local'] : ['First local', 'Second local']);
-  if (type === 'queue-promote') expect(sends[1].mode).toBe('steer');
   expect(host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === type)).toEqual([]);
+  if (type === 'queue-promote') {
+    expect(sends[1].mode).toBe('followUp');
+    f.emit({ type: 'sent', requestId: sends[1].requestId, sessionId: navigation.id, projectUri: f.project.uri });
+    expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type, id: sends[1].requestId, sessionId: navigation.id }));
+  }
+});
+
+it('does not stop or send on empty Enter while a Bot has queued work', async () => {
+  const f = await fixture({ dynamic: false, running: true });
+  f.sessions[0].queuedInputs = [{ id: 'queued', text: 'Wait for the current reply', params: {}, attachments: [], createdAt: 1 }];
+  f.receive();
+  const enter = (options: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...options });
+  const send = document.querySelector<HTMLButtonElement>('#send')!;
+  const operations = () => host.postMessage.mock.calls.map(([message]) => message)
+    .filter(message => ['send', 'stop', 'queue-promote', 'queue-run'].includes(message.type) || message.command?.type === 'cancel');
+  for (const draft of ['', ' \t\n ']) {
+    f.type(draft);
+    const event = enter(); f.input.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(f.input.value).toBe(draft);
+    expect(operations()).toEqual([]);
+    expect(send.ariaLabel).toBe('Stop');
+    expect(document.querySelector('#input-queue .queued-input-label')?.textContent).toBe('Wait for the current reply');
+  }
+  f.type('Follow-up');
+  for (const event of [enter({ shiftKey: true }), enter({ isComposing: true })]) {
+    f.input.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(operations()).toEqual([]);
+  }
+  f.input.dispatchEvent(enter());
+  expect(operations()).toEqual([expect.objectContaining({ type: 'send', mode: 'followUp', text: 'Follow-up' })]);
+  expect(f.input.value).toBe('');
+  send.click();
+  expect(operations()[1]).toMatchObject({ type: 'stop', runId: 'run' });
 });
 
 it('keeps ordinary Send now intent until admission so the host can interrupt the current run', async () => {

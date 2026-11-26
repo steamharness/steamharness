@@ -1,5 +1,5 @@
 import { t } from '../localization';
-import { sessionRunning, type ConversationQueuedInput, type ConversationSession } from '../workflow-types';
+import { conversationMessageRequestId, sessionRunning, type ConversationQueuedInput, type ConversationSession } from '../workflow-types';
 import { iconButton } from './ui';
 
 interface QueueState {
@@ -68,8 +68,10 @@ export class ConversationQueue {
     if (scope !== this.scope) { this.scope = scope; this.rows.clear(); this.list.replaceChildren(); }
     for (const [key, action] of this.actions) {
       const session = state.sessions.find(session => session.id === action.sessionId);
-      if (action.projectUri === state.projectUri && (!session || action.phase === 'accepted'
-        && !session.queuedInputs?.some(input => this.matches(action, input)) && !state.pendingIds.has(action.input.requestId ?? action.id))) this.actions.delete(key);
+      if (action.projectUri !== state.projectUri) continue;
+      if (!session || action.phase === 'accepted' && (action.type === 'queue-promote'
+        ? session.messages.some(message => conversationMessageRequestId(message) === (action.input.requestId ?? action.id))
+        : !session.queuedInputs?.some(input => this.matches(action, input)) && !state.pendingIds.has(action.input.requestId ?? action.id))) this.actions.delete(key);
     }
     this.render();
   }
@@ -91,6 +93,11 @@ export class ConversationQueue {
       && action.type === 'queue-promote' && action.phase !== 'failed').map(action => ({ ...action.input, createdAt: action.requestedAt }));
   }
 
+  promoting(projectUri: string, session: ConversationSession): boolean {
+    return this.promotedInputs(projectUri, session.id).some(input => !session.messages.some(message =>
+      conversationMessageRequestId(message) === (input.requestId ?? input.id)));
+  }
+
   private key(id: string): string { return JSON.stringify([this.state!.projectUri, this.state!.session.id, id]); }
   private matches(action: PendingAction, input: Pick<ConversationQueuedInput, 'id' | 'requestId'>): boolean {
     return action.id === input.id || action.input.id === input.id || (action.input.requestId ?? action.id) === (input.requestId ?? input.id);
@@ -107,7 +114,7 @@ export class ConversationQueue {
     if (!state.ready || type === 'queue-promote' && state.canExecute === false || !input) return;
     const previous = this.actionFor(input);
     if (previous && previous.phase !== 'failed') return;
-    const actionId = previous?.id ?? id;
+    const actionId = previous?.id ?? (type === 'queue-promote' ? input.requestId ?? id : id);
     this.actions.set(this.key(actionId), { projectUri: state.projectUri, sessionId: state.session.id, id: actionId, type, input,
       requestedAt: Date.now(),
       index: previous?.index ?? state.session.queuedInputs!.indexOf(input),
@@ -172,7 +179,8 @@ export class ConversationQueue {
     });
     this.root.hidden = !visible.length;
     this.title.textContent = t('Queued messages ({0})', visible.length);
-    this.resume.hidden = state.durable && !state.session.queuePaused || sessionRunning(state.session) || state.session.messages.some(message => message.pendingInput);
+    this.resume.hidden = state.durable && !state.session.queuePaused || sessionRunning(state.session) || this.promoting(state.projectUri, state.session)
+      || state.session.messages.some(message => message.pendingInput);
     this.resume.disabled = !state.ready || state.canExecute === false || queue.some(input => state.pendingIds.has(input.requestId ?? input.id));
     for (const [id, row] of this.rows) if (!visible.some(input => input.id === id)) { row.root.remove(); this.rows.delete(id); }
     for (const [index, input] of visible.entries()) {

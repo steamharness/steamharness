@@ -9,7 +9,7 @@ import { confirmAgentCommand, retryableAgentCommandError } from './agent-command
 import { credentialStatus, credentialUnavailable, credentialUseSupported, parseBotCredentialUse, parseBotCredentialUseResult, type BotCredentialApproval, type BotCredentialHost } from './bot-credential-host';
 import { credentialResultCard } from './bot-credential-result';
 import {
-  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, archivedConversation,
+  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, conversationMessageRequestId, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
   type Project, type Runtime, type Run, type ParamValues,
   type InputRequest, type ResolvedInput,
@@ -66,6 +66,7 @@ export class ConversationController {
   private readonly reloading = new Map<string, Promise<void>>();
   private readonly removing = new Set<string>();
   private readonly draining = new Set<string>();
+  private readonly promoting = new Set<string>();
   private readonly isolating = new Map<string, Promise<ForkIsolation | undefined>>();
   private readonly agentWaiters = new Map<string, { ownerId: string; targetId?: number; requestId: string; promise: Promise<AgentSessionReceipt>; resolve(receipt: AgentSessionReceipt): void; reject(error: Error): void }>();
   private agentSave?: ReturnType<typeof setTimeout>;
@@ -325,7 +326,7 @@ export class ConversationController {
         || owner.agentParameters?.allowBotCredentialInput !== input.allowBotCredentialInput;
       if (owner.agentInterrupted) await this.agentCommand(owner.id, { type: 'snapshot', requestId: `interrupt:${id}` });
       if (owner.messages.some(message => message.pendingInput)) throw new Error(t("Awaiting confirmation"));
-      if (mode === 'followUp' && (this.agentBusy(entry) || !this.draining.has(entry.id) && entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry)))) {
+      if (mode === 'followUp' && (this.promoting.has(entry.id) || this.agentBusy(entry) || !this.draining.has(entry.id) && entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry)))) {
         if (!this.project.conversation?.inputQueue?.enabled) throw new Error(t('The current session is running.'));
         queued.hostQueued = true;
         if (owner.agentParameters && (capabilitiesChanged || this.settingsChanged(owner, folderBotProfile) || owner.agentParameters.configurationRevision !== this.options.configurationRevision?.())) queued.configurationPending = true;
@@ -387,7 +388,7 @@ export class ConversationController {
     // A failed bootstrap may have no Agent yet; explicit input must still start.
     const waiting = entry.recoveryPaused
       || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering);
-    if (entry.activeRunId || waiting || entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry))) {
+    if (entry.activeRunId || waiting || mode === 'followUp' && this.promoting.has(entry.id) || entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry))) {
       if (!this.project.conversation?.inputQueue?.enabled) { throw new Error(t("The current session is running.")); }
       if (editingId) {
         const index = entry.queuedInputs!.findIndex((item) => item.id === editingId);
@@ -425,6 +426,7 @@ export class ConversationController {
       if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || input.references?.[0]?.name || t("Workflow run")).slice(0, 80); }
       entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, references: input.references, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
       answer = { userSettings: this.currentUserSettings(), folderBotProfile, allowBotArtifactPublish: input.allowBotArtifactPublish, allowBotCredentialInput: input.allowBotCredentialInput, id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
+      if (input.requestId && input.requestId !== input.id) answer.sessionRequestId = input.requestId;
       answer.runId = answer.id;
       answer.configurationSelection = input.configurationSelection;
       entry.messages.push(answer);
@@ -1163,7 +1165,7 @@ export class ConversationController {
         && !agent.turns.some(turn => turn.conversationId === id && turn.requestId === command.requestId && ['done', 'unanswered'].includes(turn.status)));
   }
   private drain(entry: ConversationSession, explicit = false): void | Promise<void> {
-    if (archivedConversation(this.project, entry) || this.options.canStart?.() === false || !explicit && (this.options.canDrain?.(entry) === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id)
+    if (archivedConversation(this.project, entry) || this.options.canStart?.() === false || !explicit && (this.options.canDrain?.(entry) === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id) || this.promoting.has(entry.id)
       || entry.agentInterrupted || (this.project.conversation?.durable?.enabled ? this.agentBusy(entry) : entry.activeRunId)
       || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
     const input = entry.queuedInputs?.shift();
@@ -1519,25 +1521,64 @@ export class ConversationController {
     entry.queuedInputs = ids.map((id) => queue.find((input) => input.id === id)!); this.changed(); await this.persist();
   }
   async promoteQueued(id: string, entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
+    this.assertCurrentEngine(entry);
     await this.ensureIndependentFork(entry);
-    const queue = entry.queuedInputs ?? [];
-    const input = queue.find(input => input.id === id || input.requestId === id);
-    if (!input) return;
-    const turn = this.queuedAgentTurn(entry, input);
-    if (turn) {
-      await this.agentCommand(entry.id, { type: 'promote', requestId, inputId: turn.requestId });
-      return;
+    if (this.promoting.has(entry.id)) throw new Error(t('The current session is running.'));
+    const findInput = () => entry.queuedInputs?.find(input => input.id === id || input.requestId === id);
+    const selected = findInput();
+    const inputId = selected?.requestId ?? selected?.id ?? id;
+    const alreadySent = () => entry.messages.some(message => conversationMessageRequestId(message) === inputId);
+    if (!selected) {
+      if (alreadySent()) return;
+      throw new Error(t('Queued message no longer exists.'));
     }
-    if (this.project.conversation?.durable?.enabled) {
+    if (this.options.canStart?.() === false) throw new Error(t('Project data is unavailable. Follow the Server setup guidance and choose Check again.'));
+    const durable = this.project.conversation?.durable?.enabled;
+    this.promoting.add(entry.id);
+    try {
+      const owner = this.owner(entry), agent = owner.agent;
+      if (durable && agent) {
+        const targetId = entry.agentConversationId ?? agent.conversationId;
+        const generation = agent.tasks.find(task => task.conversationId === targetId && task.kind === 'pi.generation' && !task.background);
+        // Abort just this reply, without withdrawing durably queued inputs or stopping the owner.
+        if (generation) await this.agentCommand(entry.id, { type: 'cancel', scope: 'task', targetId,
+          taskId: generation.id, requestId: `promote-stop:${requestId}:${generation.id}` }, undefined, undefined, owner.activeRunId);
+      } else if (entry.activeRunId || entry.messages.some(message => message.pendingInput || message.cancelRequested || message.recovering)) {
+        await this.stop(entry);
+      }
+      if (this.disposed || this.removing.has(entry.id) || !this.sessions.includes(entry)) throw new Error(t('Conversation no longer exists.'));
+      // Cancellation can stream new snapshots, replacing the queue array or admitting this input.
+      const input = findInput();
+      if (!input) {
+        if (alreadySent()) return;
+        throw new Error(t('Queued message no longer exists.'));
+      }
+      const turn = this.queuedAgentTurn(entry, input);
+      if (turn) {
+        await this.agentCommand(entry.id, { type: 'promote', requestId, inputId: turn.requestId });
+        return;
+      }
+      const queue = entry.queuedInputs!;
       const index = queue.indexOf(input);
       queue.splice(index, 1);
-      try { await this.send(input, entry, true, input.requestId ?? input.id, 'steer'); }
-      catch (error) { (entry.queuedInputs ??= []).splice(Math.min(index, entry.queuedInputs!.length), 0, input); this.changed(); await this.persist(); throw error; }
-      return;
+      try {
+        if (durable) {
+          await this.send(input, entry, true, input.requestId ?? input.id, 'reject');
+          if (findInput()?.configurationPending) throw new Error(t('Wait for active tasks before changing session settings.'));
+        } else {
+          if (entry.draft?.editingQueueId) entry.draft = { text: '', attachments: [] };
+          this.start(entry, { ...input, requestId: input.requestId ?? input.id });
+        }
+      } catch (error) {
+        const latest = entry.queuedInputs ??= [];
+        if (!latest.some(item => item.id === input.id)) latest.splice(Math.min(index, latest.length), 0, input);
+        this.changed(); await this.persist(); throw error;
+      }
+      await this.persist();
+    } finally {
+      this.promoting.delete(entry.id);
+      this.drain(entry);
     }
-    await this.reorderQueued([input.id, ...queue.filter(item => item.id !== input.id).map(item => item.id)], entry);
-    if (entry.draft?.editingQueueId) { entry.draft = { text: '', attachments: [] }; }
-    await this.stop(entry); this.drain(entry, true);
   }
   private queuedAgentTurn(entry: ConversationSession, input: ConversationQueuedInput) {
     if (!this.project.conversation?.durable?.enabled) return;

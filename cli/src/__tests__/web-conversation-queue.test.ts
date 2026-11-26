@@ -119,7 +119,7 @@ it('keeps a promoted row hidden while stale queued snapshots arrive before consu
   expect(f.action).toHaveBeenCalledOnce();
 });
 
-it('places an older queued input at the current reply when Send now is clicked', () => {
+it('places an older queued input after the current reply when Send now is clicked', () => {
   const f = fixture(), sentAt = Date.now();
   f.state.session.messages = [{ id: 'reply', role: 'assistant', content: 'Current work', status: 'running', createdAt: 40 }];
   f.row().send.click();
@@ -127,8 +127,8 @@ it('places an older queued input at the current reply when Send now is clicked',
   expect(inputs[0].createdAt).toBeGreaterThanOrEqual(sentAt);
   expect(f.state.session.queuedInputs![0].createdAt).toBe(1);
   const rows = new ConversationTimeline().project('project:first', f.state.session, inputs);
-  expect(rows.map(row => row.id)).toEqual(['reply', 'steer:one', 'reply:after:one']);
-  expect(rows[0].previous).toBe(true);
+  expect(rows.map(row => row.id)).toEqual(['reply', 'promotion:one:user', 'promotion:one:assistant']);
+  expect(rows[0].previous).toBeUndefined();
 });
 
 it.each(['queue-promote', 'queue-remove'])('retains a failed %s with its error and retries the same request only when connected', type => {

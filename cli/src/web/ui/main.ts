@@ -269,9 +269,9 @@ function initialize(): void {
     pendingAction: action => {
       const entry = submissions.get(action.id);
       if (entry?.projectUri !== action.projectUri || entry.sessionId !== action.sessionId || entry.phase !== 'pending' || entry.replacesId) return false;
-      if (action.type === 'queue-promote' && !state?.project.conversation?.durable?.enabled) return false;
-      if (action.type === 'queue-remove') submissions.discardPending(entry.input.id);
-      else { entry.mode = 'steer'; entry.queued = false; }
+      // Admit the input first, then use the same interrupt path for all queued inputs.
+      if (action.type === 'queue-promote') return false;
+      submissions.discardPending(entry.input.id);
       queueMicrotask(() => { if (state) render(state, false); persist(); dispatchSubmissions(); });
       return true;
     },
@@ -317,7 +317,10 @@ function initialize(): void {
   const currentParameters = () => projectParameters(state!.project, entrypoint.value || undefined);
   const values = (): ParamValues => paramValues[formKey] ??= {};
   const parametersLoading = (): boolean => resolving && !parametersReady;
+  const hasComposerInput = (): boolean => !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true && (!state.project.conversation.durable?.enabled || values().plan !== 'true');
+  const composerCanStop = (): boolean => !!state?.running && state.conversationUi?.presentation !== 'composer'
+    && (!connectionAvailable || !canQueue() || !hasComposerInput());
   const hideComposer = (): boolean => hostHistory() || state?.project.projectType === 'bot' && state.project.conversation?.userInput?.hideComposer !== false
     && !!currentSession()?.messages.some(message => message.pendingInput);
   const pendingSend = (): boolean => !!state && submissions.busy(state.project.uri, state.activeId);
@@ -687,16 +690,19 @@ function initialize(): void {
     parameterActions.update();
     conversationComposer.update();
     conversationMentions.update();
-    const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
+    const hasInput = hasComposerInput();
     const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
     const pendingStop = stopping?.phase === 'pending';
-    const stop = state.conversationUi?.presentation !== 'composer' && state.running && (!connectionAvailable || !canQueue() || !hasInput);
-    updateIcon(sendButton, pendingStop ? 'loading' : stop ? 'debug-stop' : sendBlocked() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
-    sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
-    sendButton.setAttribute('aria-busy', String(pendingStop));
-    sendButton.classList.toggle('stop', stop);
-    sendButton.disabled = readOnly() || pendingStop || !stop && (!connectionAvailable || !conversation && !navigationReady() || sendBlocked() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
-    stopFeedback.hidden = !stopping;
+    const activeSession = currentSession();
+    const promoting = !!activeSession && queueView.promoting(state.project.uri, activeSession);
+    const pendingPromotion = promoting && !hasInput;
+    const stop = composerCanStop();
+    updateIcon(sendButton, pendingStop || pendingPromotion ? 'loading' : stop ? 'debug-stop' : sendBlocked() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
+    sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : pendingPromotion ? t("Sending") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
+    sendButton.setAttribute('aria-busy', String(pendingStop || pendingPromotion));
+    sendButton.classList.toggle('stop', stop && !pendingPromotion);
+    sendButton.disabled = readOnly() || pendingStop || pendingPromotion || !stop && (!connectionAvailable || !conversation && !navigationReady() || sendBlocked() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
+    stopFeedback.hidden = !stopping || promoting && stopping.phase !== 'failed';
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
@@ -1328,7 +1334,8 @@ function initialize(): void {
         && request.taskIds.every(id => target?.agent?.tasks.some(task => task.id === id));
       const replaced = request.agentOwner ? target?.agent?.ownerId !== request.agentOwner && !recoveringStop
         : !!target?.activeRunId && target.activeRunId !== request.runId;
-      if (request.projectUri !== next.project.uri || !target || replaced) {
+      const promoting = queueView.promotedInputs(request.projectUri, request.sessionId).length > 0;
+      if (request.projectUri !== next.project.uri || !target || replaced || request.phase === 'accepted' && promoting) {
         clearTimeout(request.timer); stopRequests.delete(key);
       } else if (fromServer && request.serverInstanceId === next.serverInstanceId && request.phase === 'pending' && request.runId && !target.activeRunId && !sessionRunning(target)
         && !target.recoveryPaused && !target.messages.some(message => message.cancelRequested || message.recovering
@@ -1448,10 +1455,16 @@ function initialize(): void {
       let epoch = 0;
       const rows: ConversationTimelineRow[] = conversation ? timeline.project(`${next.project.uri}:${session.id}`, session, queueView.promotedInputs(next.project.uri, session.id))
         : session.messages.map((message, index) => ({ id: message.id || `${index}:${message.role}`, message, previous: false }));
-      rows.forEach(({ id, message, previous, progress }, index) => {
+      rows.forEach(({ id, message, replaces, previous, progress }, index) => {
         active.add(id);
         let view = messages.get(id);
-        if (!view) { view = createMessage(message); view.root.dataset.messageId = id; messages.set(id, view); transcriptContent.append(view.root); }
+        if (!view && replaces) {
+          view = messages.get(replaces);
+          if (view) messages.delete(replaces);
+        }
+        if (!view) { view = createMessage(message); transcriptContent.append(view.root); }
+        view.root.dataset.messageId = id;
+        messages.set(id, view);
         const current = transcriptContent.children[index] ?? null;
         if (current !== view.root) transcriptContent.insertBefore(view.root, current);
         const cardRequests = new Set([message.sessionRequestId, message.input?.requestId, message.agentAnchorRequestId, message.id, id].filter((value): value is string => !!value));
@@ -1533,11 +1546,10 @@ function initialize(): void {
   function send(): void {
     if (!state || hostHistory()) { return; }
     if (stopRequests.get(`${state.project.uri}:${state.activeId}`)?.phase === 'pending') { return; }
-    const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
-    if (state.running && (!connectionAvailable || !canQueue() || !hasInput)) { void stopCurrent(); return; }
+    if (state.project.projectType === 'bot' && !hasComposerInput()) { return; }
     if (!connectionAvailable || state.project.projectType !== 'bot' && !navigationReady()) { return; }
     if (!draftReferences.length && conversationComposer.submitCommand()) { return; }
-    if (busy() || state.project.projectType !== 'bot' && resolving || uploading || state.project.projectType === 'bot' && !hasInput) { return; }
+    if (busy() || state.project.projectType !== 'bot' && resolving || uploading) { return; }
     const validateOnServer = state.project.projectType === 'bot' && currentParameters().paramResolver?.enabled
       && (!parametersReady || resolving || parameterOptionsStale || paramsNeedInit || inputTimer !== undefined || parameterError.hasError);
     for (const [name, view] of fields) {
@@ -1631,9 +1643,9 @@ function initialize(): void {
   textarea.addEventListener('keydown', (event) => {
     if (conversationMentions.handleKeydown(event)) { return; }
     if (conversationComposer.handleKeydown(event)) { return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229 && state?.project.projectType === 'bot') { event.preventDefault(); send(); }
+    if (event.key === 'Enter' && !event.shiftKey && !composing && !event.isComposing && event.keyCode !== 229 && state?.project.projectType === 'bot') { event.preventDefault(); send(); }
   });
-  sendButton.addEventListener('click', send);
+  sendButton.addEventListener('click', () => { if (composerCanStop()) void stopCurrent(); else send(); });
   document.querySelector('#new')!.addEventListener('click', () => navigate());
   bindProjectReload(vscode, showError, () => { if (draftTimer !== undefined && !readOnly()) saveDraft(false); });
   document.querySelector('#project-info')!.addEventListener('click', () => { if (state) { parameterActions.close(); dialogs.projectInfo(state.project); } });
