@@ -1,18 +1,30 @@
 import * as vscode from 'vscode';
 import { IMPORTED_PROJECTS_KEY, RECENT_PROJECTS_KEY, readImportedProjects, readRecentProjects, type ImportedProject, type RecentProject } from './projects';
+import type { AccountWorkspace, ProjectHistory } from './account-workspace-data';
 
-interface ProjectHistory { recent: RecentProject[]; imported: ImportedProject[] }
 type Context = Pick<vscode.ExtensionContext, 'globalState'>;
 const pending = new WeakMap<vscode.Memento, Promise<boolean>>();
+const shared = new WeakMap<vscode.Memento, () => AccountWorkspace | undefined>();
 
-function readHistory(context: Context): ProjectHistory {
+export function bindProjectHistory(context: Context, workspace: () => AccountWorkspace | undefined): void {
+  shared.set(context.globalState, workspace);
+}
+
+const workspace = (context: Context) => shared.get(context.globalState)?.();
+
+export function readProjectHistory(context: Context): ProjectHistory {
+  const account = workspace(context);
+  if (account) return account.readHistory();
   return { recent: readRecentProjects(context.globalState.get(RECENT_PROJECTS_KEY)),
     imported: readImportedProjects(context.globalState.get(IMPORTED_PROJECTS_KEY)) };
 }
 
 export function updateProjectHistory(context: Context, update: (history: ProjectHistory) => ProjectHistory): Promise<boolean> {
+  const account = workspace(context);
   const operation = (pending.get(context.globalState) ?? Promise.resolve(false)).catch(() => false).then(async () => {
-    const previous = readHistory(context), next = update(previous);
+    if (workspace(context) !== account) return false;
+    if (account) return account.updateHistory(update);
+    const previous = readProjectHistory(context), next = update(previous);
     let changed = false;
     for (const [name, key] of [['recent', RECENT_PROJECTS_KEY], ['imported', IMPORTED_PROJECTS_KEY]] as const) {
       if (JSON.stringify(previous[name]) !== JSON.stringify(next[name])) {
@@ -31,7 +43,10 @@ export function isMissingProject(error: unknown): boolean {
 }
 
 export async function pruneMissingProjectHistory(context: Context): Promise<boolean> {
-  const previous = readHistory(context);
+  const account = workspace(context);
+  // A moved folder or an offline volume should remain available for Locate.
+  if (account) return false;
+  const previous = readProjectHistory(context);
   const openedUris = (): Set<string> => new Set([vscode.workspace.workspaceFile, ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri)]
     .flatMap(uri => uri ? [uri.toString()] : []));
   const current = openedUris();
@@ -41,7 +56,7 @@ export async function pruneMissingProjectHistory(context: Context): Promise<bool
     try { await vscode.workspace.fs.stat(resource); }
     catch (error) { if (isMissingProject(error)) { return uri; } }
   }))).filter((uri): uri is string => !!uri));
-  if (!missing.size) { return false; }
+  if (!missing.size || workspace(context) !== account) { return false; }
   // Re-read after filesystem checks so new imports and recently reopened records survive.
   return updateProjectHistory(context, history => {
     const protectedUris = openedUris();

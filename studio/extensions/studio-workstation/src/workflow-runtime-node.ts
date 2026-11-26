@@ -38,6 +38,15 @@ import { WorkflowScheduleRuntime } from './workflow-schedule-runtime';
 import { openProjectSchedules } from './workflow-schedule-view';
 import { canAccessBotCredentialStorage, createBotCredentialInteraction } from './bot-credentials';
 import { createBotCredentialListReader } from './bot-credential-list';
+import type { AccountWorkspace } from './account-workspace-data';
+
+interface RuntimeScope {
+  workspace?: AccountWorkspace;
+  data: string;
+  lifetime: AbortController;
+  usage: ProjectUsageService;
+  schedules?: WorkflowScheduleRuntime;
+}
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -46,8 +55,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const authRoot = path.join(context.globalStorageUri.fsPath, 'workflow', 'isolated-auth', randomUUID());
   const browser = usingStudioWeb();
   const webDataDirectory = (browser && process.env.STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR) || path.join(context.globalStorageUri.fsPath, 'workflow', 'web');
-  const usage = new ProjectUsageService(webDataDirectory, path.join(context.extensionUri.fsPath, 'dist', 'project-usage-worker.cjs'),
-    account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined);
   const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
   const settingsSnapshot = () => readUserSettings(account.getUserAgentModels?.());
@@ -67,27 +74,57 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const localDesktop = !vscode.env.remoteName && typeof vscode.env.uiKind === 'number' && vscode.env.uiKind === vscode.UIKind.Desktop;
   const desktop = !browser && localDesktop;
   const botCredentials = createBotCredentialInteraction(context);
-  const startSchedules = () => new WorkflowScheduleRuntime(path.join(context.globalStorageUri.fsPath, 'workflow', 'schedules'), webDataDirectory,
+  const startSchedules = (scope: RuntimeScope) => new WorkflowScheduleRuntime(scope.workspace?.schedules ?? path.join(context.globalStorageUri.fsPath, 'workflow', 'schedules'), scope.data,
     directory => Promise.resolve(vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false)).catch(() => false),
     async (target, workflowScheduleKey, signal) => {
+      const combined = AbortSignal.any([signal, controller.signal, scope.lifetime.signal]);
       const runtime = await selectedRuntime();
-      signal.throwIfAborted();
+      combined.throwIfAborted();
       const startup = new AbortController();
       const abort = () => startup.abort(signal.reason);
       signal.addEventListener('abort', abort, { once: true });
       try {
         await account.loadUserModels?.();
+        combined.throwIfAborted();
         return await startProjectCli({ projectDir: target.directory, expectedProjectId: target.projectId, entryId: target.entryId,
           nodePath: runtime.nodePath, runtime, theme: 'dark', locale: vscode.env.language, surface: 'editor', userSettings: settingsSnapshot(),
-          dataDir: webDataDirectory, authRoot, workflowScheduleKey, signal: AbortSignal.any([startup.signal, controller.signal]) });
+          dataDir: scope.data, authRoot, workflowScheduleKey, signal: AbortSignal.any([startup.signal, controller.signal, scope.lifetime.signal]) });
       } finally { signal.removeEventListener('abort', abort); }
     }, error => console.warn('Studio Workflow scheduler:', error instanceof Error ? error.message : 'unknown error'));
-  let workflowSchedules: WorkflowScheduleRuntime | undefined;
-  if (desktop) {
-    // Schedule storage must not prevent unrelated projects and tools from opening.
-    try { workflowSchedules = startSchedules(); }
+  let activeScope: RuntimeScope | undefined;
+  const retireScope = () => {
+    const scope = activeScope;
+    activeScope = undefined;
+    if (scope) { scope.lifetime.abort(); scope.schedules?.dispose(); scope.usage.dispose(); }
+    void hosts.close();
+  };
+  const scopeForAccount = (): RuntimeScope => {
+    controller.signal.throwIfAborted();
+    const workspace = account.workspace?.();
+    if (activeScope && activeScope.workspace === workspace) return activeScope;
+    retireScope();
+    workspace?.prepare();
+    const data = workspace?.runs ?? webDataDirectory;
+    const scope: RuntimeScope = { workspace, data, lifetime: new AbortController(), usage: new ProjectUsageService(data,
+      path.join(context.extensionUri.fsPath, 'dist', 'project-usage-worker.cjs'), account.platform
+        ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined) };
+    // Schedule execution stays desktop-only, with the same runtime history as an interactive run.
+    if (desktop) try { scope.schedules = startSchedules(scope); }
     catch (error) { console.warn('Studio schedule storage:', error instanceof Error ? error.message : 'unknown error'); }
-  }
+    return activeScope = scope;
+  };
+  const workspaceReady = account.waitForWorkspaceAccount?.();
+  const warmScope = () => {
+    if (controller.signal.aborted) return;
+    try { scopeForAccount(); }
+    catch (error) { console.warn('Studio account workspace:', error instanceof Error ? error.message : 'unknown error'); }
+  };
+  if (desktop) { void Promise.resolve(workspaceReady).then(warmScope); }
+  const accountScopeChanged = account.sharesWorkspace ? account.onDidChange(() => {
+    if (activeScope && activeScope.workspace !== account.workspace?.()) retireScope();
+    if (desktop) void Promise.resolve(workspaceReady).then(warmScope);
+  }) : undefined;
+  const captureScope = async () => { await workspaceReady; return scopeForAccount(); };
   const configurationService = {
     systemModelCatalog: async (signal: AbortSignal) => {
       await account.loadUserModels?.();
@@ -159,21 +196,30 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       pending: additional.some(row => row.pending) };
   };
   let analysisProjects: Project[] = [];
-  let readingAnalysis: Promise<unknown> | undefined;
-  const readAnalysis = (): Promise<unknown> => readingAnalysis ??= (async () => {
+  const analysisReads = new WeakMap<RuntimeScope, Promise<unknown>>();
+  const readAnalysis = (scope: RuntimeScope): Promise<unknown> => {
+    scope.lifetime.signal.throwIfAborted();
+    const existing = analysisReads.get(scope);
+    if (existing) return existing;
+    const pending = (async () => {
     const cli = await resolveProjectCli(await assistantDirectory());
     const reader = await import(pathToFileURL(path.join(path.dirname(cli.entry), 'web', 'local-analysis.mjs')).href);
     for (let attempt = 0; attempt < 3; attempt++) {
       assertAvailable();
+      scope.lifetime.signal.throwIfAborted();
       const scopedProjects = () => studioAnalysisProjects(context, analysisProjects).filter(project => !isBuiltinProjectDirectory(project.folderPath));
       const projects = scopedProjects();
-      const result = await reader.readLocalStudioAnalysis({ storageDir: webDataDirectory,
+      const result = await reader.readLocalStudioAnalysis({ storageDir: scope.data,
         projects, locale: vscode.env.language });
       assertAvailable();
+      scope.lifetime.signal.throwIfAborted();
       if (JSON.stringify(projects) === JSON.stringify(scopedProjects())) { return result; }
     }
     throw new Error('Studio project scope changed while reading analysis.');
-  })().finally(() => { readingAnalysis = undefined; });
+    })().finally(() => { analysisReads.delete(scope); });
+    analysisReads.set(scope, pending);
+    return pending;
+  };
   const assertAvailable = (requiresWorkspaceTrust = true): void => {
     if (requiresWorkspaceTrust && !vscode.workspace.isTrusted) { throw new Error(t("Trust the current workspace first.")); }
     if (controller.signal.aborted) { throw new Error('Workflow host has stopped.'); }
@@ -248,12 +294,15 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return templates.createRunDraft(input, AbortSignal.any([signal, controller.signal]));
     },
     openProjectSchedules: !desktop ? undefined : async (project, openRun) => {
+      const scope = await captureScope();
+      const workflowSchedules = scope.schedules;
       if (!workflowSchedules) throw new Error(t('Could not open local schedule storage.'));
       if (project.projectType !== 'workflow' || project.assistant || project.folderBot || project.distribution === 'release' || !project.manifest?.version
         || isBuiltinProjectDirectory(project.folderPath)) throw new Error(t('Schedules are available for trusted local Workflow source projects.'));
       const target = { directory: await realpath(project.folderPath), projectId: project.id, entryId: project.entryId, version: project.manifest.version };
       await workflowSchedules.verifyTarget(target).catch(error => { throw new Error(error.message === 'authorization-changed' ? t('Trust this project folder before running it.') : t('The project entry has changed or is no longer available.')); });
-      openProjectSchedules(context, workflowSchedules, project, target, openRun);
+      scope.lifetime.signal.throwIfAborted();
+      openProjectSchedules(context, workflowSchedules, project, target, openRun, scope.lifetime.signal);
     },
     registerProject: async (directory, signal) => {
       assertAvailable();
@@ -295,8 +344,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       return { ...project, uri: vscode.Uri.file(directory).toString(), builtin: 'analysis' };
     },
     readSidebarEntries: vscode.env.remoteName && !browser ? undefined : readSidebarProjectEntries,
-    readLibraryActivity: vscode.env.remoteName && !browser ? undefined : projects => readRunningLibraryProjects(webDataDirectory, projects),
-    readProjectUsage: browser || desktop ? input => usage.request(input) : undefined,
+    readLibraryActivity: vscode.env.remoteName && !browser ? undefined : async projects => {
+      const scope = await captureScope();
+      const result = await readRunningLibraryProjects(scope.data, projects);
+      return scope.lifetime.signal.aborted ? [] : result;
+    },
+    readProjectUsage: browser || desktop ? async input => (await captureScope()).usage.request(input) : undefined,
     previewWeb: browser ? studioPreview : undefined,
     openHostedSidebar: async (...args) => {
       const preview = await (await import('./hosted-sidebar-preview')).openHostedSidebar(...args);
@@ -347,15 +400,18 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       }
     },
     start: async (project, surface, signal, options) => {
+      const scope = await captureScope();
+      const scopeSignal = AbortSignal.any([scope.lifetime.signal, controller.signal, ...(signal ? [signal] : [])]);
       const runtime = await selectedRuntime();
       const embeddedAccount = account.platform && options?.embedded === true && !project.entries.some(entry => entry.webApp);
       const localArtifacts = options?.embedded === true && desktop && !project.folderBot?.background;
       const backgroundCredentials = options?.backgroundBotCredentials;
       const backgroundCredentialHost = backgroundCredentials && !backgroundCredentials.signal.aborted && desktop && !options?.embedded && surface === 'editor'
         && !project.assistant && project.folderBot?.background !== false && await canAccessBotCredentialStorage(context) ? backgroundCredentials : undefined;
+      scopeSignal.throwIfAborted();
       const lease = await hosts.acquire(
       // A headless caller must not lease the CLI that received the embedded page's account.
-      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null, localArtifacts,
+      JSON.stringify([scope.data, project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity, embeddedAccount, project.folderBot ?? null, localArtifacts,
         backgroundCredentialHost ? randomUUID() : null]), project,
       async (port, hostSignal) => {
       assertAvailable();
@@ -371,9 +427,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         assertAvailable(); assertAssistantWorkspace(project.assistant);
       }
       const theme = vscode.window.activeColorTheme.kind;
-      const runSignal = AbortSignal.any([hostSignal, controller.signal]);
+      const runSignal = AbortSignal.any([hostSignal, controller.signal, scope.lifetime.signal]);
       let bridge: StudioControlBridge | undefined;
       try {
+        const workflowSchedules = scope.schedules;
         const workflowScheduleKey = workflowSchedules && !project.assistant && !project.folderBot && project.distribution !== 'release'
           && !isBuiltinProjectDirectory(project.folderPath) && project.entries.some(entry => entry.type === 'workflow') ? WorkflowScheduleRuntime.capability() : undefined;
         let studioControl: StudioControlConfiguration | undefined;
@@ -381,17 +438,17 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           && project.entries.some(entry => entry.entryId === STUDIO_CONTROL_ENTRY_ID && entry.type === 'workflow');
         if (!project.folderBot && (project.assistant || assistantAggregate)) {
           const directory = project.assistant ? await assistantDirectory() : project.folderPath;
-          const scope = assistant ?? { workdir: directory, roots };
-          if (!studioControlWorkspaceAvailable(scope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
-          bridge = await startStudioControlBridge(createStudioControlHandler(scope, runSignal, context, configurationService), runSignal);
+          const assistantScope = assistant ?? { workdir: directory, roots };
+          if (!studioControlWorkspaceAvailable(assistantScope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
+          bridge = await startStudioControlBridge(createStudioControlHandler(assistantScope, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token, mcpServer: JSON.stringify({
             id: 'workflow-studio', command: [runtime.nodePath, (await resolveProjectCli(directory)).entry, 'mcp', directory, '--entry', STUDIO_CONTROL_ENTRY_ID,
-              '--data-dir', path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'control-data')],
+              '--data-dir', scope.workspace ? path.join(scope.data, 'studio-control') : path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'control-data')],
             environment: { PATH: nodeRuntimeEnvironment(runtime).PATH!, ...createProjectCliEnvironment({}, undefined, runtime, authRoot), ...(runtime.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) },
             inheritEnvironment: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'], timeout: 30_000,
           }) };
         } else if (project.id === ANALYSIS_PROJECT_ID && project.projectType === 'kanban') {
-          bridge = await startStudioControlBridge(createStudioAnalysisHandler(readAnalysis, runSignal), runSignal);
+          bridge = await startStudioControlBridge(createStudioAnalysisHandler(() => readAnalysis(scope), runSignal), runSignal);
           studioControl = { url: bridge.url, token: bridge.token };
         }
         // Prewarming hosted Web apps in the launchpad does not use local model keys.
@@ -412,7 +469,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           webAppEntries: account.platform ? project.entries.filter(entry => !!entry.webApp) : undefined,
           entryId: project.entryId,
           resourceProjects: options?.resourceProjects,
-          dataDir: webDataDirectory,
+          dataDir: scope.data,
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
           surface: assistant ? 'assistant' : surface, platform: account.platform, authRoot, locale: vscode.env.language, assistant,
           studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });
@@ -535,16 +592,16 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         }
         return session;
       } catch (error) { await bridge?.close(); throw error; }
-    }, signal);
+    }, scopeSignal);
       // Opening or recovering a tab only checks its scope; sign-in needs a click.
       if (account.platform && project.entries.some(entry => entry.entryId === project.entryId && entry.webApp)) {
         void lease.connectPlatform?.('web-app', project.entryId, false).catch(() => {
-          if (!signal?.aborted && !controller.signal.aborted) void vscode.window.showErrorMessage(t('Could not connect the Web application to your account. Check the Server configuration and retry.'));
+          if (!scopeSignal.aborted) void vscode.window.showErrorMessage(t('Could not connect the Web application to your account. Check the Server configuration and retry.'));
         });
       }
       return lease;
     },
     cliEntry: async folder => { assertAvailable(); return (await resolveProjectCli(folder)).entry; },
-    dispose: () => { controller.abort(); workflowSchedules?.dispose(); usage.dispose(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); void hosts.close(); },
+    dispose: () => { controller.abort(); retireScope(); accountScopeChanged?.dispose(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); },
   };
 }

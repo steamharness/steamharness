@@ -58,6 +58,8 @@ export interface ProjectRegistrationTarget { serverUrl: string; userId?: string 
 export interface StudioStartState {
   version: 1;
   platform?: boolean;
+  workspaceOwner?: string;
+  workspaceRestoring?: boolean;
   labels: Record<string, string>;
   hasWorkspace: boolean;
   projects: StartProject[];

@@ -34,7 +34,8 @@ const labels = () => ({
 });
 
 export function openProjectSchedules(context: vscode.ExtensionContext, runtime: WorkflowScheduleRuntime, project: Project, target: ScheduleTarget,
-  openRun: (id: string, liveUrl?: string) => Promise<void>): void {
+  openRun: (id: string, liveUrl?: string) => Promise<void>, scope?: AbortSignal): void {
+  scope?.throwIfAborted();
   const root = vscode.Uri.joinPath(context.extensionUri, 'dist');
   const panel = vscode.window.createWebviewPanel('studio.workflowSchedules', t('Workflow schedules'), vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [root] });
   const locale = vscode.env.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
@@ -123,5 +124,7 @@ export function openProjectSchedules(context: vscode.ExtensionContext, runtime: 
   });
   const timer = setInterval(() => { try { publish(); } catch { /* Keep the current view on a transient storage error. */ } }, 1_500);
   panel.onDidChangeViewState(() => { if (panel.visible) { try { publish(true); } catch { /* Retry on the next poll. */ } } });
-  panel.onDidDispose(() => { lifetime.abort(); clearInterval(timer); receive.dispose(); });
+  const close = () => { lifetime.abort(); panel.dispose(); };
+  scope?.addEventListener('abort', close, { once: true });
+  panel.onDidDispose(() => { scope?.removeEventListener('abort', close); lifetime.abort(); clearInterval(timer); receive.dispose(); });
 }

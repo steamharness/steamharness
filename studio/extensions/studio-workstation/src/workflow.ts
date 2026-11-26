@@ -176,10 +176,16 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     startingDone.set(controller, new Promise<void>(resolve => { finishStarting = resolve; }));
     starting.set(controller, project);
     const disposedPanel = (sidebar ?? restored)?.onDidDispose(() => controller.abort());
+    let scopeListener: vscode.Disposable | undefined;
     let session: WebSession;
     let sources: string[] = [];
     try {
+      await account.waitForWorkspaceAccount?.();
+      controller.signal.throwIfAborted();
+      const scope = account.workspace?.();
+      scopeListener = account.onDidChange?.(() => { if (account.workspace?.() !== scope) controller.abort(); });
       const resourceProjects = [...new Set([...provider.projects.map(project => project.folderPath), ...await resourceProjectDirectories(context)])];
+      controller.signal.throwIfAborted();
       sources = [project.folderPath, ...resourceProjects];
       assertNotUpgrading(sources);
       startingSources.set(controller, sources);
@@ -191,7 +197,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       }
     } catch (error) {
       restored?.dispose(); controller.signal.throwIfAborted(); throw error;
-    } finally { signal?.removeEventListener('abort', abort); starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
+    } finally { scopeListener?.dispose(); signal?.removeEventListener('abort', abort); starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
     sessions.add(session);
     sessionSources.set(session, sources);
     const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel(toolTab ? 'studio.projectTool' : 'studio.project', projectDisplayName(project), { viewColumn, preserveFocus: false }, { enableScripts: true, retainContextWhenHidden: true });
@@ -226,6 +232,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     };
     sessionStops.set(session, async () => { await close(); if ('reveal' in panel) { panel.dispose(); } });
     listeners.push(panel.onDidDispose(() => void close()));
+    // Explicit host retirement (e.g. sign-out) is not a recoverable CLI exit.
+    void session.closed.then(() => {
+      if (closed) return;
+      if ('reveal' in panel) { panel.dispose(); } else { panel.webview.html = ''; }
+      void close().catch(error => output.appendLine(`Closing project: ${String(error)}`));
+    });
     try {
       const localAddress = new URL(session.ready.url);
       const initialPreview = await mountPreview();
@@ -486,6 +498,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     const clipboard = bindProjectClipboard(preview.webview);
     const subscriptions = [clipboard, preview.webview.onDidReceiveMessage(message => clipboard.receive(message)),
       vscode.window.onDidChangeActiveColorTheme(() => void preview.webview.postMessage({ type: 'workflow-host', theme: theme() })), session.onExit(() => preview.dispose())];
+    void session.closed.then(() => { if (resourceBindings.get(preview) === subscriptions) preview.dispose(); });
     resourceBindings.set(preview, subscriptions);
     subscriptions.push(preview.onDidDispose(() => {
       for (const listener of subscriptions) listener.dispose();

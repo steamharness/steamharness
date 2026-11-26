@@ -17,6 +17,7 @@ import { UserModels, USER_MODELS_SECRET } from './user-models';
 import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
 import type { RemoteAccessHandler, RemoteAccessAction } from './remote-access-types';
 import type { AccountSessions } from './account-sessions-node';
+import type { AccountWorkspace } from './account-workspace-data';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account, AuthError, ServerClient, normalizeProjectServerUrl,
@@ -60,6 +61,8 @@ export class AccountController implements vscode.Disposable {
 
   private onlineOpened = false;
   private pendingRestore?: Promise<void>;
+  private initialWorkspaceAccount?: Promise<void>;
+  private activeWorkspace?: AccountWorkspace;
   private aiSession?: LoginSession;
   private aiLogin?: Promise<Connection | undefined>;
   private aiLoginAbort?: AbortController;
@@ -72,7 +75,8 @@ export class AccountController implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, readonly platform = false,
     private readonly serverUrl = DEFAULT_STEAMHARNESS_SERVER_URL, private readonly digest?: (value: string) => string,
-    private readonly remoteAccess?: RemoteAccessHandler, private readonly sessions: AccountSessions = context.secrets) {
+    private readonly remoteAccess?: RemoteAccessHandler, private readonly sessions: AccountSessions = context.secrets,
+    private readonly workspaceFactory?: (owner: string) => AccountWorkspace) {
     this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
       modelWriteLock);
     this.account = new Account(this.configuredServer(), {
@@ -91,7 +95,7 @@ export class AccountController implements vscode.Disposable {
       const state = this.getState();
       this.change.fire(state);
       void vscode.commands.executeCommand('setContext', 'studio.authenticated', !!this.account.getSession());
-      void vscode.commands.executeCommand('studio.internalUpdateAccountMenuState', accountMenuState(state, platform, digest)).then(undefined, () => undefined);
+      void vscode.commands.executeCommand('studio.internalUpdateAccountMenuState', this.menuState()).then(undefined, () => undefined);
       void this.panel?.webview.postMessage({ type: 'account', state });
       this.publishLogin();
       const session = this.authenticationSession();
@@ -164,7 +168,7 @@ export class AccountController implements vscode.Disposable {
       vscode.commands.registerCommand('studio.logout', async () => { await this.connect(); await this.logout(); }),
       vscode.commands.registerCommand('studio.disconnectSystemAi', () => this.disconnectAi()),
       ] : []),
-      vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => accountMenuState(this.getState(), platform, digest)),
+      vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => this.menuState()),
       vscode.commands.registerCommand('studio.openLaunchpadResource', async (resource: string) => {
         const server = this.getState().serverUrl;
         if (resource === 'docs') {
@@ -244,10 +248,29 @@ export class AccountController implements vscode.Disposable {
     await this.readLanguagePreference();
     // Rendering the launchpad or signing in does not need third-party model keys.
     if (this.sessions === this.context.secrets) await this.loadUserModels();
-    if (this.platform && vscode.env.uiKind === vscode.UIKind.Web) {
-      // Restore even when no Account view or platform extension has requested a connection yet.
-      void this.connect().catch(() => undefined);
+    if (this.platform && (this.workspaceFactory || vscode.env.uiKind === vscode.UIKind.Web)) {
+      // Both entry points need the account before choosing the initial run-history directory.
+      const restoring = this.connect().then(() => undefined, () => undefined).finally(() => {
+        this.initialWorkspaceAccount = undefined;
+        if (!this.lifetime.signal.aborted) this.change.fire(this.getState());
+      });
+      this.initialWorkspaceAccount = restoring;
     }
+  }
+  private menuState() {
+    const workspaceOwner = this.workspace()?.owner;
+    return { ...accountMenuState(this.getState(), this.platform, this.digest), workspaceOwner };
+  }
+  waitForWorkspaceAccount(): Promise<unknown> | undefined { return this.initialWorkspaceAccount; }
+  get sharesWorkspace(): boolean { return !!this.workspaceFactory; }
+  get workspaceRestoring(): boolean { return this.sharesWorkspace && !!this.initialWorkspaceAccount; }
+  workspace(): AccountWorkspace | undefined {
+    const session = this.account.getSession();
+    const owner = this.workspaceFactory && session && (!session.expiresAt || Date.parse(session.expiresAt) > Date.now())
+      ? accountScopeKey(this.account.getState(), this.digest) : undefined;
+    if (!owner || !this.workspaceFactory) { this.activeWorkspace = undefined; return; }
+    if (this.activeWorkspace?.owner !== owner) this.activeWorkspace = this.workspaceFactory(owner);
+    return this.activeWorkspace;
   }
   async connect(): Promise<Connection | undefined> {
     if (!this.platform) return undefined;
@@ -886,8 +909,9 @@ export class AccountController implements vscode.Disposable {
 }
 
 export async function activateProjectAccount(context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock, platform = false,
-  serverUrl?: string, digest?: (value: string) => string, remoteAccess?: RemoteAccessHandler, sessions?: AccountSessions): Promise<AccountController> {
-  const account = new AccountController(context, modelWriteLock, platform, serverUrl, digest, remoteAccess, sessions);
+  serverUrl?: string, digest?: (value: string) => string, remoteAccess?: RemoteAccessHandler, sessions?: AccountSessions,
+  workspaceFactory?: (owner: string) => AccountWorkspace): Promise<AccountController> {
+  const account = new AccountController(context, modelWriteLock, platform, serverUrl, digest, remoteAccess, sessions, workspaceFactory);
   context.subscriptions.push(account);
   await account.initialize();
   return account;

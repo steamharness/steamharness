@@ -72,3 +72,23 @@ test('history updates serialize and a failed save does not block later updates',
   assert.deepEqual({ recent: f.storage.get('studio.recentProjects'), imported: f.storage.get('studio.importedProjects') },
     { recent: [recent('file:///saved')], imported: [imported('file:///first'), imported('file:///second')] });
 });
+
+test('an account switch fences queued history writes and keeps unowned history out of the shared account', async () => {
+  const f = fixture(); const original = recent('file:///legacy'), importedA = imported('file:///account-A');
+  f.storage.set('studio.recentProjects', [original]);
+  const holder = () => {
+    let history = { recent: [], imported: [] };
+    return { readHistory: () => history, updateHistory: edit => { history = edit(history); return true; } };
+  };
+  const a = holder(), b = holder(); let current = a;
+  f.bindProjectHistory(f.context, () => current);
+  assert.deepEqual(f.readProjectHistory(f.context), { recent: [], imported: [] });
+  const old = f.updateProjectHistory(f.context, history => ({ ...history, imported: [importedA] }));
+  current = b;
+  assert.equal(await old, false);
+  assert.deepEqual(a.readHistory(), b.readHistory());
+  await f.updateProjectHistory(f.context, history => ({ ...history, recent: [recent('file:///account-B')] }));
+  assert.deepEqual(a.readHistory(), { recent: [], imported: [] });
+  current = undefined;
+  assert.equal(f.readProjectHistory(f.context).recent.map(item => item.uri).join(','), original.uri);
+});

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
-import { projectTypeIcons, readRecentProjects, RECENT_PROJECTS_KEY } from './projects';
+import { projectTypeIcons } from './projects';
+import { readProjectHistory } from './project-history';
 import { findProjectCandidates } from './project-candidates';
 import { editSidebarPreferences, orderedSidebarIds, readSidebarPreferences, sidebarEntryKey, sidebarEntryTitle, type SavedSidebarEntry, type SidebarPreferences } from './project-sidebar-state';
 import { bindHostedSidebar, sidebarStatusHtml } from './project-sidebar-view';
@@ -255,7 +256,7 @@ export class ProjectSidebar implements vscode.Disposable {
       const history = await vscode.commands.executeCommand<string[]>('studio.internalSidebarHistory');
       const uris = [...new Set([
         ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.toString()), ...this.getProjects().map(project => project.uri),
-        ...(history ?? []), ...readRecentProjects(this.context.globalState.get(RECENT_PROJECTS_KEY)).filter(item => item.kind === 'folder').map(item => item.uri),
+        ...(history ?? []), ...readProjectHistory(this.context).recent.filter(item => item.kind === 'folder').map(item => item.uri),
       ])].map(value => vscode.Uri.parse(value)).filter(localFolder);
       const cancelled = () => token.isCancellationRequested || this.disposed;
       const projects = await findProjectCandidates(uris, cancelled);

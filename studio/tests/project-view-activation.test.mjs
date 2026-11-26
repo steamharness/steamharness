@@ -382,7 +382,7 @@ test('side resource tabs replace their content and dispose previous session bind
    sideResourcePreview:{open(title,column){preview.title=title;columns.push(column);return preview;}},resourceBindings,
    bindProjectClipboard:()=>({receive(){},dispose(){}}),theme:()=> 'dark',projectFrameHtml:(...args)=>{frames.push(args);return args[0];},
  });
- const session=exits=>({ready:{url:'http://127.0.0.1:3333/#session=trusted'},onExit:subscribe(exits)});
+ const session=exits=>({ready:{url:'http://127.0.0.1:3333/#session=trusted'},closed:new Promise(()=>{}),onExit:subscribe(exits)});
  const result={action:'window',url:'/entries/main/resource/first',card:{title:'First',kind:'file',target:{filePath:'notes.md'}}};
  await open(result,{uri:'file:///project'},session(oldExit),new URL('http://127.0.0.1:3333'),1);
  await open({...result,url:'/entries/main/resource/second',card:{...result.card,title:'Second'}},{uri:'file:///project'},session(newExit),new URL('http://127.0.0.1:3333'),1);

@@ -28,7 +28,7 @@ test('runtime changes isolate new services and recovery keeps the original runti
     const args=process.argv.slice(2),input=createInterface({input:process.stdin});
     const server=createServer((request,response)=>{
       if(request.url==='/crash'){response.end('{}');setImmediate(()=>process.exit(23));return;}
-      response.end(JSON.stringify({node:process.execPath,version:process.version,pid:process.pid,
+      response.end(JSON.stringify({node:process.execPath,version:process.version,pid:process.pid,data:args[args.indexOf('--data-dir')+1],
         child:execFileSync('node',['-p','process.execPath'],{encoding:'utf8'}).trim(),electron:process.env.ELECTRON_RUN_AS_NODE}));
     });
     input.on('line',line=>{const message=JSON.parse(line);if(message.type==='configure'){
@@ -47,8 +47,12 @@ test('runtime changes isolate new services and recovery keeps the original runti
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process, structuredClone, AbortController, AbortSignal, URL, setTimeout, clearTimeout, queueMicrotask });
+  let holder;
+  const listeners = new Set();
+  const accountChanged = () => { for (const listen of [...listeners]) listen({ status: 'authenticated' }); };
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } },
-    { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
+    { getConnection: () => undefined, sharesWorkspace: true, workspace: () => holder,
+      onDidChange: listener => { listeners.add(listener); return { dispose: () => listeners.delete(listener) }; } });
   t.after(() => runtime.dispose());
   const project = { id: 'project', folderPath: directory, uri: '', projectType: 'bot', entryId: 'main', entries: [{ entryId: 'main' }] };
   const first = await runtime.start(project, 'editor'); t.after(() => first.close());
@@ -66,4 +70,15 @@ test('runtime changes isolate new services and recovery keeps the original runti
   const restored = await info(first);
   assert.equal(restored.node, nodes[0]); assert.equal(restored.child, nodes[0]); assert.notEqual(restored.pid, initial.pid);
   assert.equal((await info(second)).node, nodes[1]);
+
+  holder = { owner: 'a', runs: path.join(directory, 'account-A'), prepare() {} }; accountChanged();
+  await Promise.all([first.closed, same.closed, second.closed]);
+  const owned = await runtime.start(project, 'editor'); t.after(() => owned.close());
+  assert.equal((await info(owned)).data, holder.runs);
+  const previous = new URL(owned.ready.url).origin;
+  holder = { owner: 'b', runs: path.join(directory, 'account-B'), prepare() {} }; accountChanged();
+  await owned.closed;
+  await assert.rejects(fetch(previous));
+  const next = await runtime.start(project, 'editor'); t.after(() => next.close());
+  assert.equal((await info(next)).data, holder.runs);
 });

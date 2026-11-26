@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
 import { readProjectDeclarationWithReader } from '@steamharness/project-manifest';
-import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects } from './projects';
+import { rememberImportedProjects } from './projects';
 import type { DownloadedServerProject } from './steamharness-server-projects';
-import { updateProjectHistory } from './project-history';
+import { readProjectHistory, updateProjectHistory } from './project-history';
 
 export async function readProjectDocument(uri: vscode.Uri): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(uri, 'steamharness.json'))));
 }
 export async function resourceProjectDirectories(context: Pick<vscode.ExtensionContext, 'globalState'>): Promise<string[]> {
-  const directories = await Promise.all(readImportedProjects(context.globalState.get(IMPORTED_PROJECTS_KEY)).map(async project => {
+  const directories = await Promise.all(readProjectHistory(context).imported.map(async project => {
     try {
       const uri = vscode.Uri.parse(project.uri);
       if (uri.scheme !== 'file' || (await readProjectDeclarationWithReader(await readProjectDocument(uri), async root => JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(uri, root, "steamharness.json")))))).projectId !== project.id) return undefined;

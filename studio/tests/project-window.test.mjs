@@ -10,7 +10,7 @@ const mocks = {
   'localization-host': '',
   'project-icons': 'export class ProjectIcons { onDidChange() { return { dispose() {} }; } get() {} getAvatarUrl() {} getVersion() {} dispose() {} }',
   workflow: 'export async function activateProject() { return {}; }',
-  'workflow-auth': 'export async function activateProjectAccount() { return { setProjectSidebar() {} }; }',
+  'workflow-auth': 'export async function activateProjectAccount() { return { setProjectSidebar() {}, workspace() {}, waitForWorkspaceAccount() {}, onDidChange() { return { dispose() {} }; } }; }',
   'document-preview': 'export function activateDocumentPreviews() {}',
   'start-page': 'export class StudioStartController { dispose() {} }',
   'internal-layer': 'export async function activateInternalLayer() {}',

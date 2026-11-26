@@ -240,9 +240,11 @@ export class StudioStartController implements vscode.Disposable {
     }
     const roots = new Set(vscode.workspace.workspaceFolders?.map(folder => folder.uri.toString()));
     this.state.hasWorkspace = roots.size > 0;
+    this.state.workspaceOwner = this.account.workspace?.()?.owner;
+    this.state.workspaceRestoring = this.account.workspaceRestoring;
     const currentUris = new Set(roots);
     if (vscode.workspace.workspaceFile) { currentUris.add(vscode.workspace.workspaceFile.toString()); }
-    this.state.recent = this.recent.getChildren().map(project => ({ ...project, current: currentUris.has(project.uri) }));
+    this.state.recent = this.state.workspaceRestoring ? [] : this.recent.getChildren().map(project => ({ ...project, current: currentUris.has(project.uri) }));
     this.state.projects = summarizeProjects(this.projects, roots, new Map(this.state.recent.map(project => [project.uri, project])));
     const projectUris = new Set([...roots, ...this.state.projects.map(project => project.uri)]);
     this.state.pending = this.pending().filter(project => projectUris.has(vscode.Uri.file(project.directory).toString()))

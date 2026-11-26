@@ -8,8 +8,9 @@ import { activateProjectAccount } from './workflow-auth';
 import { withUserModelWriteLock } from './user-models-node';
 import { activateNodeRuntime } from './node-runtime-host';
 import { prepareInternalLayer } from './internal-layer';
-import { remoteAccessHandler } from './remote-access-node';
+import { remoteAccessHandler, usingStudioWeb } from './remote-access-node';
 import { LocalAccountSessions } from './account-sessions-node';
+import { NodeAccountWorkspace } from './account-workspace-data-node';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const platform = await prepareInternalLayer();
@@ -20,6 +21,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ? new LocalAccountSessions(storage.fsPath) : undefined;
   if (desktopSessions) context.subscriptions.push(desktopSessions);
   const account = await activateProjectAccount(context, run => withUserModelWriteLock(context.globalStorageUri.fsPath, run), platform,
-    platform ? process.env.STEAMHARNESS_STUDIO_INTERNAL_SERVER_URL : undefined, value => createHash('sha256').update(value).digest('hex'), remoteAccessHandler(), desktopSessions);
+    platform ? process.env.STEAMHARNESS_STUDIO_INTERNAL_SERVER_URL : undefined, value => createHash('sha256').update(value).digest('hex'), remoteAccessHandler(), desktopSessions,
+    platform && (desktopSessions || usingStudioWeb()) ? owner => new NodeAccountWorkspace(owner) : undefined);
   return activateWorkstation(context, createProjectRuntime(context, account), account);
 }

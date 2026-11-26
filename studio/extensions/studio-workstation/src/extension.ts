@@ -1,7 +1,7 @@
 import './localization-host';
 import { t } from './localization';
 import * as vscode from 'vscode';
-import { applyRecentMetadata, IMPORTED_PROJECTS_KEY, projectTypeIcons, RECENT_PROJECTS_KEY, readRecentProjects, rememberProjects, type RecentProject } from './projects';
+import { applyRecentMetadata, projectTypeIcons, readRecentProjects, rememberProjects, type RecentProject } from './projects';
 import { ProjectIcons } from './project-icons';
 import { activateProject } from './workflow';
 import type { Launcher } from './workflow-cli-types';
@@ -10,19 +10,29 @@ import { activateDocumentPreviews } from './document-preview';
 import { StudioStartController } from './start-page';
 import { activateInternalLayer } from './internal-layer';
 import { openProjectFolder } from './project-window';
-import { isMissingProject, pruneMissingProjectHistory, updateProjectHistory } from './project-history';
+import { bindProjectHistory, isMissingProject, pruneMissingProjectHistory, readProjectHistory, updateProjectHistory } from './project-history';
 import { ProjectSidebar } from './project-sidebar';
 
 class RecentProjectsProvider {
   private readonly change = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.change.event;
+  private snapshot = '';
 
-  constructor(private readonly context: vscode.ExtensionContext, private readonly icons: ProjectIcons) {}
-  async reconcile(): Promise<void> { if (await pruneMissingProjectHistory(this.context)) { this.refresh(); } }
+  constructor(private readonly context: vscode.ExtensionContext, private readonly icons: ProjectIcons, private readonly shared: () => boolean) {}
+  async reconcile(): Promise<void> {
+    await pruneMissingProjectHistory(this.context);
+    const snapshot = JSON.stringify(readProjectHistory(this.context));
+    if (snapshot !== this.snapshot) { this.snapshot = snapshot; this.refresh(); }
+  }
   refresh(): void { this.change.fire(); }
   dispose(): void { this.change.dispose(); }
   getChildren(): RecentProject[] {
-    return readRecentProjects(this.context.globalState.get(RECENT_PROJECTS_KEY)).map(project => ({ ...project,
+    const history = readProjectHistory(this.context);
+    const projects = new Map(history.recent.map(project => [project.uri, project]));
+    if (this.shared()) for (const project of history.imported) {
+      if (!projects.has(project.uri)) projects.set(project.uri, { uri: project.uri, label: project.name, kind: 'folder', lastOpened: 0 });
+    }
+    return [...projects.values()].map(project => ({ ...project,
       ...(project.kind === 'folder' ? this.icons.metadata(project.uri) : undefined) }));
   }
 
@@ -50,8 +60,10 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     cliEntry: async () => { throw new Error('Workflow requires a Node extension host.'); },
     dispose: () => undefined,
   };
-  const icons = new ProjectIcons(launcher, message => output.appendLine(message), readRecentProjects(context.globalState.get(RECENT_PROJECTS_KEY)), () => context.globalState.get(IMPORTED_PROJECTS_KEY));
-  const recent = new RecentProjectsProvider(context, icons);
+  bindProjectHistory(context, () => account.workspace());
+  const icons = new ProjectIcons(launcher, message => output.appendLine(message), [], () => readProjectHistory(context).imported);
+  const recent = new RecentProjectsProvider(context, icons, () => !!account.workspace());
+  const recentLimit = () => account.workspace() ? 50 : vscode.workspace.getConfiguration('studio').get<number>('recentProjects.limit', 12);
   context.subscriptions.push(output, recent, icons, icons.onDidChange(updates => {
     recent.refresh();
     void updateProjectHistory(context, history => ({ ...history, recent: applyRecentMetadata(history.recent, updates) }))
@@ -79,6 +91,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   };
 
   const rememberCurrentWorkspace = async (): Promise<void> => {
+    await account.waitForWorkspaceAccount();
     const now = Date.now();
     const opened: RecentProject[] = (vscode.workspace.workspaceFolders ?? [])
       .filter(folder => ['file', 'vscode-remote'].includes(folder.uri.scheme) &&
@@ -93,9 +106,37 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
         lastOpened: now,
       });
     }
-    const limit = vscode.workspace.getConfiguration('studio').get<number>('recentProjects.limit', 12);
-    await saveRecent((previous) => rememberProjects(previous, opened, limit));
+    if (opened.length) await saveRecent(previous => rememberProjects(previous, opened, recentLimit()));
   };
+
+  context.subscriptions.push(vscode.commands.registerCommand('studio.internalWorkspaceInbox', (owner: unknown, input: unknown) => {
+    const holder = account.workspace();
+    if (holder && holder.owner === owner) return holder.inbox(input);
+    return undefined;
+  }));
+  register('studio.internalEditWorkspaceHistory', async (owner: string, action: 'import' | 'remove', uris: string[]) => {
+    const holder = account.workspace();
+    if (!holder || holder.owner !== owner || !Array.isArray(uris) || !['import', 'remove'].includes(action)) return false;
+    const rows: RecentProject[] = [];
+    for (const raw of uris.slice(0, 50)) {
+      if (typeof raw !== 'string' || raw.length > 16384) continue;
+      const uri = vscode.Uri.parse(raw);
+      if (uri.scheme !== 'file' || uri.authority || uri.query || uri.fragment) continue;
+      if (action === 'import') {
+        if (launcher.isBuiltinProjectDirectory?.(uri.fsPath)) continue;
+        try { if (!((await vscode.workspace.fs.stat(uri)).type & vscode.FileType.Directory)) continue; }
+        catch (error) { if (isMissingProject(error)) continue; throw error; }
+      }
+      rows.push({ uri: uri.toString(), label: uri.fsPath.split(/[\\/]/).filter(Boolean).at(-1) ?? uri.fsPath, kind: 'folder', lastOpened: Date.now() });
+    }
+    if (!rows.length || account.workspace() !== holder) return false;
+    const selected = new Set(rows.map(row => row.uri));
+    await updateProjectHistory(context, history => action === 'import'
+      ? { ...history, recent: rememberProjects(history.recent, rows, 50) }
+      : { recent: history.recent.filter(row => !selected.has(row.uri)), imported: history.imported.filter(row => !selected.has(row.uri)) });
+    recent.refresh();
+    return account.workspace() === holder;
+  });
 
   register('studio.openFolder', async () => {
     const folders = await vscode.window.showOpenDialog({
@@ -128,26 +169,32 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     }
     await openProjectFolder(uri);
   });
-  register('studio.removeRecentProject', async (project?: RecentProject) => {
+  register('studio.removeRecentProject', async (project?: RecentProject, expectedOwner?: string | null) => {
     if (!project || !readRecentProjects([project]).length) {
       return;
     }
     const remove: vscode.MessageItem = { title: t('Remove from Recent Projects') };
+    const holder = account.workspace();
+    if (expectedOwner !== undefined && (holder?.owner ?? null) !== expectedOwner) return false;
     const answer = await vscode.window.showWarningMessage(t('Remove "{0}" from recent projects?', project.label), {
       modal: true,
       detail: t('This only removes the recent entry. The project files and current workspace will not be affected.'),
     }, remove, { title: t('Cancel'), isCloseAffordance: true });
-    if (answer === remove) {
-      await saveRecent((previous) => previous.filter((entry) => entry.uri !== project.uri), true);
+    if (answer === remove && holder === account.workspace()) {
+      await updateProjectHistory(context, history => ({ recent: history.recent.filter(entry => entry.uri !== project.uri),
+        imported: history.imported.filter(entry => entry.uri !== project.uri) }));
+      recent.refresh();
       return true;
     }
     return false;
   });
   register('studio.clearRecentProjects', async () => {
+    const holder = account.workspace();
     const clear = t('Clear');
     const answer = await vscode.window.showWarningMessage(t('Clear recent projects?'), { modal: true }, clear);
-    if (answer === clear) {
-      await saveRecent(() => [], true);
+    if (answer === clear && holder === account.workspace()) {
+      if (holder) { await updateProjectHistory(context, () => ({ recent: [], imported: [] })); recent.refresh(); }
+      else await saveRecent(() => [], true);
     }
   });
   register('studio.internalDetectProjectTypes', (uris: string[]) => icons.resolveMany(Array.isArray(uris) ? uris.filter(uri => typeof uri === 'string').slice(0, 500) : []));
@@ -187,6 +234,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   };
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(refreshWorkspace),
+    account.onDidChange(() => recent.refresh()),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('studio.recentProjects.limit')) {
         refreshWorkspace();
@@ -195,16 +243,20 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   );
   const sidebar = new ProjectSidebar(context, launcher, output);
   account.setProjectSidebar(sidebar);
-  await Promise.all([activateInternalLayer(context, output, account, sidebar, {
+  await activateInternalLayer(context, output, account, sidebar, {
     inspect: (paths, options) => launcher.inspect(paths, options),
     start: (...args) => launcher.start(...args),
     localAssistantDirectory: launcher.localAssistantDirectory,
     readSidebarEntries: launcher.readSidebarEntries,
     async avatar(uri) { return (await icons.resolveMany([uri]))[0]?.avatarUrl; },
-  }), recent.reconcile().then(rememberCurrentWorkspace)]);
+  });
+  const accountReady = account.waitForWorkspaceAccount();
+  const restoreRecent = () => recent.reconcile().then(rememberCurrentWorkspace).catch(error => output.appendLine(`Recent projects: ${String(error)}`));
+  if (accountReady) void accountReady.then(restoreRecent);
+  else await restoreRecent();
   const workflows = await activateProject(context, launcher, output, account, icons, sidebar);
   context.subscriptions.push(new StudioStartController(context, launcher, account, workflows, recent,
     project => saveRecent(previous => rememberProjects(previous, [{ uri: vscode.Uri.file(project.directory).toString(), label: project.name, kind: 'folder', lastOpened: Date.now() }],
-      vscode.workspace.getConfiguration('studio').get<number>('recentProjects.limit', 12))), output));
+      recentLimit())), output));
   output.appendLine(`Studio ${context.extension.packageJSON.version} activated.`);
 }
