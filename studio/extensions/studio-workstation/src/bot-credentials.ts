@@ -15,6 +15,51 @@ export const canAccessBotCredentialStorage = async (context: vscode.ExtensionCon
   vscode.workspace.isTrusted && !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop && typeof context.secrets.keys === 'function'
   && await Promise.resolve(vscode.commands.executeCommand<boolean>('studio.internalCanPersistBotCredentials')).catch(() => false) === true;
 
+type CredentialInputOptions = Pick<vscode.InputBoxOptions, 'title' | 'prompt' | 'placeHolder' | 'password' | 'ignoreFocusOut'> & {
+  validateInput(value: string): string | undefined;
+};
+
+/** A cleared field is neutral while editing, but is still required on accept. */
+function showCredentialInput(options: CredentialInputOptions, token: vscode.CancellationToken): Promise<string | undefined> {
+  if (token.isCancellationRequested) return Promise.resolve(undefined);
+  return new Promise(resolve => {
+    const input = vscode.window.createInputBox();
+    input.title = options.title;
+    input.prompt = options.prompt;
+    input.placeholder = options.placeHolder;
+    input.password = options.password ?? false;
+    input.ignoreFocusOut = options.ignoreFocusOut ?? false;
+    let validation: ReturnType<typeof setTimeout> | undefined;
+    const setMessage = (message?: string) => {
+      if (input.validationMessage !== message) input.validationMessage = message;
+    };
+    const listeners = [
+      input.onDidChangeValue(value => {
+        clearTimeout(validation);
+        if (!value.trim()) setMessage();
+        else validation = setTimeout(() => setMessage(options.validateInput(input.value)), 100);
+      }),
+      input.onDidAccept(() => {
+        clearTimeout(validation);
+        if (token.isCancellationRequested) { finish(); return; }
+        const value = input.value;
+        const message = options.validateInput(value);
+        if (message) setMessage(message);
+        else finish(value);
+      }),
+      input.onDidHide(() => finish()),
+      token.onCancellationRequested(() => finish()),
+    ];
+    function finish(value?: string) {
+      clearTimeout(validation);
+      for (const listener of listeners) listener.dispose();
+      input.dispose();
+      resolve(value);
+    }
+    input.show();
+  });
+}
+
 export function createBotCredentialInteraction(context: vscode.ExtensionContext, queryDns = runBotCredentialDnsQuery) {
   let opening = false;
   // Memory only, fenced by the Studio CLI host lease and the current vault contents.
@@ -104,14 +149,14 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
       const valueFor = async (slot: BotCredentialSlot): Promise<string | undefined> => {
         if (slot.kind === 'structured' || slot.kind === 'access-key-pair') {
           const fields = structuredCredentialFields(slot);
-          return vscode.window.showInputBox({ title, prompt: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name), password: true, ignoreFocusOut: true,
+          return showCredentialInput({ title, prompt: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name), password: true, ignoreFocusOut: true,
             placeHolder: fields ? JSON.stringify(Object.fromEntries(fields.map(field => [field, '']))) : '{"field":""}',
             validateInput: value => parseStructuredCredential(value, fields) ? undefined : fields
               ? t('Enter JSON with exactly these fields and non-empty string values: {0}', fields.join(', '))
               : t('Enter a single-line JSON object with 1 to 16 named string values (up to 16 KiB).'),
           }, cancellation.token);
         }
-        if (slot.kind !== 'ssh-private-key') return vscode.window.showInputBox({ title, prompt: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name), password: true, ignoreFocusOut: true,
+        if (slot.kind !== 'ssh-private-key') return showCredentialInput({ title, prompt: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name), password: true, ignoreFocusOut: true,
           validateInput: value => validBotCredentialText(value) ? undefined : t('Enter a non-empty single-line credential (up to 16 KiB).') }, cancellation.token);
         const files = await vscode.window.showOpenDialog({ title: t('Choose the SSH private key for {0}', slot.name), canSelectFiles: true, canSelectFolders: false, canSelectMany: false });
         signal.throwIfAborted();
@@ -147,7 +192,7 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
       if (!choice.slot) {
         const type = await vscode.window.showQuickPick(botCredentialKinds.map(kind => ({ label: botCredentialKindLabel(kind), credentialKind: kind })), { title }, cancellation.token);
         if (!type) return 'managed';
-        const name = await vscode.window.showInputBox({ title, prompt: t('Credential alias'), validateInput: value => validBotCredentialName(value) ? undefined : t('Use 1–64 lowercase letters, digits, dots, hyphens or underscores. Start with a letter or digit.') }, cancellation.token);
+        const name = await showCredentialInput({ title, prompt: t('Credential alias'), validateInput: value => validBotCredentialName(value) ? undefined : t('Use 1–64 lowercase letters, digits, dots, hyphens or underscores. Start with a letter or digit.') }, cancellation.token);
         if (!name) return 'managed';
         const slot = { name, kind: type.credentialKind };
         if (await vault.inspect(slot, signal) !== 'missing') { void vscode.window.showWarningMessage(t('This credential alias and type already exist.')); return 'managed'; }

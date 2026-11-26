@@ -1,4 +1,5 @@
 import { conversationModelName, type ConversationMessage, type ConversationSession, type Report } from './workflow-types';
+import { withCredentialResultSummary } from './bot-credential-result';
 
 type Event = Record<string, unknown>;
 interface EventSummary { count: number; events: Event[]; starts: Map<string, number>; ends: Map<string, number> }
@@ -64,7 +65,7 @@ export class ConversationState {
       });
     }
     const model = message.modelRequest;
-    return { ...withoutModelRequest(message), events, report, modelRequestExecutionId: model?.executionId,
+    return { ...withoutModelRequest(message), resolvedInputs: message.resolvedInputs?.map(withCredentialResultSummary), events, report, modelRequestExecutionId: model?.executionId,
       ...(model?.previous?.length && { modelRequestCount: 1 + model.previous.length }) };
   }
 

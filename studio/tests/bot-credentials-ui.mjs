@@ -232,7 +232,10 @@ try {
   local.write({ type: 'bot-credential-result', id: approvedQuery.id, result: queryResult });
   await frame.getByText('Fixture query: example.com', { exact: true }).waitFor();
   await prompt.waitFor({ state: 'detached' });
-  await frame.getByText('Credential query completed', { exact: true }).waitFor();
+  const domainCard = frame.locator('.result-card[aria-label="Alibaba Cloud DNS domains"]');
+  await domainCard.getByRole('cell', { name: 'example.com', exact: true }).waitFor();
+  assert.match(await domainCard.innerText(), /Completed[\s\S]*Credential alias[\s\S]*fixture-sso[\s\S]*Page/);
+  assert.equal(await domainCard.getByRole('columnheader', { name: 'Domain' }).count(), 1);
 
   await frame.locator('#message:enabled').fill('List domains again'); await frame.locator('#send').click();
   const miss = await waitFor(() => local.sent.find(record => record.approval?.mode === 'reuse'), 'Missing one-time approval lookup');
@@ -251,9 +254,20 @@ try {
   const reuse = await waitFor(() => local.sent.find(record => record.approval?.mode === 'reuse' && record.use?.operation === 'list-records'), 'Missing automatic credential use on the next turn');
   assert.deepEqual(reuse, { type: 'bot-credential-request', id: reuse.id, entryId, action: 'use', use: records, approval: { scopeId, mode: 'reuse' } });
   assert.equal(await prompt.count(), 0);
-  local.write({ type: 'bot-credential-result', id: reuse.id, result: { status: 'ok', page: 2, total: 25, rows: [{ name: '@', type: 'A', value: '192.0.2.42', ttl: 600 }] } });
+  const longRecord = 'record-content-'.repeat(32);
+  local.write({ type: 'bot-credential-result', id: reuse.id, result: { status: 'ok', page: 2, total: 25, rows: [
+    { name: '@', type: 'A', value: '192.0.2.42', ttl: 600 }, { name: 'verification', type: 'TXT', value: longRecord, ttl: 3600 },
+  ] } });
   await frame.getByText('Fixture query: 192.0.2.42', { exact: true }).waitFor();
   await prompt.waitFor({ state: 'detached' });
+  const recordsCard = frame.locator('.result-card[aria-label="Alibaba Cloud DNS records"]');
+  await recordsCard.getByRole('cell', { name: '192.0.2.42', exact: true }).waitFor();
+  assert.deepEqual(await recordsCard.getByRole('columnheader').allTextContents(), ['Record name', 'Type', 'Record value', 'TTL (seconds)']);
+  assert.match(await recordsCard.innerText(), /Page\s*2\s*Rows on this page\s*2\s*Total rows\s*25/);
+  await page.setViewportSize({ width: 390, height: 640 });
+  assert.equal(await recordsCard.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
+  assert.equal(await recordsCard.getByRole('cell', { name: longRecord, exact: true }).count(), 1);
+  await page.setViewportSize({ width: 960, height: 700 });
   await frame.locator('#message:enabled').fill('Continue after saving'); await frame.locator('#send').click();
   await frame.getByText('Fixture can continue', { exact: true }).waitFor();
 
@@ -287,6 +301,8 @@ try {
   const newScope = await waitFor(() => local.sent.find(record => record.approval?.mode === 'prompt' && record.approval.scopeId !== scopeId), 'New conversation did not request its own approval');
   local.write({ type: 'bot-credential-result', id: newScope.id, result: { status: 'declined' } });
   await frame.getByText('Fixture query: declined', { exact: true }).waitFor();
+  await domainCard.getByText('Credential use declined', { exact: true }).waitFor();
+  assert.equal(await domainCard.getByRole('table').count(), 0);
   await frame.locator('#message:enabled').waitFor();
   assert.ok(!local.stderr().includes(forbidden));
   await page.goto('about:blank'); await local.close(); await checkFiles(local.data);
@@ -311,14 +327,17 @@ try {
   await frame.getByText('No credential tool', { exact: true }).waitFor();
   await page.goto('about:blank'); await unavailable.close();
 
-  const automatic = await launch('en', true, true, true, 'auto');
+  const automatic = await launch('zh-CN', true, true, true, 'auto');
   await startTurn(automatic, 'Use in the new conversation');
   const autoRequest = await waitFor(() => automatic.sent.find(record => record.approval?.mode === 'auto'), 'Auto approve did not submit a native query');
   assert.deepEqual(autoRequest, { type: 'bot-credential-request', id: autoRequest.id, entryId, action: 'use', use, approval: { mode: 'auto' } });
   assert.equal(await prompt.count(), 0);
   automatic.write({ type: 'bot-credential-result', id: autoRequest.id, result: queryResult });
   await frame.getByText('Fixture query: example.com', { exact: true }).waitFor();
-  await frame.getByText('Credential query completed', { exact: true }).waitFor();
+  const localizedCard = frame.locator('.result-card[aria-label="阿里云 DNS 域名列表"]');
+  await localizedCard.getByText('已完成', { exact: true }).waitFor();
+  await localizedCard.getByRole('columnheader', { name: '域名' }).waitFor();
+  await localizedCard.getByRole('cell', { name: 'example.com', exact: true }).waitFor();
   assert.equal(await prompt.count(), 0);
   await page.goto('about:blank'); await automatic.close(); await checkFiles(automatic.data);
 

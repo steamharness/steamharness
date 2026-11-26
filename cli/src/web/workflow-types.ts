@@ -165,7 +165,16 @@ export interface InputRequest {
   defaultValues?: Record<string, unknown>; createdAt?: string;
   metadata?: { type?: string; toolName?: string; toolArguments?: unknown; [key: string]: unknown };
 }
-export interface ResolvedInput { requestId: string; nodeName: string; values: Record<string, unknown>; submittedAt: string; request?: InputRequest; precedingOutputItemIds?: string[] }
+type ResultCell = string | number;
+export interface ResultCard {
+  title: string;
+  status: { label: string; tone: 'success' | 'warning' | 'danger' };
+  fields?: { label: string; value: ResultCell }[];
+  message?: string;
+  table?: { columns: string[]; rows: ResultCell[][] };
+}
+
+export interface ResolvedInput { requestId: string; nodeName: string; values: Record<string, unknown>; submittedAt: string; request?: InputRequest; precedingOutputItemIds?: string[]; resultCard?: ResultCard }
 
 export interface OutputItem {
   id?: string;

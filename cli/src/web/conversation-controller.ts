@@ -7,6 +7,7 @@ import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
 import { credentialStatus, credentialUnavailable, credentialUseSupported, parseBotCredentialUse, parseBotCredentialUseResult, type BotCredentialApproval, type BotCredentialHost } from './bot-credential-host';
+import { credentialResultCard } from './bot-credential-result';
 import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
@@ -442,7 +443,7 @@ export class ConversationController {
       project: this.project, conversationId: entry.id, args: resumeAgent && entry.agentParameters && answer.args?.includes('--message')
         ? [...entry.agentParameters.args, ...answer.args.slice(answer.args.indexOf('--message'))] : answer.args ?? args, runId: answer.runId,
       entrypointId: answer.entrypointId, toolPermissionPolicies: entry.toolPermissionPolicies,
-      resolvedInputs: [...(answer.resolvedInputs ?? []), ...(answer.submittingInput ? [answer.submittingInput] : [])],
+      resolvedInputs: [...(answer.resolvedInputs ?? []), ...(answer.submittingInput ? [answer.submittingInput] : [])].map(({ resultCard: _display, ...receipt }) => receipt),
       resumeAfterRequestId: answer.submittingInput?.requestId,
       agentCommands: this.sessions.filter(session => (session.agentOwnerId ?? session.id) === entry.id).flatMap(session => session.agentCommands ?? []),
     };
@@ -1122,7 +1123,9 @@ export class ConversationController {
     const existing = answer.resolvedInputs?.find((input) => input.requestId === resolved.requestId);
     const previous = existing
       ?? (answer.submittingInput?.requestId === resolved.requestId ? answer.submittingInput : undefined);
-    const confirmed = { ...previous, ...resolved, request: resolved.request ?? previous?.request ??
+    // Only the host's matching submission can attach a presentation to a receipt.
+    const { resultCard: _display, ...receipt } = resolved;
+    const confirmed = { ...previous, ...receipt, request: resolved.request ?? previous?.request ??
       (answer.pendingInput?.requestId === resolved.requestId ? answer.pendingInput : undefined),
       precedingOutputItemIds: previous?.precedingOutputItemIds ?? resolved.precedingOutputItemIds };
     answer.resolvedInputs = [...(answer.resolvedInputs ?? []).filter((input) => input.requestId !== resolved.requestId), confirmed];
@@ -1469,12 +1472,15 @@ export class ConversationController {
       if (abort.signal.aborted || task.cancelled || this.disposed || this.tasks.get(runId) !== task || entry.activeRunId !== runId
         || (silent ? answer.pendingInput : answer.pendingInput !== request)) throw credentialUnavailable();
       if ((approval?.mode === 'auto' || approval?.mode === 'reuse') && reply === 'approval-required') return false;
-      const receipt = operation ? parseBotCredentialUseResult(reply, operation) : credentialStatus(reply) ? { status: reply } : undefined;
+      const queryResult = operation && parseBotCredentialUseResult(reply, operation);
+      const receipt = operation ? queryResult : credentialStatus(reply) ? { status: reply } : undefined;
       if (!receipt) throw credentialUnavailable();
       const resolved = { requestId, nodeName: request.nodeName, values: { status: receipt.status }, submittedAt: new Date().toISOString(), request };
-      answer.submittingInput = resolved; this.changed();
+      const submitting = operation && queryResult ? { ...resolved, resultCard: credentialResultCard(operation, queryResult.status, queryResult),
+        precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) } : resolved;
+      answer.submittingInput = submitting; this.changed();
       try { await this.runtime.resolveLiveInput(runId, { ...resolved, values: receipt }); }
-      catch (error) { if (answer.submittingInput === resolved) delete answer.submittingInput; this.changed(); throw error; }
+      catch (error) { if (answer.submittingInput === submitting) delete answer.submittingInput; this.changed(); throw error; }
       return true;
     } finally { this.credentialPrompts.delete(promptKey); }
   }

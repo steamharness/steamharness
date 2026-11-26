@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { setImmediate as tick } from 'node:timers/promises';
+import { setImmediate as tick, setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { build } from 'esbuild';
@@ -152,7 +152,28 @@ test('structured credentials validate arbitrary fields and write the entire obje
   assert.equal(values.size, 0);
 });
 
-test('native Studio prompts derive a masked JSON placeholder from each request, without showing stored values', async t => {
+function fixtureEvent() {
+  const listeners = new Set();
+  return {
+    on(listener) { listeners.add(listener); return { dispose: () => listeners.delete(listener) }; },
+    emit(value) { for (const listener of listeners) listener(value); },
+  };
+}
+
+function fixtureInputBox(show) {
+  const change = fixtureEvent(), accept = fixtureEvent(), hide = fixtureEvent();
+  return {
+    value: '',
+    onDidChangeValue: change.on, onDidAccept: accept.on, onDidHide: hide.on,
+    show() { show(this); },
+    hide() { hide.emit(); },
+    dispose() { this.disposed = true; this.hide(); },
+    changeValue(value) { if (this.value !== value) { this.value = value; change.emit(value); } },
+    accept() { accept.emit(); },
+  };
+}
+
+test('native credential prompts reset validation on clear, require valid input on accept, and keep values masked', { timeout: 8000 }, async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-prompts-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const native = new URL('../extensions/studio-workstation/src/bot-credentials.ts', import.meta.url);
@@ -163,34 +184,72 @@ test('native Studio prompts derive a masked JSON placeholder from each request, 
       build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `
         export const workspace = { isTrusted: true, getConfiguration: () => ({ inspect: () => ({ globalValue: globalThis.botCredentialTest.policy() }) }) }, UIKind = { Desktop: 1 }, env = { uiKind: 1 };
         export const commands = { executeCommand: () => true };
-        export class CancellationTokenSource { token = {}; cancel() {} dispose() {} }
+        export const CancellationTokenSource = globalThis.botCredentialTest.CancellationTokenSource;
         export const window = {
-          showInputBox: options => globalThis.botCredentialTest.input(options),
+          createInputBox: () => globalThis.botCredentialTest.createInputBox(),
           showQuickPick: (items, options) => globalThis.botCredentialTest.pick(items, options),
           showWarningMessage: message => globalThis.botCredentialTest.warn(message),
         };
       ` }));
     } }] });
-  const { createBotCredentialInteraction } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString('base64')}`);
   const values = new Map(), prompts = [], warnings = [];
-  let typed, approve = true, policy = 'workspace';
+  let typed, onShow, approve = true, policy = 'workspace';
   const approvals = [], calls = [];
-  globalThis.botCredentialTest = { policy: () => policy, input: options => { prompts.push(options); return typed; },
+  globalThis.botCredentialTest = { policy: () => policy, createInputBox: () => fixtureInputBox(input => {
+    prompts.push(input);
+    if (onShow) onShow(input);
+    else { input.changeValue(typed); input.accept(); }
+  }), CancellationTokenSource: class {
+    event = fixtureEvent();
+    token = { isCancellationRequested: false, onCancellationRequested: this.event.on };
+    cancel() { this.token.isCancellationRequested = true; this.event.emit(); }
+    dispose() {}
+  },
     pick: (items, options) => { approvals.push({ items, options }); return approve === 'conversation' ? items[1] : approve ? items[0] : undefined; }, warn: message => warnings.push(message) };
-  t.after(() => { delete globalThis.botCredentialTest; });
+  t.after(() => { prompts.at(-1)?.hide(); delete globalThis.botCredentialTest; });
+  const { createBotCredentialInteraction } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString('base64')}`);
   const store = memoryStore(values);
   let reads = 0;
   const interaction = createBotCredentialInteraction({ globalStorageUri: { fsPath: root }, secrets: { ...store, get: key => { reads++; return store.get(key); } } },
     async (use, fields) => { calls.push({ use, fields }); return { status: 'ok', page: use.page, total: 1, rows: [{ domain: 'example.com' }] }; });
-  const capture = slot => interaction({ folderPath: root, id: 'fixture-project' }, 'main', 'Fixture Bot', { action: 'capture', slot }, new AbortController().signal);
+  const capture = (slot, signal = new AbortController().signal) => interaction({ folderPath: root, id: 'fixture-project' }, 'main', 'Fixture Bot', { action: 'capture', slot }, signal);
+  async function openCapture(slot, signal) {
+    const shown = Promise.withResolvers();
+    const result = capture(slot, signal);
+    onShow = shown.resolve;
+    try {
+      const input = await Promise.race([shown.promise, result.then(status => assert.fail(`Credential input did not open: ${status}`))]);
+      return { input, result };
+    } finally { onShow = undefined; }
+  }
   const slot = { name: 'fixture-sso', kind: 'structured', fields: ['tenant', 'clientId', 'clientSecret'] };
   typed = '{"tenant":"fixture-tenant","clientId":"fixture-id","clientSecret":"fixture-secret"}';
-  assert.equal(await capture(slot), 'saved');
-  assert.deepEqual(JSON.parse(prompts[0].placeHolder), { tenant: '', clientId: '', clientSecret: '' });
-  assert.equal(prompts[0].password, true);
-  assert.equal(prompts[0].value, undefined);
-  assert.equal(prompts[0].validateInput(typed), undefined);
-  assert.doesNotMatch(prompts[0].validateInput('{"tenant":"fixture-secret"}'), /fixture-secret/);
+  const { input, result } = await openCapture(slot);
+  assert.deepEqual(JSON.parse(input.placeholder), { tenant: '', clientId: '', clientSecret: '' });
+  assert.equal(input.password, true);
+  assert.equal(input.value, '');
+  assert.equal(input.validationMessage, undefined);
+  input.changeValue('{"tenant":"fixture-secret"}');
+  await wait(125);
+  assert.match(input.validationMessage, /tenant, clientId, clientSecret/);
+  assert.doesNotMatch(input.validationMessage, /fixture-secret/);
+  input.accept();
+  assert.equal(input.disposed, undefined);
+  input.changeValue('{');
+  input.changeValue('');
+  assert.equal(input.validationMessage, undefined, 'clearing removes the error immediately');
+  await wait(125);
+  assert.equal(input.validationMessage, undefined, 'a queued validation cannot restore the old error');
+  input.accept();
+  assert.match(input.validationMessage, /Enter JSON/);
+  assert.equal(input.disposed, undefined);
+  assert.equal(values.size, 0, 'invalid and empty submissions must not save');
+  input.changeValue(typed);
+  await wait(125);
+  assert.equal(input.validationMessage, undefined);
+  input.accept();
+  assert.equal(await result, 'saved');
+  assert.equal(input.disposed, true);
   assert.equal(await capture({ ...slot, fields: ['user', 'password'] }), 'declined');
   assert.equal(warnings.length, 1);
   assert.equal(await capture(slot), 'existing');
@@ -198,8 +257,19 @@ test('native Studio prompts derive a masked JSON placeholder from each request, 
   assert.deepEqual([...values.values()], [typed]);
   typed = '{"username":"fixture-user","password":"fixture-secret"}';
   assert.equal(await capture({ name: 'fixture-unspecified', kind: 'structured' }), 'saved');
-  assert.deepEqual(JSON.parse(prompts[1].placeHolder), { field: '' });
-  assert.equal(prompts[1].validateInput(typed), undefined);
+  assert.deepEqual(JSON.parse(prompts[1].placeholder), { field: '' });
+  assert.equal(values.size, 2);
+
+  const abort = new AbortController();
+  const cancelled = await openCapture({ kind: 'password', name: 'cancelled-fixture' }, abort.signal);
+  cancelled.input.changeValue(' ');
+  cancelled.input.accept();
+  assert.match(cancelled.input.validationMessage, /non-empty/);
+  cancelled.input.changeValue('');
+  assert.equal(cancelled.input.validationMessage, undefined);
+  abort.abort();
+  assert.equal(await cancelled.result, 'declined');
+  assert.equal(cancelled.input.disposed, true);
   assert.equal(values.size, 2);
 
   const parsed = parseBotCredentialAction({ type: 'bot-credential-request', id: 'id', entryId: 'main', action: 'use', use: {

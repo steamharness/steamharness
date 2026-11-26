@@ -3,7 +3,7 @@ import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, Ag
 import { ConversationController } from '../web/conversation-controller';
 import type { BotCredentialHost } from '../web/bot-credential-host';
 import { conversationPrompt } from '../web/conversation-paths';
-import { messageSettled, sessionRunning, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
+import { messageSettled, sessionRunning, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
@@ -17,7 +17,7 @@ function fixture(configurationRevision?: () => number, userSettings?: () => impo
     run: vi.fn((_request, emit) => new Promise<Report>((resolve, reject) => runs.push({ emit, finish: resolve, fail: reject }))),
     cancel: vi.fn(() => runs.at(-1)?.finish({ status: 'aborted' })),
   };
-  const save = vi.fn(async () => {});
+  const save = vi.fn(async (_sessions: ConversationSession[], _activeId: string) => {});
   const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn(), configurationRevision, userSettings, credentialConversationHost, credentialAutomaticHost }); controllers.push(controller);
   const snapshot = (): AgentSessionSnapshot => ({ version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
     configuration: { version: 0, provider: 'fixture', model: 'one', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
@@ -109,6 +109,38 @@ it('limits conversation credential reuse to local turns and cancels a pending re
   expect(answer.pendingInput).toBeUndefined();
   expect(answer.submittingInput).toBeUndefined();
   expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(1);
+});
+
+it('retains the confirmed result card on its turn without adding display data to the worker receipt', async () => {
+  const f = fixture(undefined, () => ({ agent: { permissionPolicy: 'workspace' } })); await f.start('placed', true);
+  const entry = f.controller.current, answer = entry.messages[1];
+  const request: InputRequest = { requestId: 'credential:records', nodeName: 'bot-credential-use', title: 'Query DNS', params: [],
+    credentialUse: { name: 'my-dns', connector: 'alibaba-cloud-dns', operation: 'list-records', page: 2, domain: 'example.test',
+      fields: { accessKeyId: 'fixtureKeyId', accessKeySecret: 'fixtureKeySecret' } },
+    metadata: { botRequestId: f.snapshot().turns[0].requestId } };
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  const result = { status: 'ok', page: 2, total: 31, rows: [{ name: '@', type: 'TXT', value: '<em>plain text</em>', ttl: 600 }] } as const;
+  await f.controller.captureCredential(answer.id!, request.requestId, async () => ({ ...result, rows: [...result.rows] }), entry);
+  const [, workerReceipt] = vi.mocked(f.runtime.resolveLiveInput).mock.calls[0];
+  expect(workerReceipt.values).toEqual(result);
+  expect(workerReceipt.resultCard).toBeUndefined();
+  expect(answer.resolvedInputs).toBeUndefined();
+  const event = { type: 'user_input_resolved', requestId: request.requestId, nodeName: request.nodeName, request, values: { status: 'ok' }, submittedAt: '2026-11-26T00:00:00.000Z' };
+  f.runs[0].emit(event);
+  f.runs[0].emit({ ...event, resultCard: { title: 'Unexpected worker presentation' } });
+  expect(answer.resolvedInputs).toHaveLength(1);
+  const [resolved] = answer.resolvedInputs!;
+  expect(resolved.values).toEqual({ status: 'ok' });
+  expect(resolved.precedingOutputItemIds).toEqual(['first']);
+  expect(resolved.resultCard).toEqual({ title: 'Alibaba Cloud DNS records', status: { label: 'Completed', tone: 'success' }, fields: [
+    { label: 'Credential alias', value: 'my-dns' }, { label: 'Domain', value: 'example.test' }, { label: 'Page', value: 2 },
+    { label: 'Rows on this page', value: 1 }, { label: 'Total rows', value: 31 },
+  ], table: { columns: ['Record name', 'Type', 'Record value', 'TTL (seconds)'], rows: [['@', 'TXT', '<em>plain text</em>', 600]] } });
+  expect(JSON.stringify(resolved.resultCard)).not.toMatch(/fixtureKeyId|fixtureKeySecret/);
+  await f.finish();
+  const saved = f.save.mock.lastCall?.[0];
+  expect(saved?.[0].messages[1].resolvedInputs?.[0].resultCard).toEqual(resolved.resultCard);
 });
 
 it.each([

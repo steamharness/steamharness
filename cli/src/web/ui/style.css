@@ -365,6 +365,25 @@ main.file-drop-active .composer { outline: 2px solid var(--vscode-focusBorder); 
 .resolved-input { margin: 8px 0; padding: 12px; background: var(--vscode-textBlockQuote-background); border-radius: 6px; overflow-wrap: anywhere; }
 .resolved-input strong { font-size: 12px; font-weight: 500; }
 .resolved-input p { margin: 4px 0 12px; white-space: pre-wrap; }
+.result-card { min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--vscode-editor-background); font-size: 12px; overflow-wrap: anywhere; }
+.result-card > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; padding: 10px 12px; }
+.result-card > header strong { font-size: 13px; font-weight: 600; }
+.result-card-status { color: var(--muted); }
+.result-card-status[data-tone=success] { color: var(--vscode-testing-iconPassed, var(--muted)); }
+.result-card-status[data-tone=warning] { color: var(--vscode-editorWarning-foreground, var(--muted)); }
+.result-card-status[data-tone=danger] { color: var(--vscode-errorForeground, var(--muted)); }
+.result-card-fields { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0; padding: 0 12px 10px; }
+.result-card-fields > div { min-width: 0; }
+.result-card-fields dt, .result-card-message { color: var(--muted); }
+.result-card-fields dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+.result-card-message { margin: 0; border-top: 1px solid var(--border); padding: 8px 12px; }
+.result-card-table { max-height: min(300px, 50vh); overflow: auto; border-top: 1px solid var(--border); scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.result-card-table:hover { scrollbar-color: var(--vscode-scrollbarSlider-background, var(--muted)) transparent; }
+.result-card-table:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+.result-card-table table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: start; }
+.result-card-table th, .result-card-table td { padding: 6px 12px; text-align: start; vertical-align: top; }
+.result-card-table th { position: sticky; top: 0; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); font-weight: 500; }
+.result-card-table td { border-top: 1px solid var(--border); white-space: pre-wrap; }
 .conversation-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 40px); padding: 0; color: inherit; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px #0004; }
 .conversation-dialog::backdrop { background: #0005; }
 .conversation-dialog > header { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
