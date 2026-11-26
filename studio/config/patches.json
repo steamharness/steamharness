@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "357285b668cbb58941540a0563ecc409891d16f3",
+  "commit": "a49edbfe826aa43e8ed34a5899271e32d5c9dfa7",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -173,6 +173,7 @@
     "0176-studio-about-version.patch": "ff064cfd897959d486c99dd03360d4c9fc83b4e88feeb8952d226fce1a5f8177",
     "0177-studio-project-usage-details.patch": "6ccabe6800a115443aaa024687e1b4677104392da27e55356d43db87f57705ad",
     "0178-studio-shared-account-workspace.patch": "82647e10165b2781ab2125117f6339566fe961d1c90f96aa964891636438381c",
-    "0179-studio-launchpad-account-loading.patch": "31fef493347c3ac84fbf08a00e7b2bd66ae72822926c1410fd242e9791760582"
+    "0179-studio-launchpad-account-loading.patch": "31fef493347c3ac84fbf08a00e7b2bd66ae72822926c1410fd242e9791760582",
+    "0180-studio-project-detail-actions.patch": "251d2a11499b71cec545644417a280679f4b938cf8c15c81e1c3f92c6ea65663"
   }
 }
