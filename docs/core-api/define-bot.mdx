@@ -47,7 +47,7 @@ LLM Bot 把当前会话已完成的问答和本轮输入交给模型，流式返
 
 读写、检索、等待和 Shell 工具默认关闭。普通读写工具只访问当前入口目录；`bot_files_*` 访问下文所述的 Bot 文件目录。`bash` 以执行进程的权限运行，不受目录沙箱限制。要添加项目工具，在顶层 `tools` 声明名称和默认权限，再用 `llm.createTools` 返回同名实现。结构检查只读取声明，不执行工具工厂。
 
-模型端点须支持工具调用。在 Studio 和 CLI Web，关闭「自动批准」后，每次调用会等待确认；批准后继续当前轮次，拒绝则结束本轮。没有交互审批的宿主（例如 OpenAI Responses 入口或直接运行 CLI）只能执行已自动批准的工具。端点不支持工具时，设置 `tools: [{ name: "runtime_info", enabled: false }]`，并保持其他工具关闭。
+模型端点须支持工具调用。本地 Bot 的有效权限为「自动批准」时，已启用的工具直接执行，无需逐个设置。其他模式按工具设置决定是否确认；批准后继续当前轮次，拒绝则结束本轮。OpenAI Responses 入口等非交互宿主仍只能执行已自动批准的工具。端点不支持工具时，设置 `tools: [{ name: "runtime_info", enabled: false }]`，并保持其他工具关闭。
 
 ## Agent Bot
 
@@ -71,7 +71,9 @@ export default executor;
 
 两种引擎共用[模型与凭据配置](/concepts/project-configuration)。默认使用 Studio 用户设置，独立 CLI Web 使用项目模型配置；设 `modelSource: "project"` 时只使用项目模型。系统 AI 与第三方模型都遵循项目的来源限制，鉴权失败不会自动换模型。本地运行可省略项目 `id`；发行构建才校验项目 UUID。
 
-工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
+本地 Bot 的有效权限为「自动批准」时，所有已启用的工具直接执行，已禁用的工具仍不可用。这个设置不会修改各工具保存的权限。
+
+在其他权限模式下，工具沿用 Core 的 Plan/Build 审批规则。需要在 Build 中也逐次确认的操作，可声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；允许免确认的查询可设 `autoApprove: true`。
 
 在 Studio 或 CLI Web 中，Bot 等待工具审批时，你可以先读它在调用工具前写出的文字。此时选择**停止**会取消这次审批。工具不会执行，之前的消息仍留在同一对话里。
 
@@ -152,9 +154,11 @@ Studio 小助手可以在同一会话里使用多个已打开的工作区根目�
 
 ## Bot 凭据库
 
-在本地 Studio 的 **项目详情 → Bot 管理 → 凭据管理** 查看已保存的凭据。列表只显示所选 Bot 入口或分身的别名与类型，不显示密钥内容，也不需要启动对话。
+在本地 Studio 的 **项目详情 → Bot 管理 → 凭据管理**，可以核对所选 Bot 入口或分身的凭据别名和类型，不用先打开对话。
 
-在本地 Studio 的 Bot 对话中，打开 **项目信息 → 概览**，在 **Bot 管理** 中选择 **凭据管理**，可添加、替换或删除凭据。API Key、令牌和密码在原生窗口中遮罩录入；SSH 私钥通过文件选择器导入本地 OpenSSH 或 PEM 私钥文件。列表只显示别名和类型，不显示原值。
+在本地 Studio 的 Bot 对话中，打开 **项目信息 → 概览**，在 **Bot 管理** 中选择 **凭据管理**，可添加、替换或删除凭据。API Key、令牌和密码在原生窗口中遮罩录入；SSH 私钥通过文件选择器导入本地 OpenSSH 或 PEM 私钥文件。
+
+两个入口都不能查看、复制或导出已保存的原值。如果忘记密码或丢失密钥、令牌，先在来源服务重置或取得新值，再用 **替换凭据** 更新 Studio 中的条目。不要把新值发到对话中。
 
 Agent Bot 可以调用 `bot_credentials_request`，传 `name`（别名）和 `kind`（`api-key`、`password`、`ssh-private-key` 或 `structured`）。在对话卡上选择 **打开安全输入**，由 Studio 原生窗口录入或确认已存凭据。Bot 只收到别名、类型和 `saved`、`existing` 或 `declined` 状态。
 
@@ -168,21 +172,48 @@ Agent Bot 可以调用 `bot_credentials_request`，传 `name`（别名）和 `ki
 
 ### 使用已保存的凭据
 
-`saved` 只表示凭据已保存，不表示查询成功。更新到支持凭据查询的 Studio 和项目运行时后，可在原来的 Bot、分身或小助手工作目录中，让它用指定别名查询阿里云 DNS 域名列表或某个域名的解析记录。不需要再次输入密钥。
+`saved` 只表示凭据已保存，不表示查询成功。更新 Studio 和项目运行时后，在原来的 Bot、分身或小助手工作目录中使用凭据别名即可，不用重新录入。
 
-Bot 用 `bot_credentials_use` 指定 `name`、`connector: "alibaba-cloud-dns"` 和 `operation`（`list-domains` 或 `list-records`）。`fields` 将 `accessKeyId`、`accessKeySecret` 和可选的 `securityToken` 映射到已保存 JSON 的字段名。查询解析记录时还需传 ASCII 域名 `domain`。`page` 默认是 `1`，每页 20 条。
+例如，令牌以 `api-key` 类型保存为 `gitlab-token` 时，可以让 Bot「用 `gitlab-token` 查询我的 GitLab 当前账号」，并提供你实际使用的 GitLab 地址。在工作区模式下，打开 **查看凭据使用请求** 核对地址后授权；自动批准模式直接执行。令牌不需要出现在对话里。
+
+Bot 将 `name`、`connector: "host"`、`operation` 和 `args` 交给 `bot_credentials_use`。不确定别名或类型时，先用 `vault.list` 核对；它只列出当前 Bot 已保存条目的别名和类型，不读原值。
+
+Studio 声明可用操作，在执行时按别名读取凭据。HTTPS 用法不区分服务商；下面的例子将已保存的令牌放入 GitLab 的 `PRIVATE-TOKEN` 请求头。
+
+```json
+{
+  "name": "gitlab-token",
+  "connector": "host",
+  "operation": "https.get-json",
+  "args": {
+    "url": "https://gitlab.example.com/api/v4/user",
+    "auth": { "kind": "api-key", "scheme": "header", "header": "PRIVATE-TOKEN" }
+  }
+}
+```
+
+| 操作 | 可以使用的凭据 | 参数和限制 |
+| --- | --- | --- |
+| `vault.list` | 不读取凭据 | 省略 `name`，传 `args: {}`；可用 `query` 按别名过滤。 |
+| `https.get-json` | API Key、令牌、密码、结构化凭据和旧格式 AccessKey 对 | 用 Bearer、Basic 或自定义鉴权头发起 HTTPS GET。传 `url` 和 `auth`；结构化值只传字段映射。不跟随重定向，不支持写入请求。 |
+| `ssh.authenticate`、`ssh.list-directory` | SSH 私钥；加密私钥可引用同范围内的密码别名 | 传 `host`、`username`、可信的服务端 `fingerprint` 和可选 `port`（默认 22）。目录读取另传 `path`。不启动远程 Shell。 |
+| `command.run` | 同范围内已保存的凭据 | 仅限允许命令工具的本地 macOS 或 Linux 交互会话。自动批准模式不可用；在可用模式下，每条命令单独授权。 |
+
+此前的阿里云 DNS 调用仍兼容：`connector: "alibaba-cloud-dns"`，`operation` 为 `list-domains` 或 `list-records`。`fields` 将 `accessKeyId`、`accessKeySecret`、可选的 `securityToken` 映射到已保存 JSON 的键名。查询解析记录时另传 ASCII `domain`；`page` 从 1 开始，每页 20 条。
 
 查询旧格式的 AccessKey 对时，将字段映射为 `AccessKeyId` 和 `AccessKeySecret`，不传 `securityToken`。同一别名若已有结构化凭据，查询使用结构化凭据，不改写旧条目。
 
 凭据查询遵守 **设置 → 权限 → Agent 权限**。如果 Bot 本轮权限更严格，则按更严格的一项执行：
 
-- **只读**：不提供凭据查询，即使已有对话授权。
-- **工作区**：点击 **查看凭据使用请求**，核对别名、目标服务和操作。**仅允许本次** 只批准当前查询；**本次对话允许** 也覆盖同一对话用相同凭据和字段映射发起的查询与翻页。
-- **自动批准**：直接查询，不弹出审批。添加或替换凭据仍需用户操作。
+- **只读**：不提供凭据工具，即使已有对话授权。
+- **工作区**：列出别名不弹窗。使用凭据时，点击 **查看凭据使用请求** 核对别名、目标和操作。**本次对话允许** 可复用同一凭据及参数的授权；阿里云 DNS 也可按相同字段映射翻页。
+- **自动批准**：宿主查询直接执行，包括 `https.get-json` 和 SSH 查询。向任意本地命令交付凭据的请求直接拒绝，不弹审批。录入新凭据时，你仍需通过安全输入框提供值。
 
 工作区模式的对话授权只留在本地运行内存，不随对话导出。新建或分叉对话、更换凭据或字段映射、重启 Studio 后，需要重新确认。旧版运行时可能仍需手动审批。
 
-Studio 在本地签名，只把查询结果或失败状态交给 Bot。凭据不进入聊天、Shell 或脚本。目前只支持上述只读操作，不支持通用 HTTP 请求、修改 DNS 或发起 SSH 连接。
+Studio 在宿主侧完成鉴权，只返回查询结果或安全的失败原因，例如 HTTP 状态、证书验证失败或超时。旧版宿主或项目运行时不提供通用操作。
+
+授权 `command.run` 前请确认程序和参数。仅该命令能通过 `STEAMHARNESS_BOT_CREDENTIAL_FILE` 读取临时文件描述符。值不会写入项目目录、命令参数或聊天。只批准你信任的命令：拿到凭据的程序可以使用它，Studio 无法约束程序如何处理它。
 
 ## Bot 文件目录
 

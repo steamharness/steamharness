@@ -3,7 +3,7 @@ import { HarnessError } from "../workflow/errors";
 import { createHash } from "node:crypto";
 
 export interface ToolPermissionDefinition {
-  /** Require confirmation in every agent mode when autoApprove is false. */
+  /** Outside global Auto Approve, require confirmation even in Build when autoApprove is false. */
   approvalMode?: "always" | "plan";
   name: string;
   label?: string;

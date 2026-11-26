@@ -47,7 +47,7 @@ Open **Project information → Tools** in Studio or CLI Web to enable tools and 
 
 File, search, wait, and shell tools are off by default. Ordinary read and write tools stay within the current entry directory; `bot_files_*` tools work in the Bot files directory described below. `bash` runs with the host process's permissions and is not sandboxed. To add a project tool, declare its name and defaults in top-level `tools`, then return an implementation with the same name from `llm.createTools`. Structure inspection reads declarations without running the factory.
 
-The model endpoint must support tool calling. With **Auto-approve** turned off in Studio or CLI Web, each call waits for confirmation. Approval continues the same turn; rejection ends it. Hosts without interactive approval, such as the OpenAI Responses entry or direct CLI runs, can run only auto-approved tools. For a model endpoint without tool support, set `tools: [{ name: "runtime_info", enabled: false }]` and leave the other tools disabled.
+The model endpoint must support tool calling. When a local Bot uses **Auto approve**, every enabled tool runs without individual approval settings. In other modes, the tool's settings determine whether to ask. Approval continues the same turn; rejection ends it. Non-interactive hosts such as the OpenAI Responses entry can still run only auto-approved tools. If the model does not support tools, set `tools: [{ name: "runtime_info", enabled: false }]` and leave the other tools disabled.
 
 ## Agent Bot
 
@@ -71,7 +71,9 @@ export default executor;
 
 Both engines use the same [model and credential configuration](/en/concepts/project-configuration). They default to Studio user settings, or project configuration in standalone CLI Web. Set `modelSource: "project"` to require project models. System AI and third-party models are subject to the project's model source policy. Authentication failure does not select a different model. Local runs may omit the project `id`; release builds validate the project UUID.
 
-Tools retain Core Plan/Build approval behavior by default. For operations that must also ask in Build mode, declare `tools[].approvalMode: "always"` with `autoApprove: false`. Queries can use `autoApprove: true`. Omitted approvalMode, or `approvalMode: "plan"`, preserves mode-based approval.
+When a local Bot uses **Auto approve**, all enabled tools run without confirmation. Disabled tools remain unavailable, and the saved tool settings do not change.
+
+In other permission modes, tools follow Core's Plan/Build approval rules. To confirm a tool call even in Build mode, declare `tools[].approvalMode: "always"` with `autoApprove: false`. For queries that need no confirmation, set `autoApprove: true`.
 
 While an Agent Bot waits for tool approval in Studio or CLI Web, you can read the text it wrote before requesting the tool. Choose **Stop** to cancel the pending approval. The tool does not run, and earlier messages stay in the conversation.
 
@@ -152,9 +154,11 @@ An entry with incoming links cannot be forgotten. Inspect those links and remove
 
 ## Bot credentials
 
-In local Studio, open **Project details → Bot management → Credential management** to see saved credentials. The list shows only aliases and types for the selected Bot entry or instance. It does not show secret values or start a conversation.
+In local Studio, open **Project details → Bot management → Credential management** to check the credential aliases and types for the selected Bot entry or instance. You do not need to open a conversation.
 
-In a local Studio Bot conversation, go to **Project information → Overview** and select **Credential management** under **Bot management** to add, replace, or delete credentials. Enter an API key, token, or password in a masked native prompt. For SSH, select a local OpenSSH or PEM private key file. The list shows aliases and types, but not values.
+In a local Studio Bot conversation, go to **Project information → Overview** and select **Credential management** under **Bot management** to add, replace, or delete credentials. Enter an API key, token, or password in a masked native prompt. For SSH, select a local OpenSSH or PEM private key file.
+
+Neither screen can show, copy, or export a saved secret value. If you no longer have the original, reset the password or obtain a replacement key or token at the source, then use **Replace credential** in Studio. Do not paste the new value into the conversation.
 
 An Agent Bot can call `bot_credentials_request` with a `name` (alias) and `kind` (`api-key`, `password`, `ssh-private-key`, or `structured`). Select **Open secure input** on the conversation card to enter the credential in Studio or confirm an existing one. The Bot receives only the alias, type, and status: `saved`, `existing`, or `declined`.
 
@@ -168,21 +172,48 @@ Credential tools require a local Studio Agent Bot that supports secure input. Th
 
 ### Use a saved credential
 
-`saved` means Studio stored the credential; it does not mean a query succeeded. With a supported Studio and project runtime, ask the original Bot, instance, or assistant in the same working directory to list Alibaba Cloud DNS domains or records using the saved alias. You do not need to enter the secret again.
+`saved` means Studio stored the credential; it does not mean a query succeeded. After updating Studio and the project runtime, use the saved alias in the same Bot, instance, or assistant working directory. You do not need to enter the secret again.
 
-The Bot calls `bot_credentials_use` with `name`, `connector: "alibaba-cloud-dns"`, and `operation` (`list-domains` or `list-records`). In `fields`, map `accessKeyId`, `accessKeySecret`, and optional `securityToken` to the keys in the saved JSON. For `list-records`, supply the ASCII domain as `domain`. `page` starts at `1`, with 20 results per page.
+For example, if you saved an `api-key` named `gitlab-token`, ask the Bot to look up your current GitLab account using that alias and specify your GitLab address. In Workspace mode, select **Review credential use** and check the address before approving it. In Auto approve mode, the query runs without a prompt. Do not put the token in the conversation.
+
+The Bot calls `bot_credentials_use` with `name`, `connector: "host"`, `operation`, and `args`. If the alias or type is uncertain, it can call `vault.list` first. The list includes aliases and types for the current Bot, never secret values.
+
+Studio advertises available operations and looks up the credential by alias at execution time. HTTPS works the same across services. This example sends the saved token in GitLab's `PRIVATE-TOKEN` header.
+
+```json
+{
+  "name": "gitlab-token",
+  "connector": "host",
+  "operation": "https.get-json",
+  "args": {
+    "url": "https://gitlab.example.com/api/v4/user",
+    "auth": { "kind": "api-key", "scheme": "header", "header": "PRIVATE-TOKEN" }
+  }
+}
+```
+
+| Operation | Credentials | Arguments and limits |
+| --- | --- | --- |
+| `vault.list` | No secret values are read | Omit `name` and pass `args: {}`. Optionally filter aliases with `query`. |
+| `https.get-json` | API keys, tokens, passwords, structured credentials, and legacy access key pairs | Perform an HTTPS GET with Bearer, Basic, or custom header authentication. Pass `url` and `auth`, using field names for structured values. Redirects and write requests are not supported. |
+| `ssh.authenticate`, `ssh.list-directory` | SSH private keys; encrypted keys can reference a password alias in the same scope | Pass `host`, `username`, a trusted server `fingerprint`, and an optional `port` (default 22). For directory listings, also pass `path`. These operations do not start a remote shell. |
+| `command.run` | A saved credential in the same scope | Only in interactive local macOS or Linux sessions with the command tool enabled. Not available in Auto approve. Other eligible sessions must approve each command separately. |
+
+Existing Alibaba Cloud DNS calls still use `connector: "alibaba-cloud-dns"` and `operation` set to `list-domains` or `list-records`. In `fields`, map `accessKeyId`, `accessKeySecret`, and optional `securityToken` to the saved JSON keys. For `list-records`, pass the ASCII domain as `domain`. `page` starts at `1`, with 20 results per page.
 
 For a legacy access key pair, map the fields to `AccessKeyId` and `AccessKeySecret` and omit `securityToken`. If a structured credential has the same alias, Studio uses that entry and leaves the legacy entry unchanged.
 
 Credential queries follow **Settings → Permissions → Agent permissions**. If the Bot's current run has a stricter policy, the stricter policy applies:
 
-- **Read only**: Credential queries are unavailable, even with a previous conversation approval.
-- **Workspace**: Select **Review credential use** and check the alias, destination, and operation. **Allow once** approves the current request only. **Allow for this conversation** covers later lookups and pagination in that conversation with the same credential and field mapping.
-- **Auto approve**: Eligible queries run without an approval prompt. Adding or replacing a credential still requires a user action.
+- **Read only**: Credential tools are unavailable, even with a previous conversation approval.
+- **Workspace**: Listing aliases does not prompt. To use a credential, select **Review credential use** and check the alias, destination, and operation. **Allow for this conversation** covers the same credential and arguments; for Alibaba Cloud DNS, it also covers pagination with the same field mapping.
+- **Auto approve**: Host queries, including `https.get-json` and SSH queries, run without a prompt. Requests to hand a credential to an arbitrary local command are denied without prompting. To add a credential, you still enter its value in the secure input dialog.
 
 In Workspace mode, Studio keeps conversation approvals in local memory and never exports them. New or forked conversations, a different credential or mapping, and a Studio restart require approval again. Older runtimes may still require manual approval.
 
-Studio signs the request locally and returns only the query data or a failure status to the Bot. Credential values do not reach the chat, shell, or scripts. Arbitrary HTTP requests, DNS changes, and SSH connections are not supported.
+Studio handles authentication and returns only query results or a safe failure reason, such as an HTTP status, certificate verification failure, or timeout. Older hosts or project runtimes do not expose host operations.
+
+Before approving `command.run`, check the program and arguments. Only the approved command receives the temporary file descriptor through `STEAMHARNESS_BOT_CREDENTIAL_FILE`. Studio does not write the value to the project folder, arguments, or chat. Approve programs you trust: a program that receives a credential can use it, and Studio cannot control how it handles the value.
 
 ## Bot files
 

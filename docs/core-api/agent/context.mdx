@@ -30,7 +30,7 @@ description: "配置工具范围，保存上下文，并处理压缩、停止与
 
 启用子 Agent 时，当前子任务全部结束且队列清空后，`sleep` 会提前返回，主 Agent 收到一次内部状态通知并继续检查结果或处理剩余工作。通知不显示为用户消息，成功、失败和停止项分别计数。没有相关子任务的定时等待仍按原时长执行。
 
-- **自带工具不受 `permissionPolicy` 约束。** 策略只决定内置工具暴露哪些、能走多远；自带工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待批准（仅 plan 模式的回合；build 回合直接执行）。
+- 自带工具仍需要在 `executor.tools` 中声明，`enabled` 决定是否向模型开放。本地 Agent 的有效权限为 `auto` 时，已启用的自带工具也不需要确认。其他模式按 `autoApprove` 和 `approvalMode` 决定是否等待审批。
 - 要连接宿主提供的 stdio MCP 服务，先用 [connectMcpServer](/core-api/connect-mcp-server) 建立连接，再用 [createMcpTools](/core-api/create-mcp-tools) 把它暴露的工具转成自带工具。
 
 ## 权限策略
@@ -41,9 +41,9 @@ description: "配置工具范围，保存上下文，并处理压缩、停止与
 | --- | --- |
 | `read-only` | 禁用 `write`、`edit`、`bash`，模型看不到这些工具。 |
 | `workspace` | 全部工具可用。文件类工具（`read`/`write`/`edit`/`ls`/`grep`/`find`）只能落在 `workdir` 与 `allowedDirectories` 内，且这一判断在 `fs.realpath` 解析之后做出，工作区里的软链接不能把它们带出去；`grep`/`find` 不跟随软链接。默认值。 |
-| `auto` | 与 `workspace` 相同，但文件类工具也可以访问工作区之外的路径。 |
+| `auto` | 文件类工具可以访问工作区之外的路径。使用 Core 工具审批时，已启用的工具不逐次确认。 |
 
-三者都不会为内置工具弹出审批——策略决定的是「暴露哪些工具」和「工具能走多远」，只有宿主自己声明的自带工具才会走审批链。
+宿主的工具禁用规则和角色权限上限不随 `auto` 放宽。直接使用 Agent 运行时并自行提供 `AgentHost` 时，工具仍遵守该宿主的审批钩子。
 
 > **`bash` 不受路径限制。** 命令以宿主进程的身份在 `workdir` 里执行，`cwd` 是工作目录而不是沙箱，命令本身可以读写工作区之外的任何位置；`read-only` 更严是因为它根本不暴露 `bash`。要限制命令的影响范围，只能靠宿主侧的沙箱。
 
@@ -85,8 +85,12 @@ prompt 恰好是 `/compact` 或 `/summarize`，或显式传 `compact: true` 时�
 
 ## plan 模式
 
-`agent: "plan"` 时系统提示词切到 plan 约定，写操作不可用。计划过程中模型可以用 `ask_user` 中途提问（见上方内置工具），运行同样以 `user_input_required` 暂停，回答后同一轮继续，问题和回答分别留在 `pendingUserInput` 与 `resolvedUserInputs` 里。本轮结束后运行进入暂停，通过 `user_input_required` 请求批准；宿主批准后按同一 `requestId` 恢复，恢复载荷里带上计划正文，因此中途发生压缩也不会丢失计划。拒绝不会结束会话：它保持 plan 模式，把这份计划连同补充要求交回计划 agent 修订一版——不会改动任何文件，但会再产生一轮模型调用。
+`agent: "plan"` 时系统提示词切到 plan 约定，写操作不可用。模型可以用 `ask_user` 提问，收到回答后继续当前回合。问题和回答分别保存在 `pendingUserInput` 与 `resolvedUserInputs`。
+
+如果宿主要求审批，计划完成后会以 `user_input_required` 暂停。批准后使用原 `requestId` 和计划正文恢复，即使中途发生上下文压缩也不会丢失计划。拒绝后则留在 Plan 模式，由模型根据补充要求修订，不执行计划中的改动。
 
 每轮新计划使用独立的审批 `requestId`，修订完成后会再次等待用户确认；即使修订后的正文没有变化，也不会复用上轮答案自动批准或拒绝。恢复已暂停的审批时仍提交该次请求的原 `requestId`。
+
+本地 Agent 的有效权限为 `auto` 时，Plan 模式返回计划，不弹审批，也不会自行切换到 Build。需要用户回答的问题仍会等待输入。
 
 提问暂停与计划审批是两个独立阶段：`ask_user` 本身不会产出 `plan` 事件或请求计划审批。只有本轮正常结束、最后一次工具调用之后产出了非空的计划正文时，才发送 `plan` 事件并交给 `host.approvePlan`；工具前的说明不属于这份计划。失败、取消或仍在等待用户回答时不会把残留文字提交为计划。

@@ -88,6 +88,8 @@ export interface UserInputContext {
   waitForCredentialUse?(request: UserInputRequest & { credentialUse: NonNullable<UserInputRequest["credentialUse"]> }, signal?: AbortSignal): Promise<import("./bot-credential-use").BotCredentialUseResult>;
   /** Omit for the original API key, password and SSH private key types. */
   credentialKinds?: readonly import("./bot-credential").BotCredentialKind[];
+  /** Private catalog from the native host. Omit for DNS-only hosts. */
+  credentialUseOperations?: readonly import("./bot-credential-use").BotCredentialUseOperation[];
 }
 
 export interface NodeExecutionHooks {

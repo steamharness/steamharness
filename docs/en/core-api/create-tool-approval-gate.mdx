@@ -7,7 +7,7 @@ description: "Check registered tool permissions and pause for approval when the 
 
 Before a tool call, use `steamharness.createToolApprovalGate()` to check whether the tool is enabled and whether approval is required. Register Workflow tools on the selected operation and Bot tools on the executor.
 
-An unregistered tool fails validation; a disabled tool is rejected. An enabled tool runs immediately when automatically approved. Otherwise, it follows the turn's approval policy: plan turns pause for confirmation, while build turns execute the plan the user already approved.
+Unregistered tools fail validation and disabled tools are rejected. When a local Agent uses **Auto approve**, enabled tools run without changing their saved settings. In other modes, a tool that is not auto-approved can pause for confirmation. Agent Build turns do not pause by default unless the tool declares `approvalMode: "always"`.
 
 Ordinary Workflow runs retain the default approval requirement. The mode rules and error types are listed below.
 

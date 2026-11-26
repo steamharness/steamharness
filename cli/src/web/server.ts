@@ -3,7 +3,7 @@ import { assertProjectDataDirectory } from "@steamharness/project-manifest/node"
 import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
-import { StudioWorkflowAccess } from './studio-workflow-access';
+import { StudioHistoryAccess } from './studio-workflow-access';
 import { studioPreviewMount } from './studio-preview-mount';
 import { EntryWorkflows } from './entry-workflows';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
@@ -195,6 +195,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const input = { ...request, allowBotArtifactPublish: artifactStore && request.allowBotArtifactPublish && !hosted ? true as const : undefined,
         allowBotCredentialInput, allowBotCredentialStructured: allowBotCredentialInput && options.host?.localBotCredentialStructured,
         allowBotCredentialUse: allowBotCredentialInput && allowUse ? true as const : undefined,
+        botCredentialUseOperations: allowBotCredentialInput && allowUse ? options.host?.botCredentialUseOperations : undefined,
+        botCredentialScopedOperations: allowBotCredentialInput && allowUse ? options.host?.botCredentialScopedOperations : undefined,
         userSettings: folderBot?.background ? { agent: { ...settings.agent, permissionPolicy: userSettings.agent.permissionPolicy } } : settings };
       return options.host?.surface === 'editor' && onModelRequest ? executor.run(input, emit, onModelRequest) : executor.run(input, emit);
     },
@@ -473,7 +475,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     },
   }) : undefined;
   const workflowAccess = hostKind === 'studio' && projectController && workflowHistory
-    ? new StudioWorkflowAccess(workflowHistory, projectController, () => storageReady && !closing, broadcast) : undefined;
+    ? new StudioHistoryAccess(workflowHistory, projectController, () => storageReady && !closing, broadcast) : undefined;
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast, !!workflowAccess) : undefined;
   const entryWorkflows = projectController ? new EntryWorkflows(projectController, project, runtime) : undefined;
   const scheduleKey = hostKind === 'studio' && !options.host?.assistant && !folderBot ? options.host?.workflowScheduleKey : undefined;
@@ -1261,12 +1263,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     }).catch(error => process.stderr.write(`Conversation history: ${String(error)}\n`)).finally(() => { refreshingHistory = false; });
   }, 1_000) : undefined;
   historyPoll?.unref();
-  let refreshingWorkflow = false;
+  let refreshingProjectHistory = false;
   const workflowPoll = workflowAccess && setInterval(() => {
-    if (refreshingWorkflow || closing || !clients.size && !workflowHistory?.ownsHistory) return;
-    refreshingWorkflow = true;
+    if (refreshingProjectHistory || closing || !clients.size && !workflowHistory?.ownsHistory) return;
+    refreshingProjectHistory = true;
     void workflowAccess.refresh().catch(error => process.stderr.write(`Workflow history: ${String(error)}\n`))
-      .finally(() => { refreshingWorkflow = false; });
+      .finally(() => { refreshingProjectHistory = false; });
   }, 1_000);
   workflowPoll?.unref();
   return {

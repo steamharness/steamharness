@@ -13,6 +13,7 @@ import type { ExecutorContext } from "../executor/types";
 import type { RunContext } from "../types/index";
 import { createAgentSessionHost, controlAgentSession } from "../agent/session-control";
 import { createProjectToolPermissionContext } from "../tool-permissions/index";
+import { withUserSettings } from "../user-settings";
 import type { UserInputRequest } from "../types/index";
 
 function context(): RunContext {
@@ -164,13 +165,50 @@ for (const policy of ["automatic", "approve", "reject"] as const) test(`Bot busi
       async execute() { writes++; return { content: [{ type: "text" as const, text: "Saved" }], details: {} }; } }],
   } });
   const input: AgentInput = { errCode: 0, errMessage: "", prompt: "Run business", agent: "build", requestId: "approval" };
+  const execute = () => withUserSettings({ agent: { permissionPolicy: "workspace" } }, () => bot.workflow.run(input, run));
   if (policy !== "automatic") {
-    await assert.rejects(Promise.resolve(bot.workflow.run(input, run)), error => (error as { type?: string }).type === "user_input_required");
+    await assert.rejects(Promise.resolve(execute()), error => (error as { type?: string }).type === "user_input_required");
     assert.ok(request); assert.equal(writes, 0); resolved = true;
   }
-  const output = await bot.workflow.run(input, run);
+  const output = await execute();
   assert.equal(output.errCode, 0);
   assert.equal(writes, policy === "reject" ? 0 : 1);
+});
+
+for (const agent of ["build", "plan"] as const) test(`Auto Approve runs all enabled Agent tools in ${agent} without changing the tool policies`, async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const faux = ai.fauxProvider({ models: [{ id: "approval", name: "Approval", contextWindow: 4096, maxTokens: 100 }] });
+  const models = ai.createModels(); models.setProvider(faux.provider);
+  const calls: string[] = [];
+  let advertised: string[] = [];
+  faux.setResponses([
+    request => {
+      advertised = ai.getCurrentTools(request.messages).map(tool => tool.name);
+      return ai.fauxAssistantMessage([ai.fauxToolCall("first", {}), ai.fauxToolCall("second", {})], { stopReason: "toolUse" });
+    },
+    () => ai.fauxAssistantMessage([ai.fauxText("Finished")]),
+  ]);
+  const run = context();
+  run.userInput = { getResolvedInput: async () => undefined, requestInput: async () => assert.fail("Auto Approve must not request approval") };
+  const tools = ["first", "second", "restricted"].map(name => ({ name, enabled: true, autoApprove: false, approvalMode: "always" as const }));
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: tools, disabledTools: ["restricted"], userInput: run.userInput, projectName: "bot", runId: "auto" });
+  const bot = defineBot({ engine: "agent", tools, agent: { models, resolvedModel: models.getModel("faux", "approval")!, tools: [],
+    createTools: context => tools.map(({ name }) => ({ name, label: name, description: name, parameters: { type: "object", properties: {} },
+      async execute() {
+        await context.toolPermissions!.requireToolApproval({ name });
+        calls.push(name);
+        return { content: [{ type: "text" as const, text: "ok" }], details: {} };
+      } })),
+  } });
+  const output = await withUserSettings({ agent: { permissionPolicy: "auto" } }, () => bot.workflow.run({
+    errCode: 0, errMessage: "", prompt: "Use enabled tools", agent, requestId: "auto",
+  }, run));
+  assert.equal(output.errCode, 0);
+  assert.equal(output.agent, agent);
+  assert.deepEqual(calls.sort(), ["first", "second"]);
+  assert.ok(advertised.includes("first") && advertised.includes("second") && !advertised.includes("restricted"));
+  assert.equal(run.toolPermissions.getTool("first")?.autoApprove, false);
+  assert.equal(run.toolPermissions.getTool("restricted")?.enabled, false);
 });
 
 test("notification failure stays visible in a live owner and reconnect retries without another model call", { timeout: 10_000 }, async () => {

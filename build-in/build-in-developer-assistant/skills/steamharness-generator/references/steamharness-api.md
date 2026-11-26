@@ -1040,9 +1040,13 @@ Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条
 
 支持安全输入的本地 Studio Agent Bot 可用 `bot_credentials_request({ name, kind, fields? })` 请求保存凭据。`name` 是小写别名，`kind` 为 `api-key`、`password`、`ssh-private-key`，或宿主支持时的 `structured`。多个字段用 `structured` 一次请求；知道键名时传 `fields`（仅字段名），不知道时省略，让用户在原生窗口粘贴自选字段的 JSON。不要为某个服务假定固定字段。结构化凭据最多 16 个键，值须为非空字符串，整组写入一条凭据。
 
-保存工具只返回别名、类型和 `saved` / `existing` / `declined`，不表示已发起查询。支持凭据查询的本地 Studio Agent Bot 还提供 `bot_credentials_use`。用 `name` 引用当前范围中已存的结构化凭据，传 `connector: "alibaba-cloud-dns"`、`operation: "list-domains" | "list-records"` 和 `fields: { accessKeyId, accessKeySecret, securityToken? }`。映射值是 JSON 键名，不是凭据值。`list-records` 另传 ASCII `domain`；`page` 从 1 开始，每页 20 条。
+保存工具只返回别名、类型和 `saved` / `existing` / `declined`，不表示已发起查询。支持凭据查询的本地 Studio Agent Bot 还提供 `bot_credentials_use`。用 `name` 引用当前范围内的凭据，普通宿主操作传 `connector: "host"`、宿主声明的 `operation` 和对应 `args`。操作目录由宿主提供，项目和模型不能注册。传别名、字段名和非机密目标，不传原值。
 
-凭据查询取 Studio 用户设置与 Bot 本轮权限中较严格的一项：只读不提供查询，工作区由用户选择「仅允许本次」或「本次对话允许」，自动批准下不弹审批。对话授权仅限同一对话、凭据和字段映射下的阿里云 DNS 只读查询。Bot 不传审批模式或授权范围。只有宿主读取凭据并签名，Bot 只收到查询数据或状态。不提供明文读取、Shell 注入、通用 HTTP 或 SSH 执行。不要让用户在聊天、普通表单或记忆里粘贴凭据，也不要把值作为工具参数。
+Studio 提供 `https.get-json`（Bearer、Basic 或自定义请求头）以及 `ssh.authenticate` 和 `ssh.list-directory`（需要可信的服务端指纹）。既有阿里云 DNS 调用仍用 `connector: "alibaba-cloud-dns"`、`operation: "list-domains" | "list-records"` 和 `fields: { accessKeyId, accessKeySecret, securityToken? }`。`list-records` 另传 ASCII `domain`；`page` 从 1 开始，每页 20 条。
+
+不清楚别名时用 `vault.list`，省略 `name`，只读取当前 Bot 的别名和类型。只读不提供凭据工具；工作区的查询支持「仅允许本次」和「本次对话允许」；自动批准直接执行宿主查询。Bot 不传审批模式或授权范围。
+
+优先使用宿主支持的查询操作；能用 `https.get-json` 完成的查询不应改走本地命令。自动批准模式不向任意进程交付凭据原值，请求会被拒绝，不弹审批。在支持的交互模式中，只有经过单次授权的 `command.run` 才能通过 `STEAMHARNESS_BOT_CREDENTIAL_FILE` 使用凭据。不要将原值放入聊天、普通表单、记忆或工具参数。
 
 受信任 Bot 代码可以声明 `createUserInputNode({ params: [], credential: { name, kind } })`，也可以从 `resolveRequest` 返回 `credential`。必须省略默认值；节点在当前运行等待 Studio 的原生录入，`values` 只返回 `status`。不支持时直接报错，不使用普通表单，也不重放历史答案。
 
@@ -1067,7 +1071,7 @@ Bot 的最终答案 item 固定为 `agent-answer`；OpenAI 适配器使用相同
 - `agent` 取 `"build"`（默认，直接执行）或 `"plan"`（只调研并给出计划）。在启用会话且宿主提供用户输入时，plan 模式结束后通过 `user_input_required` 请求批准；批准后按原运行恢复执行。
   plan 模式下这一轮的正文**就是计划**，因此它只渲染成一条 `Plan` 行，不会再出现在主回答正文里（两处都渲染会让同一段文字显示两遍）；plan 轮的 conversation 消息取这条 Plan 行的内容。
   plan 轮的批准请求与内置 OpenCode 项目一致：一个 `decision` 单选（按计划执行 / 先不执行，各自带说明）加一个 `instructions` 文本框（补充要求，可选）。批准后会暂停并在**同一会话**里以 build 模式带着计划原文继续执行——计划会随恢复提示一起重发，中途发生压缩也不会丢。**拒绝不会结束会话**：它保持 plan 模式，把补充要求与这份计划一起交回计划 agent 修订一版（因此不会改动任何文件，但会再产生一轮模型调用）。待批准的计划存在 conversation value `agent.pendingPlanApproval` 里，恢复时按它取回。
-- `permissionPolicy` 取 `"inherit"`、`"read-only"`、`"workspace"`（省略时默认）或 `"auto"`；`inherit` 按上文优先级解析用户快照，底层仍只有三个具体权限：`read-only` 隐藏写入与命令工具；`workspace` 在工作区内自动批准编辑和命令，读写与检索类工具（`read` / `write` / `edit` / `ls` / `grep` / `find`）只能落在工作区与 `allowedDirectories` 内；`auto` 批准一切未被显式拒绝的权限，包括工作区之外的路径。**三者都不会为内置工具弹出审批**——内置工具声明为 `autoApprove: true`，策略只决定「暴露哪些工具」和「工具能走多远」，宿主审批门只对宿主自己声明的工具生效。
+- `permissionPolicy` 取 `"inherit"`、`"read-only"`、`"workspace"`（省略时默认）或 `"auto"`；`inherit` 按上文优先级解析用户快照。`read-only` 隐藏写入与命令工具；`workspace` 中内置文件和检索工具只能访问工作区及 `allowedDirectories`；`auto` 允许访问工作区外的路径。本地 Agent 走 Core 工具审批时，有效权限为 `auto` 则直接执行所有已启用的工具，不改写保存的工具设置，也不解除禁用或宿主权限上限。
   > **`bash` 不受路径限制。** 命令以宿主进程的身份在 `workdir` 里执行，`cwd` 只是工作目录而不是沙箱，命令本身可以读写工作区之外的任何位置；`read-only` 之所以更严，是因为它根本不暴露 `bash`。要限制命令的影响范围，只能靠宿主侧的沙箱，不要指望 `permissionPolicy`。参数面板上那句「工作区之外的路径一律拒绝」指的是文件类工具，**不要**据此认为命令也被关在工作区里。
 - `hostInput` 用于「宿主自己保管这一轮的消息历史」的场景（OpenAI / Responses 网关就是这样）：带上它的一轮**不写 conversation 消息，也不读写下面这份 agent 记录**，与内置 Bot 项目在 `input.openai !== undefined` 时的处理一致。项目从 `steamharness.readOpenAIConversationHostInput(context)` 拿到宿主输入时，把它一并放进 `AgentInput` 即可。
 - **Pi Durable Harness 是唯一执行历史来源。** 固定 Pi SDK / Durable 1.2.0，Node >=22.19.0。Conversation 节点默认按项目、入口、conversationId 和 sessionKey 选择宿主本地 SQLite 会话，实时提交消息、工具意图与结果、审批等待及用量记录；只有显式注入时才使用 Server PostgreSQL。普通模式每轮关闭运行时；session 模式由宿主 lease 保持工具与 AI bridge 存活，前台回答结束后仍能继续输入和执行后台任务。多个 Agent 节点用不同 sessionKey。没有旧 KV transcript 迁移或 fallback。编程式 `steamharness.createAgent({ databasePath })` 显式选择 SQLite，不传则使用 MemoryStorage，同一运行时内审批暂停仍保留原任务。`readTranscript()` 只读模型上下文投影，`restoreTranscript()` 只用于空存储的首轮 seed，不覆盖已有持久历史，不能恢复活动任务。流式回答强杀后把已提交正文和推理纳入持久续写上下文，丢弃未完成工具调用；续写沿用断流预算。运行结束必须 `await runtime.close()`。
@@ -1110,7 +1114,7 @@ Bot 使用 `steamharness.defineBot`，参见本节的固定契约。
 **调用方自带的工具。** 内置的 7 个工具以外，调用方可以按轮注入自己的工具：
 
 - `AgentNodeOptions.createTools(context)` 在每次运行前调用，返回的 `AgentTool[]` 与本轮内置工具合并后交给模型；需要 `NodeContext`（storage、`context.toolPermissions` 等）时使用这个工厂。具有生命周期的资源返回 `{ tools, catalogs?, close?() }`；普通运行在轮末 close，session 模式持续到宿主 lease 释放并关闭 Harness。编程式运行时用 `AgentRuntimeOptions.extraTools` 传静态工具。
-- 外部工具**不经 `permissionPolicy` 过滤**——策略只约束内置的那 7 个工具。它们由宿主自己的工具目录治理：项目在 `executor.tools` 里声明它们，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准；`autoApprove: false` 的外部工具会暂停本轮等待用户批准（走 `context.toolPermissions`）。
+- 外部工具在 `executor.tools` 中声明，由 `enabled` 决定是否开放。接入 `context.toolPermissions` 后，本地 Agent 的有效权限为 `auto` 时无需逐工具确认；其他模式仍按 `autoApprove` 和 `approvalMode` 决定是否等待审批。
 
 **自己写的工具长什么样。** 下面这段形状由 `scripts/agent-tool-contract.mjs` 从当前 Core 依赖的 pi agent SDK 类型里生成，`pnpm test` 会校验它和安装的类型一致——所以它不会悄悄过期，你也不该按它在安装包里找那个 SDK 的类型声明：
 
@@ -1214,7 +1218,7 @@ Core 提供「工作流能力」工具，把宿主配置和 Conversation 资源�
 - `steamharness.listProjectCapabilityToolIds()`：列出这一轮会出现的工具 id。
 - `steamharness.isProjectCapabilityAvailable(toolId)`：这个能力在**当前进程**里能不能干活。宿主配置与 Kanban 页面方法随宿主桥环境变化；Kanban 另需宿主明确启用。工具不可用时不应暴露给模型。`Capability.run(context, args, signal?)` 可接收 Agent/MCP 的调用取消信号；Kanban 通道将其传递到页面 handler。
 
-**它们不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具。项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准；把 `approve` 接到 `steamharness.createToolApprovalGate().approve(...)` 上就是同一条审批链。
+在 `executor.tools` 中声明 MCP 工具的 ID，用 `enabled` 决定是否开放。把 `approve` 接到 `steamharness.createToolApprovalGate().approve(...)`，即可使用相同的审批规则：本地 Agent 的有效权限为 `auto` 时不逐次确认，其他模式遵守工具声明。
 
 宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址，否则这一项不暴露（`isAvailable` 返回 `false`，不会抛错打断其它能力；真正调用时才抛出说明地址不合法）。
 
@@ -1567,7 +1571,7 @@ Kanban entry 相对聚合根；Workflow/Conversation entry 相对 entry.root。
 
 Bot 的 `conversation.collapseIntermediate` 默认 true：成功后收起中间过程，保留最终答案；false 保留过程。它只控制呈现，不删除历史或改变输出。输入钩子可能在宿主恢复时重新调用，应保持幂等；完成通知按稳定 requestId 去重。
 
-工具默认延续 Core 的 Plan/Build 审批语义。需要在 Build 中也逐次确认的操作，声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；查询可设 `autoApprove: true`。未声明或 `approvalMode: "plan"` 时沿用原有按模式审批。
+本地 Bot 的有效权限为「自动批准」时，所有已启用的工具直接执行。在其他权限模式下，需要在 Build 中也逐次确认的操作可声明 `tools[].approvalMode: "always"` 与 `autoApprove: false`；允许免确认的查询可设 `autoApprove: true`。本地 Agent 在自动批准下返回 Plan 结果，不弹计划审批，也不会自行开始 Build。
 
 `collapseIntermediate` 是会话展示字段，控制完成后是否折叠中间过程。
 

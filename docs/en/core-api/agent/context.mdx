@@ -30,7 +30,7 @@ Host disabling also applies to session tools, native extension tools and deferre
 
 With subagents enabled, sleep returns early when the relevant child work has ended and none remains queued. One internal status input resumes the parent so it can inspect results or continue its work. The input has no user message bubble and counts completed, failed and stopped work separately. Timed waits without relevant child work retain their duration.
 
-- **Your tools are not governed by `permissionPolicy`.** The policy only decides which built-in tools exist and how far they reach. Your tools answer to the host's own catalogue: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (in a plan-mode turn only; a build turn runs the tool).
+- Declare your tools in `executor.tools`. The `enabled` setting controls availability. When the local Agent uses `auto`, enabled custom tools run without confirmation too. Other modes use `autoApprove` and `approvalMode` to determine whether to ask.
 - To reach a stdio MCP server a host provides, open it with [connectMcpServer](/en/core-api/connect-mcp-server) and turn its tools into yours with [createMcpTools](/en/core-api/create-mcp-tools).
 
 ## Permission policy
@@ -41,9 +41,9 @@ Turn input takes precedence over developer defaults; omitting both still selects
 | --- | --- |
 | `read-only` | `write`, `edit` and `bash` are disabled; the model never sees them. |
 | `workspace` | Every tool is available. The file tools (`read`/`write`/`edit`/`ls`/`grep`/`find`) can only reach inside `workdir` and `allowedDirectories`, and that check is made after `fs.realpath`, so a symlink inside the workspace cannot carry them out; `grep` and `find` do not follow symlinks at all. The default. |
-| `auto` | As `workspace`, but the file tools may also reach paths outside the workspace. |
+| `auto` | File tools may reach paths outside the workspace. Enabled tools do not need per-call confirmation when using Core's approval gate. |
 
-None of the three prompts for a built-in tool: the policy decides which tools exist and how far they reach, and only the host's own declared tools go through the approval chain.
+The `auto` policy does not override host denials or role limits. If you use the Agent runtime directly and supply an `AgentHost`, its approval hooks still apply.
 
 > **`bash` is not path-confined.** Commands run as the host process with the working directory as their `cwd`, which is not a sandbox: they can read and write anywhere. `read-only` is stricter only because it does not expose `bash` in the first place. Containing a command is a job for a sandbox on the host side.
 
@@ -87,8 +87,10 @@ When `context.abortSignal` fires the turn is stopped: the model stream and any t
 
 With `agent: "plan"` the system prompt switches to the plan contract and the write tools are unavailable. While planning, the model can put a question to the user with `ask_user` (see the built-in tools above): the run pauses through `user_input_required` the same way, carries on in the same turn once answered, and keeps the question and the answer in `pendingUserInput` and `resolvedUserInputs` respectively.
 
-The turn then pauses through `user_input_required` for approval; the host resumes it on the same `requestId`, and the resume payload carries the plan text so a compaction in between cannot lose it. Declining does not end the session: it stays in plan mode and hands the plan back to the plan agent to revise with whatever instructions came with the decision, so no file is touched but another model turn does run.
+If the host requires approval, the completed plan pauses through `user_input_required`. Approving resumes it with the original `requestId` and the plan text, even if the context was compacted. Declining keeps the session in Plan mode so the model can revise the plan with any extra instructions, without applying its changes.
 
 Each new plan uses an independent approval `requestId`. A completed revision waits for another decision, even if its text is unchanged; the previous answer cannot automatically approve or decline it. Resuming an existing paused approval still uses that request's original `requestId`.
+
+When a local Agent uses `auto`, Plan mode returns the plan without an approval prompt and does not start a Build turn. Questions that need a user answer still wait for input.
 
 Question pauses and plan approval are separate stages: `ask_user` itself neither emits a `plan` event nor requests plan approval. The runtime emits `plan` events and calls `host.approvePlan` only when a turn finishes normally with nonempty plan text after the last tool call. Text before tools is excluded from that plan. Failed, cancelled, or question-paused turns do not submit leftover text as a plan.

@@ -1351,10 +1351,12 @@ export class ConversationController {
     const task = runId && this.tasks.get(runId);
     if (entry.origin === 'host' || !request.credentialUse || !runId || !task || anchor.runId !== runId) { this.bindUserInput(entry, anchor, request); return; }
     const policy = this.credentialUsePolicy(request, task);
-    const automatic = policy === 'auto' && this.options.credentialAutomaticHost && this.localCredentialTurn(entry, request, runId);
-    const scopeId = policy !== 'read-only' && !automatic && this.conversationCredentialScope(entry, request, runId, false);
+    const local = this.options.credentialAutomaticHost && this.localCredentialTurn(entry, request, runId);
+    const automatic = policy === 'auto' && local;
+    const metadata = policy !== 'read-only' && local && request.credentialUse.connector === 'host' && request.credentialUse.name === undefined;
+    const scopeId = policy !== 'read-only' && !automatic && !metadata && this.conversationCredentialScope(entry, request, runId, false);
     const host: BotCredentialHost | undefined = policy === 'read-only' ? async () => ({ status: 'failed' })
-      : automatic ? this.options.credentialAutomaticHost : scopeId ? this.options.credentialConversationHost : undefined;
+      : automatic || metadata ? this.options.credentialAutomaticHost : scopeId ? this.options.credentialConversationHost : undefined;
     if (!host) { this.bindUserInput(entry, anchor, request); return; }
     const target = this.bindUserInput(entry, anchor, request, false);
     const fallback = () => {
@@ -1434,6 +1436,7 @@ export class ConversationController {
     void (async () => {
       const policy = request.credentialUse && this.credentialUsePolicy(request, task);
       if (policy === 'read-only') { await resolve(); return; }
+      if (request.credentialUse?.connector === 'host' && request.credentialUse.name === undefined && await resolve()) return;
       const scopeId = policy && this.credentialScope(entry.id, true);
       if (policy === 'auto' && await resolve({ mode: 'auto' })) return;
       if (scopeId && await resolve({ scopeId, mode: 'reuse' })) return;
@@ -1462,22 +1465,27 @@ export class ConversationController {
       const operation = use && parseBotCredentialUse(use);
       const policy = operation && this.credentialUsePolicy(request, task);
       let reply: Awaited<ReturnType<BotCredentialHost>>;
-      if (policy === 'read-only') reply = { status: 'failed' };
+      if (policy === 'read-only') reply = { status: 'failed', ...(operation?.connector === 'host' && { reason: 'blocked-policy' }) };
       else if (approval?.mode === 'auto' && policy !== 'auto') return false;
       else {
         try { reply = await host(this.project.entryId, operation ? { action: 'use', use: operation, ...(approval && { approval }) } : { action: 'capture', slot: parseBotCredentialSlot(slot) }, abort.signal); }
         catch (error) {
           if (approval?.mode !== 'auto') throw error;
-          reply = { status: 'failed' };
+          reply = { status: 'failed', ...(operation?.connector === 'host' && { reason: 'storage-unavailable' }) };
         }
       }
       if (abort.signal.aborted || task.cancelled || this.disposed || this.tasks.get(runId) !== task || entry.activeRunId !== runId
         || (silent ? answer.pendingInput : answer.pendingInput !== request)) throw credentialUnavailable();
-      if ((approval?.mode === 'auto' || approval?.mode === 'reuse') && reply === 'approval-required') return false;
+      if ((approval?.mode === 'auto' || approval?.mode === 'reuse') && reply === 'approval-required') {
+        if (approval.mode === 'reuse' || this.credentialUsePolicy(request, task) !== 'auto') return false;
+        // Older hosts may ask for interaction on an unsupported operation; Auto Approve does not open a prompt.
+        reply = { status: 'denied', ...(operation?.connector === 'host' && { reason: 'blocked-policy' }) };
+      }
       const queryResult = operation && parseBotCredentialUseResult(reply, operation);
       const receipt = operation ? queryResult : credentialStatus(reply) ? { status: reply } : undefined;
       if (!receipt) throw credentialUnavailable();
-      const resolved = { requestId, nodeName: request.nodeName, values: { status: receipt.status }, submittedAt: new Date().toISOString(), request };
+      const resolved = { requestId, nodeName: request.nodeName,
+        values: queryResult && queryResult.status !== 'ok' ? queryResult : { status: receipt.status }, submittedAt: new Date().toISOString(), request };
       const submitting = operation && queryResult ? { ...resolved, resultCard: credentialResultCard(operation, queryResult.status, queryResult),
         precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) } : resolved;
       answer.submittingInput = submitting; this.changed();

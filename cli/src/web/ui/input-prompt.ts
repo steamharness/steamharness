@@ -134,8 +134,9 @@ export class InputPrompt {
     this.form.replaceChildren();
     if (this.request.credentialUse) {
       const use = this.request.credentialUse;
-      const operation = use.operation === 'list-domains' ? t('List Alibaba Cloud DNS domains') : t('List Alibaba Cloud DNS records for {0}', use.domain);
-      const summary = document.createElement('p'); summary.textContent = t('Credential: {0} · {1} · Page {2}', use.name, operation, use.page);
+      const summary = document.createElement('p');
+      summary.textContent = use.connector === 'host' ? use.name ? t('Credential: {0} · Operation: {1}', use.name, use.operation) : t('Credential operation: {0}', use.operation)
+        : t('Credential: {0} · {1} · Page {2}', use.name, use.operation === 'list-domains' ? t('List Alibaba Cloud DNS domains') : t('List Alibaba Cloud DNS records for {0}', use.domain), use.page);
       summary.style.overflowWrap = 'anywhere';
       this.form.append(summary, this.securePromptButton(t('Review credential use'), t('Waiting for Studio…')));
     } else if (this.request.credential) {

@@ -3,10 +3,11 @@ import { Type, validateToolArguments, type Tool, type ToolCall, type ToolResultM
 import { createProjectToolPermissionContext, normalizeToolPermissionDefinitions, requireProjectToolApproval, type ToolPermissionDefinition } from "../tool-permissions/index";
 import type { NodeContext } from "../types/index";
 import { HarnessError } from "../workflow/errors";
+import { getHostUserSettings } from "../user-settings";
 import { currentBotRequestId } from "./bot-lifecycle";
 import { BOT_FILES_SYSTEM_PROMPT, BOT_FILE_TOOL_DEFINITIONS, BOT_FILE_TOOL_NAMES, createBotFileTools, resolveBotFiles } from "./bot-files";
 import { BOT_ARTIFACT_GUIDANCE, BOT_ARTIFACT_TOOL, createBotArtifactTool } from "./bot-artifact";
-import { readAgentToolDefinitions, resolveAgentPermissionPolicySetting } from "./permission";
+import { agentToolApprovalsAreAutomatic, autoApproveEnabledTools, readAgentToolDefinitions, resolveAgentPermissionPolicySetting } from "./permission";
 import { BUILTIN_AGENT_TOOL_NAMES, createBuiltinAgentTools } from "./tools";
 import type { AgentTool, AgentToolSet } from "./types";
 
@@ -30,14 +31,18 @@ export function llmBotTools(overrides?: ToolPermissionDefinition[]): ToolPermiss
 
 export async function createLLMBotToolRunner(
   definitions: ToolPermissionDefinition[], context: NodeContext,
-  factory?: () => AgentToolSet | AgentTool[] | Promise<AgentToolSet | AgentTool[]>,
+  factory?: (context: NodeContext) => AgentToolSet | AgentTool[] | Promise<AgentToolSet | AgentTool[]>,
   permissionPolicy?: unknown,
   localConversation = true,
 ) {
-  const permissions = context.toolPermissions ?? createProjectToolPermissionContext({ definitions, projectName: "bot", runId: String(context.metadata?.runId ?? "run") });
+  const selectedPolicy = permissionPolicy ?? (localConversation ? getHostUserSettings()?.agent.permissionPolicy : undefined);
+  context = context.toolPermissions ? context : { ...context, toolPermissions: createProjectToolPermissionContext({ definitions, userInput: context.userInput,
+    projectName: "bot", runId: String(context.metadata?.runId ?? "run") }) };
+  if (localConversation && agentToolApprovalsAreAutomatic(selectedPolicy)) context = autoApproveEnabledTools(context);
+  const permissions = context.toolPermissions!;
   const enabled = new Set(definitions.filter(tool => permissions.getTool(tool.name)?.enabled).map(tool => tool.name));
   const builtinNames = new Set<string>([...BUILTIN_AGENT_TOOL_NAMES, ...BOT_FILE_TOOL_NAMES, BOT_ARTIFACT_TOOL.name]);
-  const readOnly = resolveAgentPermissionPolicySetting(permissionPolicy) === "read-only";
+  const readOnly = resolveAgentPermissionPolicySetting(selectedPolicy) === "read-only";
   const files = enabled.has("bash") || BOT_FILE_TOOL_NAMES.some(name => enabled.has(name)) ? resolveBotFiles(context) : undefined;
   const workdir = path.resolve(String(context.metadata?.entryRootDir ?? context.runtimeInfo?.project.directory ?? process.cwd()));
   const builtin = createBuiltinAgentTools({ Type, scope: { workdir, allowedDirectories: [workdir] }, engine: "llm", runtimeInfo: context.runtimeInfo,
@@ -45,7 +50,7 @@ export async function createLLMBotToolRunner(
   if (files) builtin.push(...createBotFileTools(files, readOnly));
   const delivery = !readOnly && localConversation && enabled.has(BOT_ARTIFACT_TOOL.name) ? createBotArtifactTool(context) : undefined;
   if (delivery) builtin.push(delivery);
-  const created = factory && [...enabled].some(name => !builtinNames.has(name)) ? await factory() : undefined;
+  const created = factory && [...enabled].some(name => !builtinNames.has(name)) ? await factory(context) : undefined;
   const set: AgentToolSet | undefined = Array.isArray(created) ? { tools: created } : created;
   try {
     const active = new Map(builtin.filter(tool => enabled.has(tool.name) && !(readOnly && files && tool.name === "bash")).map(tool => [tool.name, tool]));

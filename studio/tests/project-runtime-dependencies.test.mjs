@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { compileFunction } from 'node:vm';
-import { build } from 'esbuild';
+import { buildStudioNode as build } from '../scripts/node-extension-build.mjs';
 
 const compiled = await build({ stdin: { contents: `
 export { inspectRuntimeDependencies, replaceRuntimeDependencies } from './extensions/studio-workstation/src/project-runtime-dependencies-node';

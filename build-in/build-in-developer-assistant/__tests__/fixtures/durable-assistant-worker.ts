@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
 import {
-  createProjectConversationContext, createProjectToolPermissionContext, createProjectTokenUsageContext,
+  createProjectConversationContext, createProjectToolPermissionContext, createProjectTokenUsageContext, withUserSettings,
   type RunContext, type BotExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
   type UserInputResolved,
 } from "steamharness";
@@ -12,6 +12,8 @@ import { createAgentSessionHost, controlAgentSession, type AgentSessionSnapshot 
 import { createServerRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryRecord } from "steamharness/runtime-storage";
 
 const [directory, scenario, phase] = process.argv.slice(2) as [string, string, string];
+const withFixtureSettings = <T>(run: () => T): T => scenario.startsWith("approval")
+  ? withUserSettings({ agent: { permissionPolicy: "workspace" } }, run) : run();
 const faux = ai.fauxProvider({ models: [{ id: "fixture", contextWindow: 100_000, maxTokens: 1_000 }],
   ...(scenario === "blocks" ? { tokensPerSecond: 100, tokenSize: { min: 8, max: 8 } } : {}),
 });
@@ -100,8 +102,8 @@ const executorContext = {
   args: ["--message", scenario === "session" ? "Delegate background inspection" : "Create recovered.txt after checking the plan"],
   paramValues: { provider: "faux", model: "fixture", plan: scenario.startsWith("approval") ? "true" : "false" },
 } as Parameters<typeof executor.createInput>[0];
-const input = await executor.createInput(executorContext);
-const extraContext = await executor.createContext?.(executorContext);
+const input = await withFixtureSettings(() => executor.createInput(executorContext));
+const extraContext = await withFixtureSettings(() => executor.createContext?.(executorContext));
 Object.assign(context.metadata!, extraContext?.metadata);
 const write = ai.fauxAssistantMessage([ai.fauxToolCall("write", { path: "recovered.txt", content: "created" }, { id: "write-once" })], { stopReason: "toolUse" });
 if (scenario === "skill-recovery" && phase !== "replay") {
@@ -234,7 +236,7 @@ if (scenario === "skill-recovery" && phase !== "replay") {
   faux.setResponses([ai.fauxAssistantMessage("A fresh plan.")]);
 }
 try {
-  const running = executor.workflow.run(input, context);
+  const running = withFixtureSettings(() => executor.workflow.run(input, context));
   if (scenario === "blocks" || scenario === "skill-recovery") {
     await until(() => !!sessionSnapshot?.turns.some(turn => turn.conversationId === sessionSnapshot!.conversationId && turn.status === "done") && sessionSnapshot.tasks.length === 0);
     host!.close();

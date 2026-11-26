@@ -225,14 +225,14 @@ test('project usage combines source, release and folder Bot records while an ins
 test('saved entry identities preserve retired histories and distinguish old versions of an entry with a new type', async t => {
   const f = await fixture(t);
   await declare(f.project, [bot]);
-  const current = data(f.storage, 'agent'), oldWorkflow = data(f.storage, 'agent', ['release']);
+  const current = data(f.storage, 'agent'), oldEntry = data(f.storage, 'agent', ['release']);
   const oldBot = data(f.storage, 'retired', ['folder-bots', instance1]);
   const wrongOwner = data(f.storage, 'foreign', ['release']);
-  await register(oldWorkflow, 'agent', 'workflow');
+  await register(oldEntry, 'agent', 'workflow');
   await register(oldBot, 'retired', 'bot');
   await register(wrongOwner, 'foreign', 'bot', unrelatedId);
   (await history(current, [['conversation', { messages: [{}, {}] }]])).db.close();
-  (await history(oldWorkflow, [['run', { state: { createdAt: timestamp } }]])).db.close();
+  (await history(oldEntry, [['run', { state: { createdAt: timestamp } }]])).db.close();
   (await history(oldBot, [['conversation', { messages: [{}, {}, {}] }]])).db.close();
   (await history(wrongOwner, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
   await putMemory(memoryPath(oldBot, projectId, 'retired'), 1, 'retired');

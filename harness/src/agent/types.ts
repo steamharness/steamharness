@@ -436,7 +436,8 @@ export interface AgentRuntimeOptions {
   /**
    * Tools the caller supplies, on top of the built-in coding tools.
    *
-   * Governed by the host's permission catalogue rather than `permissionPolicy`.
+   * Availability is governed by the host's permission catalogue. Auto Approve
+   * skips per-tool confirmations without enabling disabled tools.
    */
   extraTools?: AgentTool[];
   /**

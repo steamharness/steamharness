@@ -9,7 +9,8 @@ import { startEntryWebServer } from './web-test-storage';
 import { testDataDirectory } from './test-data-directory';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 
-it.each([true, false])('approves=%s a write after a completed Bot query without changing the earlier answer', async approved => {
+it.each(['approve', 'reject', 'auto'] as const)('handles %s for a Bot tool requiring approval without changing the earlier answer', async decision => {
+  const automatic = decision === 'auto', approved = decision !== 'reject';
   const directory = await mkdtemp(path.join(os.tmpdir(), 'bot-write-approval-'));
   let app: Awaited<ReturnType<typeof startEntryWebServer>> | undefined;
   const server = createServer(async (request, response) => {
@@ -41,7 +42,8 @@ it.each([true, false])('approves=%s a write after a completed Bot query without 
             async execute() { await appendFile(new URL('./writes', import.meta.url), 'write\\n'); return { content: [{ type: 'text', text: 'Saved' }], details: {} }; } }]; } },
         tools: [{ name: 'write_business', enabled: true, autoApprove: false, approvalMode: 'always' }],
       });`);
-    app = await startEntryWebServer({ projectDir: directory, dataDir: testDataDirectory(directory), host: { surface: 'editor' } });
+    app = await startEntryWebServer({ projectDir: directory, dataDir: testDataDirectory(directory),
+      host: { surface: 'editor', userSettings: { agent: { permissionPolicy: automatic ? 'auto' : 'workspace' } } } });
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: object) => {
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(message) });
@@ -51,19 +53,24 @@ it.each([true, false])('approves=%s a write after a completed Bot query without 
     await expect.poll(() => app!.controller.current.messages.at(-1)?.status, { timeout: 8000 }).toBe('success');
     const first = app.controller.current.messages.at(-1)!;
     await post({ type: 'send', text: 'write', params: {}, attachments: [] });
-    await expect.poll(() => app!.controller.current.messages.some(message => message.pendingInput)).toBe(true);
-    await expect.poll(() => app!.controller.current.activeRunId).toBeUndefined();
-    const waiting = app.controller.current.messages.find(message => message.pendingInput)!;
-    expect(waiting.id).not.toBe(first.id);
-    expect(app.controller.current.messages.find(message => message.id === first.id)?.status).toBe('success');
-    expect(await readFile(path.join(directory, 'writes'), 'utf8').catch(() => '')).toBe('');
-    await post({ type: 'resume', messageId: waiting.id, requestId: waiting.pendingInput!.requestId, values: { approved } });
-    try { await expect.poll(() => app!.controller.current.messages.find(message => message.id === waiting.id)?.status, { timeout: 8000 }).toBe('success'); }
+    if (!automatic) {
+      await expect.poll(() => app!.controller.current.messages.some(message => message.pendingInput)).toBe(true);
+      await expect.poll(() => app!.controller.current.activeRunId).toBeUndefined();
+      const waiting = app.controller.current.messages.find(message => message.pendingInput)!;
+      expect(waiting.id).not.toBe(first.id);
+      expect(await readFile(path.join(directory, 'writes'), 'utf8').catch(() => '')).toBe('');
+      await post({ type: 'resume', messageId: waiting.id, requestId: waiting.pendingInput!.requestId, values: { approved } });
+    }
+    try { await expect.poll(() => {
+      const answer = app!.controller.current.messages.at(-1);
+      return answer?.role === 'assistant' && answer.id !== first.id ? answer.status : undefined;
+    }, { timeout: 8000 }).toBe('success'); }
     catch (error) { throw new Error(JSON.stringify({ messages: app.controller.current.messages.map(message => ({ id: message.id, runId: message.runId,
       status: message.status, pending: message.pendingInput?.requestId, submitting: message.submittingInput?.requestId,
       resolved: message.resolvedInputs?.map(input => input.requestId), report: message.report?.status, error: message.error })),
       writes: await readFile(path.join(directory, 'writes'), 'utf8').catch(() => ''), turns: app.controller.current.agent?.turns.map(turn => ({ requestId: turn.requestId, status: turn.status })) }), { cause: error }); }
     expect(await readFile(path.join(directory, 'writes'), 'utf8').catch(() => '')).toBe(approved ? 'write\n' : '');
+    expect(app.controller.current.messages.some(message => message.pendingInput)).toBe(false);
     expect(app.controller.current.messages.find(message => message.id === first.id)?.content).toBe('Read complete');
     expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toHaveLength(2);
   } finally {

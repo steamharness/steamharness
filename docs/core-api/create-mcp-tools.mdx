@@ -63,4 +63,4 @@ const tools: AgentTool[] = await steamharness.createMcpTools({
 
 ## 工具审批
 
-`createMcpTools` 产出的工具不受 `permissionPolicy` 约束：策略只决定内置工具暴露哪些、能走多远。这些工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待用户批准（走 `context.toolPermissions`），且只在 plan 模式的回合停下来问——build 回合直接执行。
+在 `executor.tools` 中声明 MCP 工具，用 `enabled` 控制是否开放。将 `approve` 接到 Core 的工具审批后，已启用的 MCP 工具在本地 Agent 的 `auto` 模式下直接执行；其他模式仍按 `autoApprove` 和 `approvalMode` 决定是否确认。

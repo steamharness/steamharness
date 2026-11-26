@@ -15,6 +15,7 @@ import type { BackgroundBotCredentialAccess, WebReady, WebSession, WebSessionExi
 import type { StudioUserSettings } from './user-settings';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 import { parseBotCredentialAction, type BotCredentialAction, type BotCredentialResult } from './bot-credential-vault';
+import { botCredentialScopedOperations, botCredentialUseOperations } from './bot-credential-operations';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
@@ -228,10 +229,10 @@ export async function startProjectCli(options: {
             const url = new URL(message.url);
             if (options.folderBot && message.folderBotProtocolVersion !== 1) throw new Error('Update the project CLI and SDK to run a local folder Bot.');
             if (options.folderBot?.profileRecord && message.folderBotProfileVersion !== 1) throw new Error(t('Update the project CLI and SDK to use this folder Bot profile.'));
-            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
             if (options.assistant?.storageScope === 'managed-project' && message.managedProjectStorageVersion !== 1) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
+            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
             settle(undefined, message); return;
@@ -242,7 +243,8 @@ export async function startProjectCli(options: {
       child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, platform: options.platform === true, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, folderBot: options.folderBot && { ...options.folderBot, projectId: options.expectedProjectId }, resourceProjects: options.resourceProjects ?? [],
         ...(options.localBotArtifactLabel && { localBotArtifacts: true, localBotArtifactLabel: options.localBotArtifactLabel }),
         ...(options.botCredentials && { ...(options.backgroundBotCredentials ? { backgroundBotCredentials: true } : { localBotCredentials: true }), localBotCredentialStructured: true, localBotCredentialUse: true,
-          localBotCredentialConversationApproval: true, localBotCredentialPermissionPolicy: true }), workflowScheduleKey: options.workflowScheduleKey })}\n`);
+          localBotCredentialConversationApproval: true, localBotCredentialPermissionPolicy: true, botCredentialUseOperations,
+          botCredentialScopedOperations: options.backgroundBotCredentials ? botCredentialScopedOperations.filter(operation => !operation.requiresTool) : botCredentialScopedOperations }), workflowScheduleKey: options.workflowScheduleKey })}\n`);
     });
     webAppConfigurations = ready.webAppConfigurations ?? {};
     readyWebAppLoginVersion = ready.webAppLoginProtocolVersion;
@@ -269,6 +271,9 @@ export async function startProjectCli(options: {
             const { turn, ...payload } = reply;
             const action = parseBotCredentialAction(background ? payload : reply);
             if (!entry || !action || (options.assistant || options.folderBot || background) && entry.entryId !== options.entryId) { respond('unavailable'); return; }
+            const use = action.action === 'use' && action.use;
+            if (background && use && use.connector === 'host'
+              && botCredentialScopedOperations.some(operation => operation.id === use.operation && operation.requiresTool)) { respond('unavailable'); return; }
             let job: AbortSignal | undefined;
             if (background) {
               const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(value);

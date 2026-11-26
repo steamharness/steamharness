@@ -398,6 +398,10 @@ try {
               if (receipt.requestId !== input.requestId || !core.isBotCredentialStatus(receipt.values?.status)) throw new Error('Invalid Bot credential receipt.');
               return receipt.values.status;
             }, ...(request.allowBotCredentialUse === true && core.BOT_CREDENTIAL_USE_VERSION === 1 && {
+              ...(core.BOT_CREDENTIAL_HOST_USE_VERSION === 1 && { credentialUseOperations: core.parseBotCredentialUseOperations([
+                ...(request.botCredentialUseOperations ?? []),
+                ...(core.BOT_CREDENTIAL_HOST_SCOPES_VERSION === 1 ? request.botCredentialScopedOperations ?? [] : []),
+              ]) }),
               waitForCredentialUse: async (input, signal) => {
                 const receipt = await waitForInput(input, signal);
                 const result = core.parseBotCredentialUseResult(receipt.values, input.credentialUse);

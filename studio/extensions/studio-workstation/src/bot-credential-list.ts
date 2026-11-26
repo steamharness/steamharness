@@ -4,8 +4,8 @@ import path from 'node:path';
 import { isProjectEntryId, PROJECT_UUID_PATTERN } from '@steamharness/project-manifest';
 import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
-import { botCredentialKindLabel, canAccessBotCredentialStorage } from './bot-credentials';
-import { listBotCredentialSummaries, resolveBotCredentialNamespace } from './bot-credential-vault';
+import { botCredentialKindLabel, canAccessBotCredentialStorage } from './bot-credential-metadata';
+import { listBotCredentialSummaries, resolveBotCredentialNamespaces } from './bot-credential-vault';
 import type { ManagedUsageTarget } from './project-usage-types';
 
 export type BotCredentialListResult = { status: 'ok'; rows: { name: string; type: string }[] } | { status: 'untrusted' | 'unavailable' };
@@ -46,10 +46,10 @@ export function createBotCredentialListReader(context: vscode.ExtensionContext, 
       // The built-in release runs with its own directory as the Assistant workdir.
       const workdir = folder || (manifest.projectId === DEVELOPER_ASSISTANT_PROJECT_ID && options.isBuiltinProjectDirectory(source) ? projectDirectory : undefined);
       const profile = context.globalStorageUri.fsPath;
-      const namespace = await resolveBotCredentialNamespace(profile, { projectId: manifest.projectId, entryId: entry.entryId,
+      const namespaces = await resolveBotCredentialNamespaces(profile, { projectId: manifest.projectId, entryId: entry.entryId,
         projectDirectory, instanceId: managed?.instanceId, workdir });
       if (options.signal.aborted || !vscode.workspace.isTrusted) return { status: 'unavailable' };
-      const rows = await listBotCredentialSummaries(context.secrets, namespace, options.signal);
+      const rows = await listBotCredentialSummaries(context.secrets, namespaces, options.signal);
       if (!vscode.workspace.isTrusted) return { status: 'untrusted' };
       return { status: 'ok', rows: rows.map(({ name, kind }) => ({ name, type: botCredentialKindLabel(kind) })) };
     } catch { return { status: 'unavailable' }; }

@@ -1,19 +1,15 @@
 import * as vscode from 'vscode';
 import { createHmac, randomBytes } from 'node:crypto';
-import { ALIBABA_DNS_HOST } from '../../../../harness/src/types/bot-credential-use';
+import { ALIBABA_DNS_HOST, parseBotCredentialUseResult } from '../../../../harness/src/types/bot-credential-use';
 import { t } from './localization';
-import { botCredentialKinds, resolveBotCredentialNamespace, createBotCredentialVault, parseStructuredCredential, readPickedSshKey, structuredCredentialFields, validBotCredentialName, validBotCredentialText,
-  type BotCredentialAction, type BotCredentialKind, type BotCredentialResult, type BotCredentialSlot } from './bot-credential-vault';
+import { botCredentialKinds, resolveBotCredentialNamespaces, createBotCredentialVault, parseStructuredCredential, readPickedSshKey, structuredCredentialFields, validBotCredentialName, validBotCredentialText,
+  type BotCredentialAction, type BotCredentialResult, type BotCredentialSlot } from './bot-credential-vault';
 import type { Project } from './workflow-types';
 import { runBotCredentialDnsQuery } from './bot-credential-dns';
+import { botCredentialTransports, prepareBotCredentialOperation } from './bot-credential-operations';
+import { containsCredentialValue } from './bot-credential-network';
+import { botCredentialKindLabel, canAccessBotCredentialStorage } from './bot-credential-metadata';
 import { readUserSettings } from './user-settings';
-
-export const botCredentialKindLabel = (kind: BotCredentialKind) => kind === 'ssh-private-key' ? t('SSH private key') : kind === 'password' ? t('Password')
-  : kind === 'access-key-pair' ? t('Access key pair') : kind === 'structured' ? t('Structured credential') : t('API key or token');
-
-export const canAccessBotCredentialStorage = async (context: vscode.ExtensionContext): Promise<boolean> =>
-  vscode.workspace.isTrusted && !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop && typeof context.secrets.keys === 'function'
-  && await Promise.resolve(vscode.commands.executeCommand<boolean>('studio.internalCanPersistBotCredentials')).catch(() => false) === true;
 
 type CredentialInputOptions = Pick<vscode.InputBoxOptions, 'title' | 'prompt' | 'placeHolder' | 'password' | 'ignoreFocusOut'> & {
   validateInput(value: string): string | undefined;
@@ -60,7 +56,7 @@ function showCredentialInput(options: CredentialInputOptions, token: vscode.Canc
   });
 }
 
-export function createBotCredentialInteraction(context: vscode.ExtensionContext, queryDns = runBotCredentialDnsQuery) {
+export function createBotCredentialInteraction(context: vscode.ExtensionContext, queryDns = runBotCredentialDnsQuery, transports = botCredentialTransports) {
   let opening = false;
   // Memory only, fenced by the Studio CLI host lease and the current vault contents.
   const approvals = new WeakMap<AbortSignal, Map<string, string>>();
@@ -69,7 +65,8 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
   return async (project: Project, entryId: string, label: string, request: BotCredentialAction, signal: AbortSignal, lifetime?: AbortSignal): Promise<BotCredentialResult> => {
     const reuse = request.action === 'use' && request.approval?.mode === 'reuse';
     const auto = request.action === 'use' && request.approval?.mode === 'auto';
-    const silent = reuse || auto;
+    const metadata = request.action === 'use' && request.use.connector === 'host' && request.use.name === undefined;
+    const silent = reuse || auto || metadata;
     const grants = lifetime && !lifetime.aborted ? approvals.get(lifetime) : undefined;
     if (reuse && !grants?.size) return 'approval-required';
     if (!silent && opening) return 'busy';
@@ -81,7 +78,7 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
       if (request.action !== 'use') return;
       const policy = readUserSettings().agent.permissionPolicy;
       const ceiling = project.folderBot?.permissionCeiling;
-      if (policy === 'read-only' || ceiling === 'read-only') return { status: 'failed' };
+      if (policy === 'read-only' || ceiling === 'read-only') return { status: 'failed', ...(request.use.connector === 'host' && { reason: 'blocked-policy' }) };
       if (auto && (policy !== 'auto' || ceiling === 'workspace')) return 'approval-required';
     };
     try {
@@ -90,33 +87,48 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
       if (blocked) return blocked;
       if (!await canPersist()) {
         if (reuse) return 'approval-required';
-        if (auto) return { status: 'failed' };
+        if (auto || metadata) return { status: 'failed', ...(request.action === 'use' && request.use.connector === 'host' && { reason: 'storage-unavailable' }) };
         void vscode.window.showWarningMessage(request.action === 'use' ? t('System-protected credential storage is unavailable. No query was sent.')
           : t('System-protected credential storage is unavailable. No credential was saved.'));
         return 'unavailable';
       }
       const profile = context.globalStorageUri.fsPath;
-      const namespace = await resolveBotCredentialNamespace(profile, { projectId: project.id, entryId, projectDirectory: project.folderPath,
+      const namespaces = await resolveBotCredentialNamespaces(profile, { projectId: project.id, entryId, projectDirectory: project.folderPath,
         instanceId: project.folderBot?.id, workdir: project.folderBot?.directory ?? project.assistant?.workdir });
-      const vault = createBotCredentialVault(context.secrets, profile, namespace, canPersist);
+      const vault = createBotCredentialVault(context.secrets, profile, namespaces, canPersist);
       signal.throwIfAborted();
       const title = t('Bot credentials: {0}', label);
       if (request.action === 'use') {
         const { use, approval } = request;
-        // Only these read-only calls share an approval. New connector operations must opt in explicitly.
-        const grantKey = approval && approval.mode !== 'auto' && lifetime && !lifetime.aborted && use.connector === 'alibaba-cloud-dns'
-          && (use.operation === 'list-domains' || use.operation === 'list-records')
-          ? JSON.stringify([approval.scopeId, namespace, use.name, use.connector, ALIBABA_DNS_HOST,
-            use.fields.accessKeyId, use.fields.accessKeySecret, use.fields.securityToken ?? null]) : undefined;
+        let hosted: ReturnType<typeof prepareBotCredentialOperation> | undefined;
+        try { if (use.connector === 'host') hosted = prepareBotCredentialOperation(use, transports); }
+        catch { return { status: 'failed', reason: 'invalid-operation' }; }
+        if (hosted && 'list' in hosted) {
+          const query = hosted.query;
+          const matches = (await vault.list(signal)).filter(item => !query || item.name.includes(query));
+          const blocked = queryBlock();
+          return blocked ?? { status: 'ok', data: { credentials: matches.slice(0, 100), total: matches.length } };
+        }
+        // Unattended credential use must keep secret values in the host.
+        if (hosted?.delivery === 'command') {
+          if (auto) return { status: 'denied', reason: 'blocked-policy' };
+          if (reuse) return 'approval-required';
+        }
+        // DNS approval allows pagination. Other operations bind to the exact normalized request.
+        const binding = use.connector === 'alibaba-cloud-dns' ? [ALIBABA_DNS_HOST, use.fields.accessKeyId, use.fields.accessKeySecret, use.fields.securityToken ?? null]
+          : [use.operation, hosted!.binding];
+        const grantKey = approval && approval.mode !== 'auto' && lifetime && !lifetime.aborted && hosted?.delivery !== 'command'
+          ? JSON.stringify([approval.scopeId, namespaces[0], use.name, use.connector, ...binding]) : undefined;
         const approved = grantKey && grants?.get(grantKey);
         let allowConversation = false;
         if (reuse) {
           if (!approved) return 'approval-required';
         } else if (!auto) {
-          const operation = use.operation === 'list-domains' ? t('List Alibaba Cloud DNS domains') : t('List Alibaba Cloud DNS records for {0}', use.domain);
-          const choices = [{ label: t('Allow once'), description: ALIBABA_DNS_HOST, detail: t('{0}, page {1}', operation, use.page), conversation: false }];
-          if (grantKey) choices.push({ label: t('Allow for this conversation'), description: ALIBABA_DNS_HOST,
-            detail: t('Read-only lookups of domains and DNS records with this credential'), conversation: true });
+          const target = hosted?.target ?? ALIBABA_DNS_HOST;
+          const detail = use.connector === 'host' ? hosted!.detail : t('{0}, page {1}', use.operation === 'list-domains' ? t('List Alibaba Cloud DNS domains') : t('List Alibaba Cloud DNS records for {0}', use.domain), use.page);
+          const choices = [{ label: t('Allow once'), description: target, detail, conversation: false }];
+          if (grantKey) choices.push({ label: t('Allow for this conversation'), description: target,
+            detail: hosted ? detail : t('Read-only lookups of domains and DNS records with this credential'), conversation: true });
           const selected = await vscode.window.showQuickPick(choices, { title: t('Use {0} for {1}', use.name, label), ignoreFocusOut: true }, cancellation.token);
           if (!selected) return { status: 'declined' };
           allowConversation = selected.conversation;
@@ -124,19 +136,30 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
         signal.throwIfAborted();
         const beforeRead = queryBlock();
         if (beforeRead) return beforeRead;
-        const legacyPair = use.fields.accessKeyId === 'AccessKeyId' && use.fields.accessKeySecret === 'AccessKeySecret' && use.fields.securityToken === undefined;
-        const stored = await vault.readStructured(use.name, signal, legacyPair);
-        const fingerprint = grantKey && stored ? createHmac('sha256', fingerprintKey)
-          .update(JSON.stringify(Object.keys(stored).sort().map(key => [key, stored[key]]))).digest('hex') : undefined;
+        const stored = use.connector === 'alibaba-cloud-dns'
+          ? [await vault.readStructured(use.name, signal, use.fields.accessKeyId === 'AccessKeyId' && use.fields.accessKeySecret === 'AccessKeySecret' && use.fields.securityToken === undefined)]
+          : await Promise.all(hosted!.slots.map(slot => vault.readForUse(slot, signal)));
+        const ready = stored.every(value => value !== null && value !== undefined);
+        const fingerprint = grantKey && ready ? createHmac('sha256', fingerprintKey)
+          .update(JSON.stringify(stored.map(value => typeof value === 'object' && value !== null ? Object.keys(value).sort().map(key => [key, value[key]]) : value))).digest('hex') : undefined;
         if (reuse && (lifetime?.aborted || fingerprint !== approved)) {
           if (grantKey && grants?.get(grantKey) === approved) grants?.delete(grantKey);
           return 'approval-required';
         }
-        if (stored === undefined) return { status: 'missing' };
-        if (!stored) return { status: 'missing-fields' };
+        if (stored.includes(undefined)) return { status: 'missing' };
+        if (!ready) return { status: 'missing-fields' };
         const beforeQuery = queryBlock();
         if (beforeQuery) return beforeQuery;
-        const result = await queryDns(use, stored, signal);
+        const values = stored.filter(value => value != null);
+        const raw = use.connector === 'host' ? await hosted!.run(values, signal, project.folderBot?.directory ?? project.assistant?.workdir ?? project.folderPath)
+          : typeof values[0] === 'object' ? await queryDns(use, values[0], signal) : { status: 'missing-fields' };
+        signal.throwIfAborted();
+        const afterQuery = queryBlock();
+        if (afterQuery) return afterQuery;
+        let result = parseBotCredentialUseResult(raw, use) ?? { status: 'failed' as const };
+        if (result.status === 'ok' && 'data' in result && containsCredentialValue(result.data, values.flatMap(value => typeof value === 'string' ? [value] : Object.values(value)))) {
+          result = { status: 'failed', reason: 'unsafe-response' };
+        }
         if (allowConversation && grantKey && fingerprint && lifetime && !lifetime.aborted && !signal.aborted && result.status !== 'missing-fields') {
           const current = approvals.get(lifetime) ?? new Map<string, string>();
           current.delete(grantKey);
@@ -173,13 +196,7 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
         };
         const before = await vault.inspect(slot, signal);
         if (before === 'different-fields') return rejectDifferentFields();
-        if (before === 'existing') {
-          const selected = await vscode.window.showQuickPick([{ label: t('Keep saved credential'), detail: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name) }],
-            { title, ignoreFocusOut: true }, cancellation.token);
-          if (!selected) return 'declined';
-          const after = await vault.inspect(slot, signal);
-          return after === 'different-fields' ? rejectDifferentFields() : after === 'existing' ? 'existing' : 'declined';
-        }
+        if (before === 'existing') return 'existing';
         const value = await valueFor(slot);
         if (value === undefined) return 'declined';
         const result = await vault.write(slot, value, false, signal);
@@ -211,7 +228,10 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
         }
       }
       return 'managed';
-    } catch { return 'unavailable'; }
+    } catch {
+      return request.action === 'use' && request.use.connector === 'host' && !signal.aborted
+        ? { status: 'failed', reason: 'storage-unavailable' } : 'unavailable';
+    }
     finally { signal.removeEventListener('abort', abort); cancellation.dispose(); if (!silent) opening = false; }
   };
 }

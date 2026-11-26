@@ -63,4 +63,4 @@ A tool is named `<serverId>_<toolName>` by default, as in `project-tools_project
 
 ## Tool approval
 
-The tools `createMcpTools` produces are not governed by `permissionPolicy`, which only decides which built-in tools exist and how far they reach. The host's own tool catalogue governs them: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (through `context.toolPermissions`), in a plan-mode turn only — a build turn runs the tool.
+Declare MCP tools in `executor.tools` and use `enabled` to control availability. When `approve` uses Core's approval gate, enabled MCP tools run without confirmation in a local Agent's `auto` mode. Other modes still use `autoApprove` and `approvalMode` to decide whether to ask.

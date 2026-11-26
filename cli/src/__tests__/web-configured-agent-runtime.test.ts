@@ -76,7 +76,7 @@ it.each(['agent', 'llm'] as const)('%s Bot uses Studio host user models without 
       }); export default executor;
     `;
     await writeFile(path.join(directory, 'index.ts'), source(engine));
-    const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{
+    const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: engine === 'llm' ? 'workspace' : 'auto', models: [{
       id: 'first', name: 'User first', source: 'third-party', apiKind: 'openai-completions', baseUrl: `${origin}/v1`, model: 'actual-one', apiKey: 'test-only-first-key',
     }] } };
     const options = { projectDir: directory, dataDir: path.join(testDataDirectory(directory)), host: { surface: 'editor' as const, userSettings: settings, connection: { serverUrl: origin, accessToken: 'fixture-account' } } };
@@ -94,7 +94,7 @@ it.each(['agent', 'llm'] as const)('%s Bot uses Studio host user models without 
     expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-one', model: 'User first' });
     const selectedModel = settings.agent.models![0];
     if (selectedModel.source !== 'third-party') throw new Error('Expected the third-party fixture model.');
-    const updated: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{ ...selectedModel, model: 'actual-two', apiKey: 'test-only-next-key' }] } };
+    const updated: import('steamharness').UserSettings = { agent: { permissionPolicy: settings.agent.permissionPolicy, models: [{ ...selectedModel, model: 'actual-two', apiKey: 'test-only-next-key' }] } };
     await app.setHostUserSettings(updated);
     const second = crypto.randomUUID();
     await post({ type: 'send', requestId: second, text: 'Second', params: {}, attachments: [] });

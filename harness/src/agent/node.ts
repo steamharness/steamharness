@@ -21,7 +21,7 @@ import { folderBotResponsibilities, readFolderBotProfile } from "../executor/fol
 import { BOT_JSON_SUMMARY_DEFINITION, BOT_JSON_SUMMARY_GUIDANCE, createBotJsonSummaryTool } from "./bot-json-summary";
 export { resolveAgentSystemAIInput } from "./model-resolution";
 import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "./ask";
-import { resolveAgentPermissionPolicySetting } from "./permission";
+import { agentToolApprovalsAreAutomatic, autoApproveEnabledTools, resolveAgentPermissionPolicySetting } from "./permission";
 import {
   createAgentCompactionChunks,
   createAgentChunkCollector,
@@ -52,7 +52,7 @@ import { createSkillTools } from "./skills";
 import { BOT_MEMORY_SYSTEM_PROMPT, BOT_MEMORY_TOOL_NAMES, botMemoryDirectoryGuidance, createBotMemoryRecall, createBotMemoryTools, isBotMemoryEnabled } from "./memory";
 import { BOT_FILES_SYSTEM_PROMPT, BOT_FILE_TOOL_NAMES, createBotFileTools, resolveBotFiles } from "./bot-files";
 import { BOT_ARTIFACT_GUIDANCE, BOT_ARTIFACT_TOOL, botArtifactChunks, createBotArtifactTool } from "./bot-artifact";
-import { BOT_CREDENTIAL_GUIDANCE, BOT_CREDENTIAL_TOOL, BOT_CREDENTIAL_USE_GUIDANCE, BOT_CREDENTIAL_USE_TOOL, createBotCredentialTool, createBotCredentialUseTool } from "./bot-credential";
+import { BOT_CREDENTIAL_GUIDANCE, BOT_CREDENTIAL_MANAGEMENT_GUIDANCE, BOT_CREDENTIAL_TOOL, BOT_CREDENTIAL_USE_GUIDANCE, BOT_CREDENTIAL_USE_TOOL, createBotCredentialTool, createBotCredentialUseTool } from "./bot-credential";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { BotFileWorkspace } from "../runtime-storage/bot-files";
 import { DEFAULT_AGENT_EFFORT, DEFAULT_AGENT_MODE } from "./types";
@@ -269,20 +269,23 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     let delivery: AgentTool | undefined;
     let credentialTool: AgentTool | undefined;
     let credentialUseTool: AgentTool | undefined;
+    let automaticToolApprovals = false;
     try {
       const planResume = await resolvePlanResume(context, system.input);
       // A run parks on either a plan awaiting approval or a question awaiting an answer.
       runInput = planResume ?? await resolveAskResume(context, system.input) ?? system.input;
       if (planResume?.planResume !== undefined) runInput.requestId = `${system.input.requestId}:plan:${planResume.planResume.requestId}`;
+      const permissionPolicy = resolveAgentPermissionPolicySetting(runInput.permissionPolicy ?? this.options.permissionPolicy);
+      automaticToolApprovals = input.hostInput === undefined && agentToolApprovalsAreAutomatic(permissionPolicy);
+      if (automaticToolApprovals) context = autoApproveEnabledTools(context);
       botFiles = bot ? resolveBotFiles(context) : undefined;
       const canDeliver = bot && input.hostInput === undefined && parseAgentMode(runInput.agent ?? this.options.mode) !== "plan"
-        && resolveAgentPermissionPolicySetting(runInput.permissionPolicy ?? this.options.permissionPolicy) !== "read-only"
+        && permissionPolicy !== "read-only"
         && context.toolPermissions?.getTool(BOT_ARTIFACT_TOOL.name)?.enabled !== false;
       if (canDeliver) delivery = createBotArtifactTool(context, runInput.requestId);
-      const permissionPolicy = resolveAgentPermissionPolicySetting(runInput.permissionPolicy ?? this.options.permissionPolicy);
       if (bot && input.hostInput === undefined && parseAgentMode(runInput.agent ?? this.options.mode) !== "plan" && permissionPolicy !== "read-only") {
         credentialTool = createBotCredentialTool(context);
-        credentialUseTool = createBotCredentialUseTool(context, permissionPolicy);
+        credentialUseTool = createBotCredentialUseTool(context, permissionPolicy, this.options.tools);
       }
       runtime = await this.resolveRuntime(runInput, context, botFiles, !!delivery, !!credentialTool, !!credentialUseTool);
     } catch (error) {
@@ -335,7 +338,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       finally { await closeIgnoringFailure(() => system.close()); await closeIgnoringFailure(toolSet?.close); }
       throw error;
     }
-    const host = createNodeAgentHost(context, this.name, runInput);
+    const host = bindNodeAgentHost(context, this.name, automaticToolApprovals);
 
     const mode = parseAgentMode(runInput.agent ?? this.options.mode ?? DEFAULT_AGENT_MODE);
     // A plan resume switches this run to build, which the caller's input does
@@ -727,16 +730,24 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     if (durable && !this.options.storage && !persistence) {
       throw new Error("Durable conversations require runtime persistence or an explicit storage factory.");
     }
-    const botMemory = botNodeLifecycle(this);
-    const memoryEnabled = botMemory && isBotMemoryEnabled(context, botMemory.memoryDefaultEnabled);
+    const bot = botNodeLifecycle(this);
+    const memoryEnabled = bot && isBotMemoryEnabled(context, bot.memoryDefaultEnabled);
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
       runtimeInfo: context.runtimeInfo,
-      botGuidance: [memoryEnabled && BOT_MEMORY_SYSTEM_PROMPT, memoryEnabled && botMemoryDirectoryGuidance(persistence), botFiles && BOT_FILES_SYSTEM_PROMPT, canDeliver && BOT_ARTIFACT_GUIDANCE, canRequestCredential && BOT_CREDENTIAL_GUIDANCE, canUseCredential && BOT_CREDENTIAL_USE_GUIDANCE,
-        canDeliver && context.toolPermissions?.getTool(BOT_JSON_SUMMARY_DEFINITION.name)?.enabled !== false && BOT_JSON_SUMMARY_GUIDANCE].filter(Boolean).join("\n\n") || undefined,
+      botGuidance: [
+        memoryEnabled && BOT_MEMORY_SYSTEM_PROMPT,
+        memoryEnabled && botMemoryDirectoryGuidance(persistence),
+        botFiles && BOT_FILES_SYSTEM_PROMPT,
+        canDeliver && BOT_ARTIFACT_GUIDANCE,
+        bot && BOT_CREDENTIAL_MANAGEMENT_GUIDANCE,
+        canRequestCredential && BOT_CREDENTIAL_GUIDANCE,
+        canUseCredential && BOT_CREDENTIAL_USE_GUIDANCE,
+        canDeliver && context.toolPermissions?.getTool(BOT_JSON_SUMMARY_DEFINITION.name)?.enabled !== false && BOT_JSON_SUMMARY_GUIDANCE,
+      ].filter(Boolean).join("\n\n") || undefined,
       instanceGuidance: folderBotResponsibilities(context),
       builtinSkills: readFolderBotProfile(context)?.skills === undefined,
-      botMemoryRecall: memoryEnabled ? AsyncLocalStorage.bind(createBotMemoryRecall(context, botMemory.memoryDefaultEnabled)) : undefined,
+      botMemoryRecall: memoryEnabled ? AsyncLocalStorage.bind(createBotMemoryRecall(context, bot.memoryDefaultEnabled)) : undefined,
       botFiles,
       session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,
       sessionLease: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionLease(context.conversation.conversationId) : undefined,
@@ -782,13 +793,14 @@ export function createNodeAgentHost(
   nodeName: string,
   input: AgentInput,
 ): AgentHost {
-  const gate = createToolApprovalGate();
+  const automatic = input.hostInput === undefined && agentToolApprovalsAreAutomatic(input.permissionPolicy);
+  return bindNodeAgentHost(automatic ? autoApproveEnabledTools(context) : context, nodeName, automatic);
+}
 
+function bindNodeAgentHost(context: NodeContext, nodeName: string, automatic: boolean): AgentHost {
+  const gate = createToolApprovalGate();
   return {
     async approveToolCall(request) {
-      // The built-in tools are declared auto-approved, so this only asks when a
-      // host has explicitly marked one as needing approval — and refuses
-      // outright when the host disabled it.
       const botRequestId = currentBotRequestId(context.projectId, context.entryId);
       await gate.approve({
         name: request.toolName,
@@ -799,8 +811,8 @@ export function createNodeAgentHost(
       }, botRequestId ? { ...context, metadata: { ...context.metadata, botRequestId } } : context);
     },
 
-    // Without a conversation, a plan is the output, not a checkpoint for a subsequent turn.
-    ...(context.conversation?.enabled && {
+    // Auto Approve returns the requested plan without scheduling a Build turn.
+    ...(context.conversation?.enabled && !automatic && {
       async approvePlan(request) {
         const userInput = context.userInput;
         if (userInput === undefined) return { approved: true, requestId: request.requestId };

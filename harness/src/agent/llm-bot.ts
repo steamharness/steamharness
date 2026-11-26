@@ -115,7 +115,7 @@ export function createLLMBot<Input extends AgentInput>(
       const node = createOutputNode<typeof nodeInput, AgentOutputPayload>({ name: NODE, metadata: { type: "llm-stream" },
         async *stream(_input, nodeContext) {
           yield { type: "output_item_start", item: answer("") };
-          const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (() => llm.createTools!(nodeContext, finalInput as Input)), finalInput.permissionPolicy, !host);
+          const runner = await createLLMBotToolRunner(tools, nodeContext, llm.createTools && (toolContext => llm.createTools!(toolContext, finalInput as Input)), finalInput.permissionPolicy, !host);
           const system = [llm.systemPrompt, finalInput.systemPrompt, host?.instructions, runner.botFileGuidance, folderBotResponsibilities(context)].filter(Boolean).join("\n\n") || undefined;
           const round: LLMBotToolRound = { tools: runner.tools, transcript: [] };
           const callIds = new Set<string>();

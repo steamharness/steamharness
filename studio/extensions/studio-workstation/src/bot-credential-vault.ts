@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { mkdir, open, realpath } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as wait } from 'node:timers/promises';
 import { parseBotCredentialUse, type BotCredentialUse, type BotCredentialUseResult } from '../../../../harness/src/types/bot-credential-use';
+import { DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
 
 export const botCredentialKinds = ['api-key', 'password', 'ssh-private-key', 'structured'] as const;
 const legacyPairKind = 'access-key-pair';
@@ -61,6 +62,48 @@ export async function resolveBotCredentialNamespace(profile: string, scope: BotC
     scope.instanceId, scope.workdir && await realpath(scope.workdir));
 }
 
+/** Built-in Assistant code moves between immutable release directories. Its credential scope does not. */
+export async function resolveBotCredentialNamespaces(profile: string, scope: BotCredentialScope): Promise<readonly [string, ...string[]]> {
+  const [projectDirectory, workdir] = await Promise.all([realpath(scope.projectDirectory), scope.workdir && realpath(scope.workdir)]);
+  const legacy = (directory: string, folder: string | undefined) => botCredentialNamespace(profile, scope.projectId, scope.entryId, directory, scope.instanceId, folder);
+  const direct = legacy(projectDirectory, workdir);
+  if (scope.projectId.toLowerCase() !== DEVELOPER_ASSISTANT_PROJECT_ID) return [direct];
+  const profileDirectory = await realpath(profile).catch(() => path.resolve(profile));
+  const roots = [path.join(profileDirectory, 'workflow', 'builtin-apps'), path.join(profileDirectory, 'workflow', 'assistant', 'apps')];
+  const managed = (directory: string) => roots.some(root => /^[a-f0-9]{24}(?:[\\/]project)?$/.test(path.relative(root, directory)));
+  if (!managed(projectDirectory)) return [direct];
+
+  const releases = (await Promise.all(roots.map(async root => {
+    if (await realpath(root).catch(() => undefined) !== root) return [];
+    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+    return (await Promise.all(entries.filter(entry => entry.isDirectory() && /^[a-f0-9]{24}$/.test(entry.name)).map(async entry => {
+      const base = path.join(root, entry.name);
+      for (const directory of [path.join(base, 'project'), base]) {
+        try {
+          if (await realpath(directory) !== directory) continue;
+          const manifest: unknown = JSON.parse(await readFile(path.join(directory, 'steamharness.json'), 'utf8'));
+          if (typeof manifest === 'object' && manifest !== null && 'id' in manifest && manifest.id === DEVELOPER_ASSISTANT_PROJECT_ID) {
+            return { directory, time: (await stat(directory)).birthtimeMs };
+          }
+        } catch { /* Ignore incomplete or removed release directories. */ }
+      }
+    }))).flatMap(entry => entry ? [entry] : []);
+  }))).flat().sort((a, b) => b.time - a.time || a.directory.localeCompare(b.directory)).map(entry => entry.directory);
+  if (!releases.includes(projectDirectory)) return [direct];
+
+  const standalone = !scope.instanceId && (!workdir || releases.includes(workdir));
+  const primary = legacy('builtin:developer-assistant', standalone ? undefined : workdir);
+  const previous = new Set([direct]);
+  for (const release of releases) {
+    if (standalone) {
+      previous.add(legacy(release, release));
+      previous.add(legacy(release, undefined));
+      if (workdir) previous.add(legacy(release, workdir));
+    } else previous.add(legacy(release, workdir));
+  }
+  return [primary, ...previous];
+}
+
 interface SecretStore {
   keys(): Thenable<string[]>;
   get(key: string): Thenable<string | undefined>;
@@ -68,14 +111,22 @@ interface SecretStore {
   delete(key: string): Thenable<void>;
 }
 
-export async function listBotCredentialSummaries(store: Pick<SecretStore, 'keys'>, prefix: string, signal?: AbortSignal): Promise<BotCredentialSummary[]> {
+type CredentialPrefixes = string | readonly [string, ...string[]];
+const credentialPrefixes = (prefixes: CredentialPrefixes) => typeof prefixes === 'string' ? [prefixes] as const : prefixes;
+
+export async function listBotCredentialSummaries(store: Pick<SecretStore, 'keys'>, prefixes: CredentialPrefixes, signal?: AbortSignal): Promise<BotCredentialSummary[]> {
   signal?.throwIfAborted();
   const keys = await store.keys();
   signal?.throwIfAborted();
+  const allowed = credentialPrefixes(prefixes);
+  const seen = new Set<string>();
   return keys.flatMap(key => {
-    if (!key.startsWith(prefix)) return [];
-    const [kind, name, extra] = key.slice(prefix.length).split(':');
-    return extra === undefined && validKind(kind) && validBotCredentialName(name) ? [{ name, kind }] : [];
+    const prefix = allowed.find(prefix => key.startsWith(prefix));
+    if (!prefix) return [];
+    const suffix = key.slice(prefix.length), [kind, name, extra] = suffix.split(':');
+    if (seen.has(suffix) || extra !== undefined || !validKind(kind) || !validBotCredentialName(name)) return [];
+    seen.add(suffix);
+    return [{ name, kind }];
   }).sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind));
 }
 
@@ -125,11 +176,19 @@ export async function readPickedSshKey(file: string): Promise<string> {
   } finally { buffer.fill(0); await handle.close(); }
 }
 
-export function createBotCredentialVault(store: SecretStore, profile: string, prefix: string, canPersist: () => Promise<boolean>) {
-  const keyFor = (input: BotCredentialSlot) => {
+export function createBotCredentialVault(store: SecretStore, profile: string, prefixes: CredentialPrefixes, canPersist: () => Promise<boolean>) {
+  const scope = credentialPrefixes(prefixes);
+  const keysFor = (input: BotCredentialSlot) => {
     if (!validBotCredentialName(input.name) || !validKind(input.kind) ||
       input.fields !== undefined && (input.kind !== 'structured' || !validFields(input.fields))) throw invalidCredential();
-    return `${prefix}${input.kind}:${input.name}`;
+    return scope.map(prefix => `${prefix}${input.kind}:${input.name}`);
+  };
+  const getSaved = async (slot: BotCredentialSlot, signal?: AbortSignal) => {
+    const candidates = keysFor(slot);
+    const available = candidates.length > 1 ? new Set(await store.keys()) : undefined;
+    const key = available ? candidates.find(candidate => available.has(candidate)) : candidates[0];
+    signal?.throwIfAborted();
+    return key === undefined ? undefined : store.get(key);
   };
   const requireStorage = async (signal?: AbortSignal) => {
     signal?.throwIfAborted();
@@ -157,8 +216,9 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
     } finally { database.close(); }
   };
   const inspect = async (slot: BotCredentialSlot, signal?: AbortSignal) => {
-    const key = keyFor(slot);
-    if (!(await store.keys()).includes(key)) return 'missing' as const;
+    const available = new Set(await store.keys());
+    const key = keysFor(slot).find(key => available.has(key));
+    if (!key) return 'missing' as const;
     if (slot.kind === 'structured' && slot.fields) {
       const stored = await store.get(key);
       signal?.throwIfAborted();
@@ -168,20 +228,30 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
   };
   return {
     async inspect(slot: BotCredentialSlot, signal?: AbortSignal) { await requireStorage(signal); return inspect(slot, signal); },
+    /** Only native, already authorized operations call this. No IPC exposes raw material. */
+    async readForUse(slot: BotCredentialSlot, signal: AbortSignal) {
+      await requireStorage(signal);
+      const stored = await getSaved(slot, signal);
+      signal.throwIfAborted();
+      if (stored === undefined) return;
+      if (slot.kind === 'structured' || slot.kind === legacyPairKind) return parseStructuredCredential(stored, structuredCredentialFields(slot)) ?? null;
+      if (slot.kind === 'ssh-private-key') return Buffer.byteLength(stored, 'utf8') <= MAX_SECRET_BYTES && isPrivateKeyText(stored) ? stored : null;
+      return validBotCredentialText(stored) ? stored : null;
+    },
     /** Native connector input after confirmation. There is no pipe action for reading a value. */
     async readStructured(name: string, signal: AbortSignal, allowLegacyPair = false) {
       await requireStorage(signal);
-      const stored = await store.get(keyFor({ name, kind: 'structured' }));
+      const stored = await getSaved({ name, kind: 'structured' }, signal);
       signal.throwIfAborted();
       if (stored !== undefined) return parseStructuredCredential(stored) ?? null;
       if (!allowLegacyPair) return;
-      const legacy = await store.get(keyFor({ name, kind: legacyPairKind }));
+      const legacy = await getSaved({ name, kind: legacyPairKind }, signal);
       signal.throwIfAborted();
       return legacy === undefined ? undefined : parseStructuredCredential(legacy, legacyPairFields) ?? null;
     },
     async list(signal?: AbortSignal): Promise<BotCredentialSummary[]> {
       await requireStorage(signal);
-      return listBotCredentialSummaries(store, prefix, signal);
+      return listBotCredentialSummaries(store, prefixes, signal);
     },
     async write(slot: BotCredentialSlot, value: string, replace: boolean, signal?: AbortSignal) {
       if (slot.kind === 'structured' || slot.kind === legacyPairKind) {
@@ -196,12 +266,21 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
         signal?.throwIfAborted();
         if (present !== 'missing' && !replace) return present;
         if (present === 'missing' && replace) throw new Error('The Bot credential no longer exists.');
-        await store.store(keyFor(slot), value);
+        const [primary, ...legacy] = keysFor(slot);
+        await store.store(primary, value);
+        if (replace && legacy.length) {
+          const available = new Set(await store.keys());
+          for (const key of legacy) if (available.has(key)) await store.delete(key);
+        }
         return 'saved' as const;
       });
     },
     async remove(slot: BotCredentialSlot, signal?: AbortSignal) {
-      await lock(signal, async () => { await requireStorage(signal); await store.delete(keyFor(slot)); });
+      await lock(signal, async () => {
+        await requireStorage(signal);
+        const available = new Set(await store.keys());
+        for (const key of keysFor(slot)) if (available.has(key)) await store.delete(key);
+      });
     },
   };
 }

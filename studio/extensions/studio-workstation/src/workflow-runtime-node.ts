@@ -36,11 +36,12 @@ import type { ManagedUsageTarget } from './project-usage-types';
 import { usingStudioWeb, studioPreview } from './remote-access-node';
 import { WorkflowScheduleRuntime } from './workflow-schedule-runtime';
 import { openProjectSchedules } from './workflow-schedule-view';
-import { canAccessBotCredentialStorage, createBotCredentialInteraction } from './bot-credentials';
+import { createBotCredentialInteraction } from './bot-credentials';
+import { canAccessBotCredentialStorage } from './bot-credential-metadata';
 import { createBotCredentialListReader } from './bot-credential-list';
 import { registerBotManagementView } from './bot-management-view';
-import type { AccountWorkspace } from './account-workspace-data';
 import { prepareManagedProjectStorage } from './managed-project-storage';
+import type { AccountWorkspace } from './account-workspace-data';
 
 interface RuntimeScope {
   workspace?: AccountWorkspace;
@@ -225,8 +226,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   if (desktop) context.subscriptions.push(registerBotManagementView(context, { captureScope,
     currentOwner: () => account.workspace?.()?.owner ?? null,
     target: { assistantId: DEVELOPER_ASSISTANT_PROJECT_ID, isBuiltinProjectDirectory, localAssistantDirectory: assistantDirectory,
-      resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
       prepareManagedStorage: options => prepareManagedProjectStorage({ ...options, builds: releaseStorageDir }),
+      resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
       trusted: directory => vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false),
     },
   }));
@@ -443,7 +444,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const runSignal = AbortSignal.any([hostSignal, controller.signal, scope.lifetime.signal]);
       let bridge: StudioControlBridge | undefined;
       try {
-        const workflowSchedules = scope.schedules;
         if (managedWorkspace) {
           try {
             await prepareManagedProjectStorage({ storage: scope.data, builds: releaseStorageDir, projectId: project.id,
@@ -456,6 +456,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
             throw new Error(t('Could not restore this project’s local data. The original data has not changed.'), { cause: error });
           }
         }
+        const workflowSchedules = scope.schedules;
         const workflowScheduleKey = workflowSchedules && !project.assistant && !project.folderBot && project.distribution !== 'release'
           && !isBuiltinProjectDirectory(project.folderPath) && project.entries.some(entry => entry.type === 'workflow') ? WorkflowScheduleRuntime.capability() : undefined;
         let studioControl: StudioControlConfiguration | undefined;

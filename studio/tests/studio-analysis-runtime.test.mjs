@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { build } from 'esbuild';
+import { buildStudioNode as build } from '../scripts/node-extension-build.mjs';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -74,8 +74,10 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     uri: pathToFileURL(path.join(storage, 'workflow', 'builtin-apps', 'a'.repeat(24))).href };
   let imports = [{ id: current.id, name: 'Imported', uri: current.uri }, builtin];
   const vscode = {
-    env: { language: 'zh-cn', uiKind: 1 }, UIKind: { Desktop: 1 }, window: { activeColorTheme: { kind: 2 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
+    env: { language: 'zh-cn', uiKind: 1 }, UIKind: { Desktop: 1 },
+    window: { activeColorTheme: { kind: 2 }, registerWebviewViewProvider: () => ({ dispose() {} }) }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
     Uri: { file: filename => ({ fsPath: filename, toString: () => pathToFileURL(filename).href }),
+      joinPath: (base, ...parts) => ({ fsPath: path.join(base.fsPath, ...parts) }),
       parse: value => ({ scheme: new URL(value).protocol.slice(0, -1), fsPath: fileURLToPath(value) }) },
     workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, workspaceFolders: [], getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
   };

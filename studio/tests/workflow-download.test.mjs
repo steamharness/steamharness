@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { build } from 'esbuild';
+import { buildStudioNode as build } from '../scripts/node-extension-build.mjs';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-download.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode', '@vscode/l10n'], write: false });
 const runtimeCompiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });

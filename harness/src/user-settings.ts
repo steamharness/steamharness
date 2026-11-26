@@ -23,6 +23,11 @@ export function getUserSettings(): UserSettings {
   return scope.getStore() ?? defaults;
 }
 
+/** Hosts with a fixed permission mode opt in explicitly; a missing host is not an opt-in. */
+export function getHostUserSettings(): UserSettings | undefined {
+  return scope.getStore();
+}
+
 /** Validate host input and copy only supported settings; never retain a caller's mutable object. */
 export function parseUserSettings(value: unknown): UserSettings {
   const settings = value as Partial<UserSettings> | null;

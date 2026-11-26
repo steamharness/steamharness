@@ -1,4 +1,5 @@
-import type { ToolPermissionDefinition, ToolPermissionPolicyMap } from "../tool-permissions/index";
+import { requireProjectToolApproval, type ToolPermissionContext, type ToolPermissionDefinition, type ToolPermissionPolicyMap } from "../tool-permissions/index";
+import type { NodeContext } from "../types/index";
 import type { AgentPermissionPolicy } from "./types";
 import { AGENT_PERMISSION_POLICIES, DEFAULT_AGENT_PERMISSION_POLICY } from "./types";
 import { getUserSettings } from "../user-settings";
@@ -32,6 +33,27 @@ export function parseAgentPermissionPolicy(value: unknown): AgentPermissionPolic
 export function isAgentPermissionPolicy(value: unknown): value is AgentPermissionPolicy {
   return typeof value === "string" &&
     AGENT_PERMISSION_POLICIES.some((policy) => policy === value.trim().toLowerCase());
+}
+
+export function agentToolApprovalsAreAutomatic(value: unknown): boolean {
+  return resolveAgentPermissionPolicySetting(value) === "auto" && getUserSettings().agent.permissionPolicy === "auto";
+}
+
+/** Override confirmation for this Agent, not the enclosing Workflow or the saved policies. */
+export function autoApproveEnabledTools(context: NodeContext): NodeContext {
+  const original = context.toolPermissions;
+  if (original === undefined) return context;
+  const scoped: NodeContext = { ...context };
+  const toolPermissions: ToolPermissionContext = {
+    ...original,
+    getTool(name) {
+      const tool = original.getTool(name);
+      return tool?.enabled && !tool.autoApprove ? { ...tool, autoApprove: true } : tool;
+    },
+    requireToolApproval(input) { return requireProjectToolApproval(scoped, input); },
+  };
+  scoped.toolPermissions = toolPermissions;
+  return scoped;
 }
 
 /**

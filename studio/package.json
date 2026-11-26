@@ -80,6 +80,7 @@
     "pptxviewjs": "1.1.9",
     "qrcode-generator": "2.0.4",
     "semver": "7.8.5",
+    "ssh2": "1.17.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "@steamharness/project-info": "file:../shared/project-info",
     "@steamharness/workflow-ids": "file:../shared/workflow-ids",
@@ -91,12 +92,15 @@
     "@types/node": "^24.0.0",
     "@types/katex": "^0.16.8",
     "@types/semver": "7.8.0",
+    "@types/ssh2": "1.15.5",
     "vscode-api": "npm:@types/vscode@1.140.0",
     "esbuild": "0.28.2",
     "typescript": "5.9.3",
     "jsdom": "26.1.0"
   },
   "allowScripts": {
-    "esbuild@0.28.2": true
+    "esbuild@0.28.2": true,
+    "ssh2@1.17.0": false,
+    "cpu-features@0.0.10": false
   }
 }

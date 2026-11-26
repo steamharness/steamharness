@@ -9,6 +9,7 @@ const CORE_TOOL_NAMES = [
   "skill",
   "memory_save", "memory_get", "memory_update", "memory_delete", "memory_search", "memory_link", "memory_unlink",
   "bot_files_list", "bot_files_read", "bot_files_write", "bot_files_move", "bot_files_delete", "bot_files_publish",
+  "bot_json_summary", "bot_credentials_request", "bot_credentials_use",
 ];
 const RUN_SCOPED_CORE_TOOL_NAMES = ["workflow-kv_kv_store"];
 const CODING_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls", "sleep", "runtime_info"];

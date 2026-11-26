@@ -234,6 +234,8 @@ export interface Run {
   allowBotCredentialInput?: true;
   allowBotCredentialStructured?: true;
   allowBotCredentialUse?: true;
+  botCredentialUseOperations?: readonly import('steamharness').BotCredentialUseOperation[];
+  botCredentialScopedOperations?: readonly import('steamharness').BotCredentialUseOperation[];
   folderBotProfile?: import('steamharness').FolderBotProfile;
 }
 

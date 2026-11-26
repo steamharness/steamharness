@@ -3,7 +3,7 @@ import type { WorkflowHistory } from './workflow-history';
 import { t } from './localization';
 
 /** Studio can open the same storage from several CLI processes. Never write a stale snapshot. */
-export class StudioWorkflowAccess {
+export class StudioHistoryAccess {
   private pending: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly history: WorkflowHistory, private readonly controller: Controller,

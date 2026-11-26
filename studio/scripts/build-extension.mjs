@@ -12,6 +12,7 @@ import { publicServiceUrls } from '../../shared/service-urls/index.ts';
 import { copyAssistantTemplate } from './assistant-template.mjs';
 import { overlayExtensionBuildPlugin } from './extension-overlay.mjs';
 import { buildBuiltinProjectRelease, stageBuiltinKanban } from './builtin-project-release.mjs';
+import { optionalNativeExternals } from './node-extension-build.mjs';
 
 export async function buildExtension({ watch = false } = {}) {
   const directory = path.join(ROOT, 'extensions/studio-workstation');
@@ -35,7 +36,7 @@ export async function buildExtension({ watch = false } = {}) {
       __STEAMHARNESS_STUDIO_RUNTIME_VERSIONS__: JSON.stringify({ coreVersion: harness.version, cliVersion: cli.version }) },
   };
   const options = [
-    { ...shared, entryPoints: ['src/extension-node.ts'], platform: 'node', target: 'node22', outfile: 'dist/extension.js' },
+    { ...shared, external: [...shared.external, ...optionalNativeExternals], entryPoints: ['src/extension-node.ts'], platform: 'node', target: 'node22', outfile: 'dist/extension.js' },
     { ...shared, platform: 'browser', target: 'es2022', outfile: 'dist/extension-web.js' },
   ];
   const worker = { absWorkingDir: directory, bundle: true, platform: 'node', target: 'node22' };

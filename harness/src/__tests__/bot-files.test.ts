@@ -194,7 +194,7 @@ test("Agent plan, read-only mode and host policies hide the matching Bot file mu
   }
 });
 
-test("a Bot file write with auto-approve off parks without creating a file", { timeout: 15_000 }, async t => {
+test("a Workspace Bot file write with auto-approve off parks without creating a file", { timeout: 15_000 }, async t => {
   const directory = await fixture(t), persistence = createLocalRuntimePersistence({ directory });
   t.after(() => persistence.close());
   const mock = fauxProvider({ models: [{ id: "file-approval", contextWindow: 100_000, maxTokens: 1000 }] });
@@ -208,7 +208,8 @@ test("a Bot file write with auto-approve off parks without creating a file", { t
   current.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, userInput: current.userInput,
     policies: { bot_files_write: { autoApprove: false } }, projectName: "bot", runId: "approval" });
   mock.setResponses([fauxAssistantMessage([fauxToolCall("bot_files_write", { path: `${artifacts}/report.md`, text: "pending" })], { stopReason: "toolUse" })]);
-  await assert.rejects(async () => bot.workflow.run({ errCode: 0, errMessage: "", prompt: "Write a report" }, current), /waiting for approval/);
+  await assert.rejects(async () => withUserSettings({ agent: { permissionPolicy: "workspace" } }, () =>
+    bot.workflow.run({ errCode: 0, errMessage: "", prompt: "Write a report" }, current)), /waiting for approval/);
   assert.equal(approvals.length, 1);
   assert.equal((await files.list(undefined, 0, 40)).exists, false);
 });
@@ -310,4 +311,20 @@ test("LLM Bot file tools are opt-in, respect read-only, and use the same host st
   const result = await runner.execute(fauxToolCall("bot_files_write", { path: file, text: "LLM artifact" }));
   assert.equal(result.result.isError, false);
   assert.equal((await persistence.botFiles!(current)!.read(file, 0)).text, "LLM artifact");
+});
+
+test("LLM Bot uses the host's automatic approval mode without enabling denied tools or rewriting settings", async () => {
+  const current = context({});
+  current.userInput = { getResolvedInput: async () => undefined, requestInput: async () => assert.fail("Unexpected approval prompt") };
+  const definitions = llmBotTools([{ name: "custom", autoApprove: false }, { name: "restricted", enabled: false }]);
+  current.toolPermissions = createProjectToolPermissionContext({ definitions, userInput: current.userInput, projectName: "bot", runId: "llm-auto" });
+  const runner = await withUserSettings({ agent: { permissionPolicy: "auto" } }, () => createLLMBotToolRunner(definitions, current,
+    scoped => ["custom", "restricted"].map(name => ({ name, label: name, description: name, parameters: { type: "object", properties: {} },
+      async execute() {
+        await scoped.toolPermissions!.requireToolApproval({ name });
+        return { content: [{ type: "text" as const, text: name }], details: {} };
+      } }))));
+  assert.equal((await runner.execute(fauxToolCall("custom", {}))).executed, true);
+  assert.equal((await runner.execute(fauxToolCall("restricted", {}))).executed, false);
+  assert.equal(current.toolPermissions.getTool("custom")?.autoApprove, false);
 });

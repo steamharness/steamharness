@@ -1,6 +1,7 @@
 import { parseWebAppBindings, type WebAppBinding } from "./web-app-preview";
 import path from 'node:path';
-import { parseUserSettings, type UserSettings, type PlatformConnections } from 'steamharness';
+import { parseUserSettings, type UserSettings, type PlatformConnections, type BotCredentialUseOperation } from 'steamharness';
+import * as core from 'steamharness';
 import type { WebConnection } from './runtime';
 import type { Project } from './workflow-types';
 
@@ -22,6 +23,8 @@ export interface WebHostConfiguration {
   backgroundBotCredentials?: true;
   localBotCredentialStructured?: true;
   localBotCredentialUse?: true;
+  botCredentialUseOperations?: readonly BotCredentialUseOperation[];
+  botCredentialScopedOperations?: readonly BotCredentialUseOperation[];
   localBotCredentialConversationApproval?: true;
   localBotCredentialPermissionPolicy?: true;
   workflowScheduleKey?: string;
@@ -101,14 +104,16 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
     throw new Error('A dedicated assistant project and its workspace are required.');
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
-  const folderBot = configuration.folderBot === undefined ? undefined : parseFolderBot(configuration.folderBot);
-  if (folderBot && configuration.surface !== 'editor') throw new Error('A local folder Bot requires the editor host.');
-  const backgroundBotCredentials = configuration.backgroundBotCredentials === true && configuration.surface === 'editor' && folderBot?.background !== false;
   if (assistant?.storageScope !== undefined && (assistant.storageScope !== 'managed-project'
     || assistant.standalone !== true || assistant.workdir !== assistantProjectDir || assistant.roots.length !== 1)) {
     throw new Error('Invalid managed project storage scope.');
   }
+  const folderBot = configuration.folderBot === undefined ? undefined : parseFolderBot(configuration.folderBot);
+  if (folderBot && configuration.surface !== 'editor') throw new Error('A local folder Bot requires the editor host.');
+  const backgroundBotCredentials = configuration.backgroundBotCredentials === true && configuration.surface === 'editor' && folderBot?.background !== false;
   const localBotCredentials = !backgroundBotCredentials && configuration.localBotCredentials === true && !folderBot?.background;
+  const credentialOperations = core.BOT_CREDENTIAL_HOST_USE_VERSION === 1 ? core.parseBotCredentialUseOperations(configuration.botCredentialUseOperations) : undefined;
+  const scopedOperations = core.BOT_CREDENTIAL_HOST_SCOPES_VERSION === 1 ? core.parseBotCredentialUseOperations(configuration.botCredentialScopedOperations) : undefined;
   const connections = parseHostAuthentication(configuration);
   return { ...(configuration.webApps === undefined ? {} : { webApps: parseWebAppBindings(configuration.webApps) }), surface: configuration.surface, assistant, assistantProjectDir,
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
@@ -119,6 +124,8 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
     ...(localBotCredentials || backgroundBotCredentials ? {
       ...(configuration.localBotCredentialStructured === true && { localBotCredentialStructured: true as const }),
       ...(configuration.localBotCredentialStructured === true && configuration.localBotCredentialUse === true && { localBotCredentialUse: true as const,
+        ...(credentialOperations?.length && { botCredentialUseOperations: credentialOperations }),
+        ...(scopedOperations?.length && { botCredentialScopedOperations: scopedOperations }),
         ...(configuration.localBotCredentialConversationApproval === true && { localBotCredentialConversationApproval: true as const }),
         ...(configuration.localBotCredentialPermissionPolicy === true && { localBotCredentialPermissionPolicy: true as const }) }) } : {}),
     ...(configuration.surface === 'editor' && !folderBot && typeof configuration.workflowScheduleKey === 'string' && /^[a-f0-9]{64}$/u.test(configuration.workflowScheduleKey)

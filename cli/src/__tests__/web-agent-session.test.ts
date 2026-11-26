@@ -181,6 +181,56 @@ it.each([
   await f.finish();
 });
 
+it.each(['auto', 'workspace'] as const)('lists vault metadata without prompting under %s', async permissionPolicy => {
+  const data = { credentials: [{ name: 'gitlab-fixture', kind: 'api-key' }], total: 1 };
+  const host = vi.fn<BotCredentialHost>(async () => ({ status: 'ok', data }));
+  const f = fixture(undefined, () => ({ agent: { permissionPolicy } }), host, host);
+  await f.start('placed', true);
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  const request: InputRequest = { requestId: 'fixture:vault', nodeName: 'bot-credential-use', title: 'Credentials', params: [],
+    credentialUse: { connector: 'host', operation: 'vault.list', args: {} },
+    metadata: { type: 'bot-credential-use', botRequestId: f.snapshot().turns[0].requestId, credentialUsePolicy: permissionPolicy } };
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  const answer = f.controller.current.messages[1];
+  expect(answer.pendingInput).toBeUndefined();
+  await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledWith(answer.runId, expect.objectContaining({ values: { status: 'ok', data } })));
+  await f.finish();
+});
+
+it('auto-approves a generic credential query and preserves safe failure details in the result card', async () => {
+  const denial = { status: 'denied', reason: 'http-error', httpStatus: 401 } as const;
+  const host = vi.fn<BotCredentialHost>(async () => denial);
+  const f = fixture(undefined, () => ({ agent: { permissionPolicy: 'auto' } }), host, host);
+  await f.start('placed', true);
+  f.runtime.resolveLiveInput = vi.fn(async (_run, resolved) => f.runs[0].emit({ type: 'user_input_resolved', ...resolved }));
+  const request: InputRequest = { requestId: 'fixture:https', nodeName: 'bot-credential-use', title: 'Credentials', params: [],
+    credentialUse: { name: 'gitlab-fixture', connector: 'host', operation: 'https.get-json', args: { url: 'https://git.example.test/api/v4/user' } },
+    metadata: { type: 'bot-credential-use', botRequestId: f.snapshot().turns[0].requestId, credentialUsePolicy: 'auto' } };
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  const answer = f.controller.current.messages[1];
+  expect(answer.pendingInput).toBeUndefined();
+  await vi.waitFor(() => expect(answer.resolvedInputs?.[0]?.resultCard).toMatchObject({ fields: expect.arrayContaining([{ label: 'HTTP status', value: 401 }]) }));
+  expect(host.mock.calls[0][1]).toMatchObject({ action: 'use', approval: { mode: 'auto' } });
+  expect(answer.resolvedInputs?.[0]?.values).toEqual(denial);
+  await f.finish();
+});
+
+it('settles an ineligible automatic credential use without offering an approval card', async () => {
+  const host = vi.fn<BotCredentialHost>(async () => 'approval-required');
+  const f = fixture(undefined, () => ({ agent: { permissionPolicy: 'auto' } }), host, host);
+  await f.start('placed', true);
+  f.runtime.resolveLiveInput = vi.fn(async (_run, resolved) => f.runs[0].emit({ type: 'user_input_resolved', ...resolved }));
+  const request: InputRequest = { requestId: 'fixture:interactive', nodeName: 'bot-credential-use', title: 'Credentials', params: [],
+    credentialUse: { name: 'fixture-token', connector: 'host', operation: 'fixture.interactive', args: {} },
+    metadata: { type: 'bot-credential-use', botRequestId: f.snapshot().turns[0].requestId, credentialUsePolicy: 'auto' } };
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  const answer = f.controller.current.messages[1];
+  await vi.waitFor(() => expect(answer.resolvedInputs?.[0]?.values).toEqual({ status: 'denied', reason: 'blocked-policy' }));
+  expect(answer.pendingInput).toBeUndefined();
+  expect(host).toHaveBeenCalledOnce();
+  await f.finish();
+});
+
 it('retires a stale credential card on a completed durable turn reopened from history', async () => {
   const f = fixture(); await f.start(); const initial = f.snapshot();
   const turn: AgentSessionTurn = { ...initial.turns[0], requestId: 'saved-follow-up', mode: 'followUp', entryId: 3, answerId: 4 };

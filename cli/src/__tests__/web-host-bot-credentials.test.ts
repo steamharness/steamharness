@@ -30,6 +30,8 @@ it.each([false, true])('carries sequential credential requests over real host st
   const use = { connector: 'alibaba-cloud-dns', name: slot.name, operation: 'list-domains', page: 1,
     fields: { accessKeyId: 'account', accessKeySecret: 'token' } };
   const result = { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.test' }] };
+  const hostUse = { name: 'second-fixture', connector: 'host', operation: 'fixture.read', args: { endpoint: 'example.test' } };
+  const hostResult = { status: 'ok', data: { username: 'fixture-user' } };
   let shutdown: (() => Promise<void>) | undefined;
   try {
     await mkdir(path.join(directory, 'node_modules'), { recursive: true });
@@ -40,7 +42,7 @@ it.each([false, true])('carries sequential credential requests over real host st
       entries: [{ entryId, name: 'Fixture', root: '.', entry: 'index.ts', type: 'bot', folderContext: true }] }));
     await writeFile(path.join(directory, 'index.ts'), `
       import * as steamharness from 'steamharness';
-      import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from ${JSON.stringify(pathToFileURL(path.join(core, 'node_modules/@earendil-works/pi-ai/dist/index.js')).href)};
+      import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall, getCurrentTools } from ${JSON.stringify(pathToFileURL(path.join(core, 'node_modules/@earendil-works/pi-ai/dist/index.js')).href)};
       const fixture = fauxProvider({ models: [{ id: 'fixture', contextWindow: 20000, maxTokens: 600 }] });
       const models = createModels(); models.setProvider(fixture.provider);
       const makeCall = (tool, args) => fauxAssistantMessage([fauxToolCall(tool, args)], { stopReason: 'toolUse' });
@@ -49,8 +51,13 @@ it.each([false, true])('carries sequential credential requests over real host st
         () => makeCall('bot_credentials_request', { name: 'second-fixture', kind: 'api-key' }),
         () => makeCall('bot_credentials_use', ${JSON.stringify(use)}),
         request => {
+          const tool = getCurrentTools(request.messages).find(tool => tool.name === 'bot_credentials_use');
+          if (!JSON.stringify(tool).includes('fixture.read')) throw Error('The host operation was not advertised to the model');
+          return makeCall('bot_credentials_use', ${JSON.stringify(hostUse)});
+        },
+        request => {
           const results = request.messages.filter(message => message.role === 'toolResult').map(message => JSON.parse(message.content[0].text));
-          return fauxAssistantMessage(results.map(receipt => receipt.status).join('/') + ' ' + results.at(-1)?.rows?.[0]?.domain);
+          return fauxAssistantMessage(results.map(receipt => receipt.status).join('/') + ' ' + results.at(-2)?.rows?.[0]?.domain + ' ' + results.at(-1)?.data?.username);
         },
       ]);
       export default steamharness.defineBot({ engine: 'agent', memory: { enabled: false }, agent: { models, resolvedModel: models.getModel('faux','fixture'), tools: [],
@@ -78,6 +85,7 @@ it.each([false, true])('carries sequential credential requests over real host st
       return replies.find(match)!;
     };
     send({ type: 'configure', surface: 'editor', backgroundBotCredentials: true, localBotCredentialStructured: true, localBotCredentialUse: true,
+      botCredentialUseOperations: [{ id: hostUse.operation, description: 'Read the fixture endpoint. Pass endpoint in args.' }],
       userSettings: { agent: { permissionPolicy: 'workspace' } }, ...(folder && { folderBot: { id: randomUUID(), projectId, directory: workspace, background: true, permissionCeiling: 'workspace' } }) });
     expect(await read(reply => reply.type === 'ready')).toMatchObject({ botCredentialProtocolVersion: 1 });
     const conversationId = randomUUID(), requestId = randomUUID();
@@ -91,30 +99,32 @@ it.each([false, true])('carries sequential credential requests over real host st
     expect(await turn('turn')).toMatchObject({ status: 'missing', credentialMode: 'capture-and-use', backgroundCredentialProtocolVersion: 1 });
     await turn('submit', { text: 'Use the fixture credential flow', allowBotCredentials: true });
     let previous: string | undefined;
-    for (const [index, action] of ['capture', 'capture', 'use'].entries()) {
+    const prompts = () => replies.filter(reply => reply.type === 'bot-credential-request');
+    for (const [index, action] of ['capture', 'capture', 'use', 'use'].entries()) {
       let pendingId: string | undefined;
       await expect.poll(async () => {
         pendingId = (await turn('turn')).pending?.id;
         return !!pendingId && pendingId !== previous;
       }, { timeout: 10_000 }).toBe(true);
       previous = pendingId;
+      let offset = prompts().length;
       await turn('credential', { pendingId, allowBotCredentials: true });
-      const prompts = () => replies.filter(reply => reply.type === 'bot-credential-request');
       if (action === 'use') {
-        await expect.poll(() => prompts().length).toBe(3);
-        expect(prompts()[2]).toMatchObject({ action, approval: { mode: 'reuse' } });
-        send({ type: 'bot-credential-result', id: prompts()[2].id, status: 'approval-required' });
+        await expect.poll(() => prompts().length).toBe(offset + 1);
+        expect(prompts()[offset]).toMatchObject({ action, approval: { mode: 'reuse' } });
+        send({ type: 'bot-credential-result', id: prompts()[offset].id, status: 'approval-required' });
+        offset++;
       }
-      const offset = index + (action === 'use' ? 1 : 0);
       await expect.poll(() => prompts().length).toBe(offset + 1);
       const prompt = prompts()[offset];
       expect(prompt).toMatchObject({ action, turn: { conversationId, requestId }, ...(action === 'use' && { approval: { mode: 'prompt' } }) });
+      if (index === 3) expect(prompt).toMatchObject({ use: hostUse });
       expect((await turn('turn')).pending?.id).toBe(pendingId);
       send({ type: 'bot-credential-result', id: prompt.id, status: 'saved', value: canary });
-      send({ type: 'bot-credential-result', id: prompt.id, ...(action === 'use' ? { result } : { status: 'saved' }) });
+      send({ type: 'bot-credential-result', id: prompt.id, ...(action === 'use' ? { result: index === 2 ? result : hostResult } : { status: 'saved' }) });
     }
     await expect.poll(async () => (await turn('turn')).status, { timeout: 10_000 }).toBe('success');
-    expect((await turn('turn')).items?.map(item => item.content).join(' ')).toContain('saved/saved/ok example.test');
+    expect((await turn('turn')).items?.map(item => item.content).join(' ')).toContain('saved/saved/ok/ok example.test fixture-user');
     await shutdown(); shutdown = undefined;
     expect(stdout.includes(canary) || stderr.includes(canary)).toBe(false);
     await checkFiles(dataDir, canary);

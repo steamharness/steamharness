@@ -770,7 +770,7 @@ function createLocalUserInputContext(options: {
   return nextContext;
 }
 
-function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "emitUserInputRequested" | "emitUserInputResolved">): Pick<UserInputContext, "waitForInput" | "waitForCredential" | "waitForCredentialUse" | "credentialKinds"> {
+function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "emitUserInputRequested" | "emitUserInputResolved">): Pick<UserInputContext, "waitForInput" | "waitForCredential" | "waitForCredentialUse" | "credentialKinds" | "credentialUseOperations"> {
   const credentialKinds: readonly BotCredentialKind[] = input.credentialKinds ?? LEGACY_BOT_CREDENTIAL_KINDS;
   return { ...(input.waitForInput && { async waitForInput(request, signal) {
     signal?.throwIfAborted();
@@ -793,11 +793,17 @@ function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "em
     if (!isBotCredentialStatus(status)) throw new Error("Invalid Bot credential receipt.");
     await events.emitUserInputResolved({ requestId: safeRequest.requestId, nodeName: safeRequest.nodeName, request: safeRequest, values: { status }, submittedAt: new Date() });
     return status;
-  } }), ...(input.waitForCredentialUse && { async waitForCredentialUse(request, signal) {
+  } }), ...(input.waitForCredentialUse && { credentialUseOperations: input.credentialUseOperations, async waitForCredentialUse(request, signal) {
     signal?.throwIfAborted();
     const userPolicy = getUserSettings().agent.permissionPolicy;
     if (userPolicy === "read-only") throw new HarnessError({ type: "tool_permission_denied", message: "Read-only mode does not allow credential queries." });
     const credentialUse = parseBotCredentialUse(request.credentialUse);
+    if (credentialUse.connector === "host") {
+      const operation = input.credentialUseOperations?.find(operation => operation.id === credentialUse.operation);
+      if (!operation || operation.requiresTool && readBotCredentialUsePolicy(request) === undefined) {
+        throw new HarnessError({ type: "input_validation", message: "This credential operation is not supported in the current run." });
+      }
+    }
     const title = "Use a saved Bot credential";
     const credentialUsePolicy = userPolicy === "auto" && readBotCredentialUsePolicy(request) === "auto" ? "auto" : "workspace";
     const safeRequest = { requestId: request.requestId, nodeName: "bot-credential-use", title, createdAt: request.createdAt, params: [], credentialUse,
@@ -809,7 +815,8 @@ function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "em
     signal?.throwIfAborted();
     const result = parseBotCredentialUseResult(value, credentialUse);
     if (!result) throw new Error("Invalid Bot credential use receipt.");
-    await events.emitUserInputResolved({ requestId: safeRequest.requestId, nodeName: safeRequest.nodeName, request: safeRequest, values: { status: result.status }, submittedAt: new Date() });
+    await events.emitUserInputResolved({ requestId: safeRequest.requestId, nodeName: safeRequest.nodeName, request: safeRequest,
+      values: result.status === "ok" ? { status: result.status } : result, submittedAt: new Date() });
     return result;
   } }) };
 }

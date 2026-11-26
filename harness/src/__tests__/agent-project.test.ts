@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
 import { Harness, createRegistry } from "@earendil-works/pi-durable";
-import { createModels } from "@earendil-works/pi-ai";
+import { createModels, type Message } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createCoreBotProject, createAgentProjectInput, } from "../agent/project";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
@@ -27,16 +27,17 @@ import { createProjectToolPermissionContext } from "../tool-permissions/index";
 import { readAgentToolDefinitions } from "../agent/permission";
 import { createDisabledProjectTokenUsageContext } from "../token-usage/index";
 import type { RunContext } from "../types/index";
+import { withUserSettings } from "../user-settings";
 
 /**
  * A project built from one factory call is what every builtin will ship, so the
  * shape it produces is a contract: if the executor loses its conversation
  * wiring or its params, a builtin silently loses a feature.
  */
-async function createFauxModel() {
+async function createFauxModel(contextWindow = 1_000) {
   const ai = await import("@earendil-works/pi-ai");
   const faux = ai.fauxProvider({
-    models: [{ id: "faux-1", name: "Faux", reasoning: true, contextWindow: 1_000, maxTokens: 100 }],
+    models: [{ id: "faux-1", name: "Faux", reasoning: true, contextWindow, maxTokens: 100 }],
   });
   const models = ai.createModels();
   models.setProvider(faux.provider);
@@ -440,6 +441,7 @@ test("a plan turn pauses for approval and runs the tool once approved", async ()
   await withTempDir(async (workdir) => {
     const executor = createEmbeddedBotExecutor({
       projectName: "pi",
+      permissionPolicy: "workspace",
       models,
       resolvedModel: model,
       createTools: () => [{
@@ -602,6 +604,7 @@ test("a resource that will not release does not decide the run", async () => {
   await withTempDir(async (workdir) => {
     const executor = createEmbeddedBotExecutor({
       projectName: "pi",
+      permissionPolicy: "workspace",
       models,
       resolvedModel: model,
       createTools: () => ({
@@ -1433,6 +1436,59 @@ test("a tool call and its result are still there on the next turn", async () => 
   assert.match(requests[0]?.[1] ?? "", /<toolCall:ls>/);
 });
 
+test("credential management guidance corrects old advice even when credential tools are unavailable", async () => {
+  const { ai, faux, models, model } = await createFauxModel(100_000);
+  const slot = { name: "service-password", kind: "password" };
+  const oldAdvice = "You can view the saved password in Credential management.";
+  const requests: Message[][] = [];
+  faux.setResponses([
+    request => {
+      requests.push(request.messages);
+      return ai.fauxAssistantMessage([ai.fauxToolCall("bot_credentials_request", slot)], { stopReason: "toolUse" });
+    },
+    request => { requests.push(request.messages); return ai.fauxAssistantMessage(oldAdvice); },
+    request => { requests.push(request.messages); return ai.fauxAssistantMessage("Understood."); },
+  ]);
+
+  await withTempDir(async workdir => {
+    const turn = () => createEmbeddedBotExecutor({ models, resolvedModel: model });
+    const first = turn();
+    const context = createContext("credential-management-guidance");
+    context.toolPermissions = createProjectToolPermissionContext({ definitions: first.tools, projectName: "pi", runId: "credential-management-guidance" });
+    context.userInput = {
+      getResolvedInput: () => undefined,
+      requestInput: () => assert.fail("Credential capture must not ask for ordinary input"),
+      waitForCredential: async request => { assert.deepEqual(request.credential, slot); return "saved"; },
+      waitForCredentialUse: async () => assert.fail("This turn does not need a credential query"),
+    };
+    const input = { errCode: 0, errMessage: "", workdir };
+    const saved = await withUserSettings({ agent: { permissionPolicy: "workspace" } }, () =>
+      first.workflow.run({ ...input, prompt: "Save the service password." }, context));
+    assert.equal(saved.errCode, 0);
+    const resumed = await withUserSettings({ agent: { permissionPolicy: "read-only" } }, () =>
+      turn().workflow.run({ ...input, prompt: "I do not see an option to view it. Can I recover the password?" }, context));
+    assert.equal(resumed.errCode, 0);
+  });
+
+  assert.equal(requests.length, 3);
+  const [capture, receipt, reopened] = requests;
+  assert.ok(capture && receipt && reopened);
+  assert.match(ai.getCurrentSystemPrompt(capture), /Credential management lists only aliases and types/);
+  assert.match(ai.getCurrentSystemPrompt(capture), /To save a credential, use bot_credentials_request/);
+  assert.ok(ai.getCurrentTools(capture).some(tool => tool.name === "bot_credentials_request"));
+  const result = receipt.find(message => message.role === "toolResult");
+  assert.deepEqual(JSON.parse(readRequestText(result?.content)), { ...slot, status: "saved" });
+
+  assert.ok(readRequestLines(reopened).includes(`assistant:${oldAdvice}`));
+  const guidance = ai.getCurrentSystemPrompt(reopened);
+  assert.match(guidance, /Credential management lists only aliases and types/);
+  assert.match(guidance, /cannot reveal, copy, export, or recover saved secret values/);
+  assert.match(guidance, /Correct any earlier reply that suggested otherwise/);
+  assert.match(guidance, /resetting or reissuing it at the source/);
+  assert.deepEqual(ai.getCurrentTools(reopened).filter(tool => tool.name.startsWith("bot_credentials_")).map(tool => tool.name), []);
+  assert.equal(/use bot_credentials_request|Use bot_credentials_use/.test(guidance), false, "unavailable tools should not be recommended");
+});
+
 test("a cancelled turn leaves the conversation where it was", async () => {
   const { ai, faux, models, model } = await createFauxModel();
   const requests: string[][] = [];
@@ -1641,6 +1697,7 @@ test("a plan pause is remembered by the turn that resumes it", async () => {
     const turn = () => createEmbeddedBotExecutor({
       projectName: "pi",
       outputItemId: "agent-answer",
+      permissionPolicy: "workspace",
       models,
       resolvedModel: model,
     });
@@ -1773,6 +1830,7 @@ test("a pause for approval leaves a transcript that can be sent", async () => {
     const turn = () => createEmbeddedBotExecutor({
       projectName: "pi",
       outputItemId: "agent-answer",
+      permissionPolicy: "workspace",
       models,
       resolvedModel: model,
       createTools: () => [{

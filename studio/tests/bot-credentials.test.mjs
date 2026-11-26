@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { setImmediate as tick, setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { build } from 'esbuild';
+import { buildStudioNode as build } from '../scripts/node-extension-build.mjs';
 
 const source = new URL('../extensions/studio-workstation/src/bot-credential-vault.ts', import.meta.url);
 const { outputFiles } = await build({ entryPoints: [fileURLToPath(source)], bundle: true, format: 'esm', platform: 'node', write: false });
-const { botCredentialNamespace, createBotCredentialVault, parseBotCredentialAction, parseStructuredCredential, readPickedSshKey } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+const { botCredentialNamespace, resolveBotCredentialNamespaces, createBotCredentialVault, parseBotCredentialAction, parseStructuredCredential, readPickedSshKey } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 
 function memoryStore(values) {
   return { async keys() { return [...values.keys()]; }, async get(key) { return values.get(key); }, async store(key, value) { values.set(key, value); }, async delete(key) { values.delete(key); } };
@@ -41,6 +41,44 @@ test('the native store isolates entries, projects, assistants, and folder Bot in
   assert.deepEqual([...values.values()], ['fixture-rotated']);
   protectedStorage = true;
   await vault().remove(slot); assert.equal(values.size, 0);
+});
+
+test('managed Assistant release upgrades keep old aliases without merging workspace or instance scopes', async t => {
+  const profile = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-assistant-credentials-')));
+  t.after(() => rm(profile, { recursive: true, force: true }));
+  const projectId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
+  const managed = path.join(profile, 'workflow', 'builtin-apps');
+  const old = path.join(managed, '1'.repeat(24), 'project'), next = path.join(managed, '2'.repeat(24), 'project');
+  const lookalike = path.join(managed, '3'.repeat(24), 'project'), external = path.join(profile, 'external-assistant');
+  const workspaces = [path.join(profile, 'workspace-a'), path.join(profile, 'workspace-b')];
+  for (const directory of [old, next, lookalike, external, ...workspaces]) await mkdir(directory, { recursive: true });
+  for (const directory of [old, next, external]) await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id: projectId }));
+  await writeFile(path.join(lookalike, 'steamharness.json'), JSON.stringify({ id: randomUUID() }));
+  const values = new Map(), store = memoryStore(values), allow = async () => true;
+  const slot = { name: 'gitlab-fixture', kind: 'api-key' };
+  const legacy = (directory, workdir) => botCredentialNamespace(profile, projectId, 'main', directory, undefined, workdir);
+  await createBotCredentialVault(store, profile, legacy(old, old), allow).write(slot, 'fixture-only-token', false);
+  await createBotCredentialVault(store, profile, legacy(lookalike, lookalike), allow).write({ ...slot, name: 'other-project' }, 'fixture-other', false);
+  await createBotCredentialVault(store, profile, legacy(old, workspaces[0]), allow).write({ ...slot, name: 'workspace-only' }, 'fixture-workspace', false);
+  const scope = { projectId, entryId: 'main', projectDirectory: next, workdir: next };
+  const namespaces = await resolveBotCredentialNamespaces(profile, scope);
+  assert.equal(namespaces[0], (await resolveBotCredentialNamespaces(profile, { ...scope, projectDirectory: old, workdir: old }))[0]);
+  const vault = createBotCredentialVault(store, profile, namespaces, allow);
+  const listOnly = createBotCredentialVault({ ...store, get: () => assert.fail('Listing must not read any value') }, profile, namespaces, allow);
+  assert.deepEqual(await listOnly.list(), [slot]);
+  assert.equal(await vault.readForUse(slot, new AbortController().signal), 'fixture-only-token');
+  assert.equal(await vault.write(slot, 'not-an-overwrite', false), 'existing');
+  for (const other of [{ ...scope, entryId: 'other' }, { ...scope, instanceId: 'copy' },
+    { ...scope, workdir: workspaces[1] }, { ...scope, projectDirectory: external, workdir: external }]) {
+    assert.deepEqual(await createBotCredentialVault(store, profile, await resolveBotCredentialNamespaces(profile, other), allow).list(), []);
+  }
+  assert.deepEqual(await createBotCredentialVault(store, profile,
+    await resolveBotCredentialNamespaces(profile, { ...scope, workdir: workspaces[0] }), allow).list(), [{ ...slot, name: 'workspace-only' }]);
+  assert.equal(await vault.write(slot, 'fixture-rotation', true), 'saved');
+  assert.equal(values.has(`${legacy(old, old)}api-key:${slot.name}`), false);
+  assert.equal(await vault.readForUse(slot, new AbortController().signal), 'fixture-rotation');
+  await vault.remove(slot);
+  assert.deepEqual(await vault.list(), []);
 });
 
 test('concurrent vault writes wait without overwriting; a cancelled waiter never edits storage', async t => {
@@ -178,7 +216,7 @@ test('native credential prompts reset validation on clear, require valid input o
   t.after(() => rm(root, { recursive: true, force: true }));
   const native = new URL('../extensions/studio-workstation/src/bot-credentials.ts', import.meta.url);
   const { outputFiles } = await build({ entryPoints: [fileURLToPath(native)], bundle: true, format: 'esm', platform: 'node', write: false,
-    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(process.cwd() + '/package.json');" },
+    banner: { js: "import { createRequire } from 'node:module'; const __dirname = process.cwd(); const require = createRequire(__dirname + '/package.json');" },
     plugins: [{ name: 'credentials-vscode', setup(build) {
       build.onResolve({ filter: /^vscode$/ }, () => ({ path: 'vscode', namespace: 'fixture' }));
       build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `
@@ -194,7 +232,7 @@ test('native credential prompts reset validation on clear, require valid input o
     } }] });
   const values = new Map(), prompts = [], warnings = [];
   let typed, onShow, approve = true, policy = 'workspace';
-  const approvals = [], calls = [];
+  const approvals = [], calls = [], httpCalls = [];
   globalThis.botCredentialTest = { policy: () => policy, createInputBox: () => fixtureInputBox(input => {
     prompts.push(input);
     if (onShow) onShow(input);
@@ -211,7 +249,15 @@ test('native credential prompts reset validation on clear, require valid input o
   const store = memoryStore(values);
   let reads = 0;
   const interaction = createBotCredentialInteraction({ globalStorageUri: { fsPath: root }, secrets: { ...store, get: key => { reads++; return store.get(key); } } },
-    async (use, fields) => { calls.push({ use, fields }); return { status: 'ok', page: use.page, total: 1, rows: [{ domain: 'example.com' }] }; });
+    async (use, fields) => {
+      calls.push({ use, fields });
+      const rows = use.operation === 'list-domains' ? [{ domain: 'example.com' }] : [{ name: '@', type: 'A', value: '192.0.2.1', ttl: 300 }];
+      return { status: 'ok', page: use.page, total: rows.length, rows };
+    },
+    { https: async (use, credential) => {
+      httpCalls.push({ use, credential });
+      return { status: 'ok', data: use.url.endsWith('/echo') ? { echoed: credential } : { httpStatus: 200, body: { account: 'fixture-account' } } };
+    }, ssh: () => assert.fail('Unexpected SSH use') });
   const capture = (slot, signal = new AbortController().signal) => interaction({ folderPath: root, id: 'fixture-project' }, 'main', 'Fixture Bot', { action: 'capture', slot }, signal);
   async function openCapture(slot, signal) {
     const shown = Promise.withResolvers();
@@ -351,4 +397,69 @@ test('native credential prompts reset validation on clear, require valid input o
   assert.equal((await legacy(legacyUse)).status, 'ok');
   assert.equal((await legacy({ ...legacyUse, fields: { ...legacyUse.fields, securityToken: 'sessionToken' } })).status, 'missing');
   assert.equal(values.has(`${prefix}structured:old-dns`), false);
+
+  const hosting = new AbortController();
+  const token = 'fixture-only-git-token';
+  values.set(`${prefix}api-key:existing-token`, token);
+  const hostRequest = { connector: 'host', operation: 'https.get-json', name: 'existing-token', args: {
+    url: 'https://git.example.test/api/v4/user', auth: { kind: 'api-key', scheme: 'header', header: 'PRIVATE-TOKEN' },
+  } };
+  const callHost = (mode, overrides = {}) => ask(mode, { lifetime: hosting.signal, operation: hostRequest, ...overrides });
+  const originalReads = reads;
+  const listUse = { connector: 'host', operation: 'vault.list', args: { query: 'existing' } };
+  const listAction = parseBotCredentialAction({ type: 'bot-credential-request', action: 'use', use: listUse });
+  const list = target => interaction(target, 'main', 'Fixture Bot', listAction, hosting.signal, hosting.signal);
+  const beforeList = approvals.length;
+  assert.deepEqual(await list(project), { status: 'ok', data: { credentials: [{ name: 'existing-token', kind: 'api-key' }], total: 1 } });
+  assert.deepEqual(await list({ ...project, folderBot: { id: 'another-instance', directory: root } }), { status: 'ok', data: { credentials: [], total: 0 } });
+  assert.equal(reads, originalReads);
+  assert.equal(approvals.length, beforeList);
+  assert.equal(await callHost('reuse'), 'approval-required');
+  policy = 'read-only';
+  assert.deepEqual(await callHost('prompt'), { status: 'failed', reason: 'blocked-policy' });
+  assert.deepEqual(await list(project), { status: 'failed', reason: 'blocked-policy' });
+  assert.equal(reads, originalReads);
+  policy = 'workspace';
+  approve = false;
+  assert.deepEqual(await callHost('prompt'), { status: 'declined' });
+  assert.equal(reads, originalReads);
+  approve = 'conversation';
+  const response = { status: 'ok', data: { httpStatus: 200, body: { account: 'fixture-account' } } };
+  policy = 'auto';
+  const beforeAuto = approvals.length;
+  assert.deepEqual(await callHost('auto'), response);
+  assert.equal(approvals.length, beforeAuto, 'eligible HTTPS operations honor Auto Approve');
+  policy = 'workspace';
+  assert.deepEqual(await callHost('prompt'), response);
+  const selected = approvals.at(-1).items[1];
+  assert.equal(selected.description, hostRequest.args.url);
+  assert.match(selected.detail, /header=private-token/);
+  assert.doesNotMatch(JSON.stringify(selected), new RegExp(token));
+  assert.equal(httpCalls[0].credential, token);
+  assert.deepEqual(await callHost('reuse'), response);
+  const afterUse = reads;
+  assert.equal(await callHost('reuse', { operation: { ...hostRequest, args: { ...hostRequest.args, url: 'https://unapproved.example.test/api/v4/user' } } }), 'approval-required');
+  assert.equal(await callHost('reuse', { operation: { ...hostRequest, args: { ...hostRequest.args, url: 'https://git.example.test/api/v4/projects' } } }), 'approval-required');
+  assert.equal(await callHost('reuse', { operation: { ...hostRequest, args: { ...hostRequest.args, auth: { kind: 'api-key', scheme: 'bearer' } } } }), 'approval-required');
+  assert.equal(await callHost('reuse', { target: { ...project, folderBot: { id: 'another-instance', directory: root } } }), 'approval-required');
+  assert.deepEqual(await callHost('prompt', { operation: { ...hostRequest, operation: 'fixture.unregistered' } }), { status: 'failed', reason: 'invalid-operation' });
+  assert.equal(reads, afterUse);
+  values.set(`${prefix}api-key:existing-token`, 'fixture-rotated-git-token');
+  assert.equal(await callHost('reuse'), 'approval-required');
+  approve = true;
+  assert.deepEqual(await callHost('prompt', { operation: { ...hostRequest, args: { ...hostRequest.args, url: 'https://git.example.test/echo' } } }), { status: 'failed', reason: 'unsafe-response' });
+  assert.equal(httpCalls.length, 4);
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    const command = { connector: 'host', name: 'existing-token', operation: 'command.run',
+      args: { kind: 'api-key', program: process.execPath, argv: ['-e', 'process.stdout.write("ok")'] } };
+    policy = 'auto';
+    const beforeCommand = reads;
+    const beforeCommandPrompt = approvals.length;
+    assert.deepEqual(await callHost('auto', { operation: command }), { status: 'denied', reason: 'blocked-policy' });
+    assert.equal(reads, beforeCommand, 'Auto Approve does not deliver a credential to an arbitrary process');
+    assert.equal(approvals.length, beforeCommandPrompt, 'a blocked automatic operation does not prompt');
+    policy = 'workspace';
+    assert.deepEqual(await callHost('prompt', { operation: command }), { status: 'ok', data: { exitCode: 0, stdout: 'ok', stderr: '' } });
+    assert.deepEqual(approvals.at(-1).items.map(item => item.label), ['Allow once']);
+  }
 });
