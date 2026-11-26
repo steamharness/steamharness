@@ -1,0 +1,438 @@
+diff --git a/src/vs/workbench/browser/media/studioProjectDetails.css b/src/vs/workbench/browser/media/studioProjectDetails.css
+index 5d8e2227b19e77ea74baf16460dc828c09dcefb4..00c1403dcbeebd2bf8b778a459650d137a516639 100644
+--- a/src/vs/workbench/browser/media/studioProjectDetails.css
++++ b/src/vs/workbench/browser/media/studioProjectDetails.css
+@@ -3,31 +3,8 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-.lp-project-details, .lp-detail-entries {
+-	--detail-fg: var(--vscode-foreground);
+-	--detail-muted: var(--vscode-descriptionForeground);
+-	--detail-line: var(--vscode-contrastBorder,var(--vscode-panel-border,color-mix(in srgb,var(--detail-fg) 15%,transparent)));
+-	color: var(--detail-fg); font: 13px/1.45 var(--vscode-font-family,system-ui); letter-spacing: 0; user-select: text;
+-}
+-.lp-project-details { max-width: 880px; margin-inline: auto; }
+-.lp-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 4px 21px; border-bottom: 1px solid var(--detail-line); }
+-.lp-detail-project { display: flex; align-items: center; gap: 14px; flex: 1 1 254px; min-width: 0; }
+-.lp-detail-mark { display: grid; place-items: center; flex: none; width: 52px; height: 52px; background: var(--vscode-sideBar-background,var(--vscode-editor-background)); border-radius: 6px; }
+-.lp-detail-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
+-.lp-detail-mark .codicon { font-size: 28px; }
+-.lp-detail-identity { min-width: 0; overflow-wrap: anywhere; }
+-.lp-project-details .lp-section-kicker { color: var(--detail-muted); font-size: 12px; }
+-.lp-project-details h1 { margin: 0; color: var(--vscode-editor-foreground,var(--detail-fg)); font-size: 24px; line-height: 1.22; font-weight: 600; }
+-.monaco-workbench .lp-project-details h1[tabindex="-1"]:focus { outline: none; }
+-.lp-detail-actions {
+-	--detail-action-size: 32px;
+-	display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; max-width: 100%; margin-inline-start: auto;
+-}
+-.lp-project-details .lp-detail-description { margin: 16px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+-.lp-detail-facts { margin: 16px 0 22px; }
+-.lp-detail-facts > div { display: grid; grid-template-columns: minmax(90px,22%) minmax(0,1fr); gap: 12px; padding-block: 6px; }
+-.lp-detail-facts dt, .lp-detail-entries small { color: var(--detail-muted); }
+-.lp-detail-facts dd { margin: 0; overflow-wrap: anywhere; }
++.monaco-workbench .lp-project-details .lp-detail-title[tabindex="-1"]:focus { outline: none; }
++.lp-detail-actions { --detail-action-size: 32px; }
+ .lp-detail-secondary { display: grid; gap: 8px; border-top: 1px solid var(--detail-line); padding-block: 12px; }
+ .lp-detail-secondary[hidden], .lp-detail-action-group[hidden] { display: none; }
+ .lp-detail-action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+@@ -69,13 +46,6 @@
+ .lp-usage-entries { list-style: none; margin: 4px 0; padding: 0; }
+ .lp-usage-entries li { display: grid; gap: 3px; padding: 6px; border-bottom: 1px solid var(--detail-line); }
+ .lp-usage-entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 9px; }
+-.lp-detail-entries { border-top: 1px solid var(--detail-line); padding-top: 18px; }
+-.lp-detail-entries h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
+-.lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
+-.lp-detail-entries li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; padding: 8px 0; border-bottom: 1px solid var(--detail-line); }
+-.lp-entry-identity { display: flex; align-items: baseline; gap: 4px 7px; flex-wrap: wrap; flex: 1 1 90px; min-width: 0; overflow-wrap: anywhere; }
+-.lp-detail-entries strong { min-width: 0; font-weight: 500; }
+-.lp-detail-entries li > img { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
+ .lp-project-details .studio-project-action {
+ 	display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent;
+ 	background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; user-select: text;
+diff --git a/src/vs/workbench/browser/media/studioProjectDetailsView.css b/src/vs/workbench/browser/media/studioProjectDetailsView.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..0b87093a7a30ce9be03111b410330205ad7dc061
+--- /dev/null
++++ b/src/vs/workbench/browser/media/studioProjectDetailsView.css
+@@ -0,0 +1,42 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++/* Generated from shared/project-info/details.css. Run node studio/scripts/sync-project-details.mjs --write to update. */
++
++.lp-project-details, .lp-detail-entries {
++	--detail-fg: var(--vscode-foreground,var(--vscode-editor-foreground));
++	--detail-muted: var(--vscode-descriptionForeground,var(--detail-fg));
++	--detail-line: var(--vscode-contrastBorder,var(--vscode-panel-border,color-mix(in srgb,var(--detail-fg) 15%,transparent)));
++	color: var(--detail-fg); font: 13px/1.45 var(--vscode-font-family,system-ui); letter-spacing: 0; user-select: text;
++}
++.lp-project-details { max-width: 880px; margin-inline: auto; }
++.lp-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 4px 21px; border-bottom: 1px solid var(--detail-line); }
++.lp-detail-project { display: flex; align-items: center; gap: 14px; flex: 1 1 254px; min-width: 0; }
++.lp-detail-mark { display: grid; place-items: center; flex: none; width: 52px; height: 52px; background: var(--vscode-sideBar-background,var(--vscode-editor-background)); border-radius: 6px; }
++.lp-detail-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
++.lp-detail-mark .codicon { font-size: 28px; }
++.lp-detail-identity { min-width: 0; overflow-wrap: anywhere; }
++.lp-project-details .lp-section-kicker { color: var(--detail-muted); font-size: 12px; }
++.lp-project-details .lp-detail-title { margin: 0; color: var(--vscode-editor-foreground,var(--detail-fg)); font-size: 24px; line-height: 1.22; font-weight: 600; }
++.lp-detail-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; max-width: 100%; margin-inline-start: auto; }
++.lp-project-details .lp-detail-description { margin: 16px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
++.lp-detail-facts { margin: 16px 0 22px; }
++.lp-detail-facts > div { display: grid; grid-template-columns: minmax(90px,22%) minmax(0,1fr); gap: 12px; padding-block: 6px; }
++.lp-detail-facts dt, .lp-detail-entries small { color: var(--detail-muted); }
++.lp-detail-facts dt, .lp-detail-facts dd { overflow-wrap: anywhere; }
++.lp-detail-facts dd { margin: 0; white-space: pre-wrap; }
++.lp-detail-entries { border-top: 1px solid var(--detail-line); padding-top: 18px; }
++.lp-detail-entries .lp-entry-title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
++.lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
++.lp-detail-entries li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; padding: 8px 0; border-bottom: 1px solid var(--detail-line); }
++.lp-entry-identity { display: flex; align-items: baseline; gap: 4px 7px; flex-wrap: wrap; flex: 1 1 90px; min-width: 0; overflow-wrap: anywhere; }
++.lp-detail-entries strong { min-width: 0; font-weight: 500; }
++.lp-detail-entries li > img { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
++.lp-detail-disclosure { padding-block: 8px; }
++.lp-detail-disclosure + .lp-detail-disclosure { border-top: 1px solid var(--detail-line); }
++.lp-detail-disclosure > summary { width: fit-content; max-width: 100%; padding-block: 4px; cursor: pointer; font-weight: 500; overflow-wrap: anywhere; }
++.lp-detail-disclosure > summary:hover { background: var(--vscode-toolbar-hoverBackground); }
++.lp-detail-disclosure > summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
++.lp-detail-disclosure > .lp-detail-facts { margin: 4px 0 0; }
+diff --git a/src/vs/workbench/browser/studioProjectDetails.ts b/src/vs/workbench/browser/studioProjectDetails.ts
+index 3ca3b169782a9699faf333e52b0c3e8bd1a83786..021da48bf3d54d70430433021a20712b2ee4cb52 100644
+--- a/src/vs/workbench/browser/studioProjectDetails.ts
++++ b/src/vs/workbench/browser/studioProjectDetails.ts
+@@ -4,33 +4,19 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { studioProjectCardIcon, studioProjectIcon } from '../common/studioProjectIcons.js';
+-import { button, element, icon, picture, type StudioLabel } from './studioUiElements.js';
++import { picture, type StudioLabel } from './studioUiElements.js';
++import { projectDetailMark, renderProjectDetails, renderProjectEntryList, type ProjectDetailsData, type ProjectDetailsEntry } from './studioProjectDetailsView.js';
++import './media/studioProjectDetailsView.css';
+ import './media/studioProjectDetails.css';
+ 
+-export interface StudioProjectEntry {
++export { edition, typeLabel } from './studioProjectDetailsView.js';
++
++export interface StudioProjectEntry extends ProjectDetailsEntry {
+ 	entryId: string;
+-	name: string;
+-	type: string;
+-	primary: boolean;
+-	avatarUrl?: string;
+-	available?: boolean;
+ }
+ 
+-export interface StudioProjectDetails {
+-	kind: 'folder' | 'workspace';
+-	uri: string;
+-	name: string;
++export interface StudioProjectDetails extends ProjectDetailsData {
+ 	path: string;
+-	projectId?: string;
+-	projectType?: string;
+-	avatarUrl?: string;
+-	description?: string;
+-	version?: string;
+-	distribution?: 'source' | 'release' | 'download';
+-	windowId?: number;
+-	dirty?: boolean;
+-	lastOpened?: number;
+-	missing?: boolean;
+ 	entries?: readonly StudioProjectEntry[];
+ }
+ 
+@@ -39,8 +25,7 @@ export function glyph(p: StudioProjectDetails): string {
+ }
+ 
+ export function projectMark(p: StudioProjectDetails): HTMLElement {
+-	const source = p.avatarUrl?.startsWith('data:image/') ? p.avatarUrl : studioProjectCardIcon(p.projectType);
+-	return source ? picture(source) : icon(glyph(p));
++	return projectDetailMark(document, avatar(p.avatarUrl, p.projectType), glyph(p));
+ }
+ 
+ export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {
+@@ -48,17 +33,12 @@ export function projectTypeMark(type: string | undefined, fallback: HTMLElement)
+ 	return source ? picture(source) : fallback;
+ }
+ 
+-export function typeLabel(type: string | undefined, t: StudioLabel): string {
+-	switch (type) {
+-		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
+-	}
++function avatar(url: string | undefined, type: string | undefined): string | undefined {
++	return url?.startsWith('data:image/') ? url : studioProjectCardIcon(type);
+ }
+ 
+-export function edition(p: StudioProjectDetails, t: StudioLabel): string {
+-	switch (p.distribution) {
+-		case 'download': return t('Downloaded source · Steam', '已下载源码 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
+-		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
+-	}
++function withEntryAvatars(entries: readonly ProjectDetailsEntry[]): ProjectDetailsEntry[] {
++	return entries.map(entry => ({ ...entry, avatarUrl: avatar(entry.avatarUrl, entry.type) }));
+ }
+ 
+ interface ProjectDetailsOptions {
+@@ -70,67 +50,12 @@ interface ProjectDetailsOptions {
+ 	usage?: HTMLElement;
+ }
+ 
+-/** The resident library and IDE use the same layout; each supplies its own window actions. */
++/** Native surfaces add window state and their own actions to the shared details view. */
+ export function projectDetails(p: StudioProjectDetails, t: StudioLabel, options: ProjectDetailsOptions): HTMLElement {
+-	const page = element('article', 'lp-project-details');
+-	const head = element('header', 'lp-detail-head'), mark = element('span', 'lp-detail-mark');
+-	mark.append(projectMark(p));
+-	const identity = element('div', 'lp-detail-identity'), title = element('h1', '', p.name);
+-	title.tabIndex = -1; title.dataset.key = 'detail:' + p.uri;
+-	identity.append(element('span', 'lp-section-kicker', t('Project details', '项目详情')), title);
+-	const project = element('div', 'lp-detail-project');
+-	project.append(mark, identity);
+-	const controls = element('div', 'lp-detail-actions');
+-	controls.append(...options.actions);
+-	head.append(project, controls); page.append(head);
+-
+-	if (p.description?.trim()) { page.append(element('p', 'lp-detail-description', p.description)); }
+-	const facts = element('dl', 'lp-detail-facts');
+-	const fact = (label: string, value?: string, className = '') => {
+-		if (value) { const row = element('div'); row.append(element('dt', '', label), element('dd', className, value)); facts.append(row); }
+-	};
+-	fact(t('Format', '项目形式'), edition(p, t));
+-	if (p.projectType) { fact(t('Project type', '项目类型'), typeLabel((p.entries?.length ?? 0) > 1 ? 'aggregate' : p.projectType, t), 'lp-detail-type'); }
+-	fact(t('Version', '版本'), p.version);
+-	for (const [label, value] of options.extraFacts ?? []) { fact(label, value); }
+-	fact(t('Window', '窗口状态'), p.missing ? t('Not found', '路径失效') : p.windowId === undefined && !options.currentWindow ? t('Closed', '未打开') : p.dirty ? t('Unsaved', '未保存') : t('Open', '已打开'));
+-	if (p.lastOpened !== undefined) { fact(t('Last opened', '最近打开时间'), new Date(p.lastOpened).toLocaleString(t('en', 'zh-CN'))); }
+-	fact(t('Location', '位置'), p.path, 'lp-detail-location');
+-	fact(t('Project ID', '项目 ID'), p.projectId);
+-	page.append(facts);
+-	if (options.secondaryActions) { page.append(options.secondaryActions); }
+-	if (options.usage) { page.append(options.usage); }
+-	if (p.entries?.length) {
+-		page.append(projectEntryList(p.entries, t, options.openEntry, p.uri));
+-	}
+-	return page;
++	return renderProjectDetails(document, { ...p, avatarUrl: avatar(p.avatarUrl, p.projectType), entries: p.entries && withEntryAvatars(p.entries) },
++		t, { ...options, fallbackIcon: glyph(p), showWindowStatus: true });
+ }
+ 
+-type ListedEntry = Omit<StudioProjectEntry, 'entryId'> & { entryId?: string };
+-
+-export function projectEntryList(entries: readonly ListedEntry[], t: StudioLabel, openEntry?: (entryId: string) => void, uri?: string): HTMLElement {
+-	const section = element('section', 'lp-detail-entries'), list = element('ul');
+-	for (const entry of entries) {
+-		const { entryId } = entry;
+-		const row = element('li'), identity = element('span', 'lp-entry-identity');
+-		if (entryId) { row.dataset.entryId = entryId; }
+-		const mark = entry.avatarUrl?.startsWith('data:image/') ? picture(entry.avatarUrl) : projectTypeMark(entry.type, icon('extensions'));
+-		identity.append(element('strong', 'lp-entry-name', entry.name));
+-		if (entry.primary) { identity.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
+-		row.append(mark, identity, element('small', 'lp-entry-type', typeLabel(entry.type, t)));
+-		if (entryId && openEntry) {
+-			if (entry.available === false) {
+-				row.append(element('small', 'lp-entry-unavailable', t('Unavailable', '不可用')));
+-			} else {
+-				const label = t('Open entry', '打开入口');
+-				const open = button(label, 'play', () => openEntry(entryId), 'lp-outline studio-project-action');
+-				open.setAttribute('aria-label', `${label}: ${entry.name}`);
+-				open.dataset.key = `entry:${uri}:${entryId}`;
+-				row.append(open);
+-			}
+-		}
+-		list.append(row);
+-	}
+-	section.append(element('h2', '', t('Project entries', '项目入口')), list);
+-	return section;
++export function projectEntryList(entries: readonly ProjectDetailsEntry[], t: StudioLabel): HTMLElement {
++	return renderProjectEntryList(document, withEntryAvatars(entries), t);
+ }
+diff --git a/src/vs/workbench/browser/studioProjectDetailsView.ts b/src/vs/workbench/browser/studioProjectDetailsView.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d38e82c21b7a24007bec44134fa7be562360fd0
+--- /dev/null
++++ b/src/vs/workbench/browser/studioProjectDetailsView.ts
+@@ -0,0 +1,182 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++/* Generated from shared/project-info/details.ts. Run node studio/scripts/sync-project-details.mjs --write to update. */
++
++export type ProjectDetailsLabel = (en: string, zh: string) => string;
++
++export interface ProjectDetailsEntry {
++	entryId?: string;
++	name: string;
++	type: string;
++	primary: boolean;
++	avatarUrl?: string;
++	available?: boolean;
++}
++
++export interface ProjectDetailsData {
++	kind: 'folder' | 'workspace';
++	uri: string;
++	name: string;
++	path?: string;
++	projectId?: string;
++	projectType?: string;
++	avatarUrl?: string;
++	description?: string;
++	version?: string;
++	distribution?: 'source' | 'release' | 'download';
++	windowId?: number;
++	dirty?: boolean;
++	lastOpened?: number;
++	missing?: boolean;
++	entries?: readonly ProjectDetailsEntry[];
++}
++
++export type ProjectDetailFact = readonly [label: string, value: string | undefined];
++export interface ProjectDetailSection {
++	title: string;
++	rows: readonly ProjectDetailFact[];
++	expanded?: boolean;
++}
++
++interface EntryListOptions {
++	heading?: 'h2' | 'h4';
++	uri?: string;
++	openEntry?(entryId: string): void;
++}
++
++interface ProjectDetailsOptions extends Pick<EntryListOptions, 'openEntry'> {
++	title?: 'h1' | 'h3';
++	fallbackIcon?: string;
++	formatLabel?: string;
++	locationLabel?: string;
++	showWindowStatus?: boolean;
++	currentWindow?: boolean;
++	extraFacts?: readonly ProjectDetailFact[];
++	sections?: readonly ProjectDetailSection[];
++	actions?: readonly HTMLElement[];
++	secondaryActions?: HTMLElement;
++	usage?: HTMLElement;
++}
++
++function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className = '', text?: string): HTMLElementTagNameMap[K] {
++	const node = doc.createElement(tag);
++	if (className) { node.className = className; }
++	if (text !== undefined) { node.textContent = text; }
++	return node;
++}
++
++function icon(doc: Document, name: string): HTMLElement {
++	const node = element(doc, 'span', `codicon codicon-${name}`);
++	node.setAttribute('aria-hidden', 'true');
++	return node;
++}
++
++export function projectDetailMark(doc: Document, avatarUrl: string | undefined, fallback: string): HTMLElement {
++	if (!avatarUrl?.startsWith('data:image/')) { return icon(doc, fallback); }
++	const img = element(doc, 'img');
++	img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = avatarUrl;
++	return img;
++}
++
++export function typeLabel(type: string | undefined, t: ProjectDetailsLabel): string {
++	switch (type) {
++		case 'bot': return 'Bot';
++		case 'kanban': return t('Kanban', '看板');
++		case 'workflow': return t('Workflow', '工作流');
++		case 'aggregate': return t('Multi-entry', '多入口');
++		default: return t('Folder', '文件夹');
++	}
++}
++
++export function edition(project: ProjectDetailsData, t: ProjectDetailsLabel): string {
++	switch (project.distribution) {
++		case 'download': return t('Downloaded source · Steam', '已下载源码 · Steam');
++		case 'release': return t('Release · Steam', '发行版 · Steam');
++		case 'source': return t('Source · IDE', '源码 · IDE');
++		default: return project.kind === 'workspace' ? t('Workspace', '工作区') : project.projectType ? t('Project', '项目') : t('Folder', '文件夹');
++	}
++}
++
++function addFact(list: HTMLDListElement, label: string, value?: string, className = ''): void {
++	if (!value) { return; }
++	const doc = list.ownerDocument, row = element(doc, 'div');
++	row.append(element(doc, 'dt', '', label), element(doc, 'dd', className, value));
++	list.append(row);
++}
++
++/** The shared details layout has no actions or host-only status unless supplied by its caller. */
++export function renderProjectDetails(doc: Document, project: ProjectDetailsData, t: ProjectDetailsLabel, options: ProjectDetailsOptions = {}): HTMLElement {
++	const page = element(doc, 'article', 'lp-project-details');
++	const head = element(doc, 'header', 'lp-detail-head'), mark = element(doc, 'span', 'lp-detail-mark');
++	mark.append(projectDetailMark(doc, project.avatarUrl, options.fallbackIcon ?? 'package'));
++	const identity = element(doc, 'div', 'lp-detail-identity'), title = element(doc, options.title ?? 'h1', 'lp-detail-title', project.name);
++	title.tabIndex = -1; title.dataset.key = 'detail:' + project.uri;
++	identity.append(element(doc, 'span', 'lp-section-kicker', t('Project details', '项目详情')), title);
++	const heading = element(doc, 'div', 'lp-detail-project');
++	heading.append(mark, identity); head.append(heading);
++	if (options.actions?.length) {
++		const controls = element(doc, 'div', 'lp-detail-actions');
++		controls.append(...options.actions); head.append(controls);
++	}
++	page.append(head);
++
++	if (project.description?.trim()) { page.append(element(doc, 'p', 'lp-detail-description', project.description)); }
++	const facts = element(doc, 'dl', 'lp-detail-facts');
++	addFact(facts, t('Format', '项目形式'), options.formatLabel ?? edition(project, t));
++	if (project.projectType) {
++		addFact(facts, t('Project type', '项目类型'), typeLabel((project.entries?.length ?? 0) > 1 ? 'aggregate' : project.projectType, t), 'lp-detail-type');
++	}
++	addFact(facts, t('Version', '版本'), project.version);
++	for (const [label, value] of options.extraFacts ?? []) { addFact(facts, label, value); }
++	if (options.showWindowStatus) {
++		addFact(facts, t('Window', '窗口状态'), project.missing ? t('Not found', '路径失效')
++			: project.windowId === undefined && !options.currentWindow ? t('Closed', '未打开') : project.dirty ? t('Unsaved', '未保存') : t('Open', '已打开'));
++		if (project.lastOpened !== undefined) { addFact(facts, t('Last opened', '最近打开时间'), new Date(project.lastOpened).toLocaleString(t('en', 'zh-CN'))); }
++	}
++	addFact(facts, options.locationLabel ?? t('Location', '位置'), project.path, 'lp-detail-location');
++	addFact(facts, t('Project ID', '项目 ID'), project.projectId);
++	page.append(facts);
++	if (options.secondaryActions) { page.append(options.secondaryActions); }
++	if (options.usage) { page.append(options.usage); }
++	if (project.entries?.length) {
++		page.append(renderProjectEntryList(doc, project.entries, t, { uri: project.uri, openEntry: options.openEntry, heading: options.title === 'h3' ? 'h4' : 'h2' }));
++	}
++	for (const section of options.sections ?? []) {
++		if (!section.rows.length) { continue; }
++		const disclosure = element(doc, 'details', 'lp-detail-disclosure'), list = element(doc, 'dl', 'lp-detail-facts');
++		disclosure.open = !!section.expanded;
++		for (const [label, value] of section.rows) { addFact(list, label, value); }
++		disclosure.append(element(doc, 'summary', '', section.title), list); page.append(disclosure);
++	}
++	return page;
++}
++
++export function renderProjectEntryList(doc: Document, entries: readonly ProjectDetailsEntry[], t: ProjectDetailsLabel, options: EntryListOptions = {}): HTMLElement {
++	const section = element(doc, 'section', 'lp-detail-entries'), list = element(doc, 'ul');
++	for (const entry of entries) {
++		const { entryId } = entry;
++		const row = element(doc, 'li'), identity = element(doc, 'span', 'lp-entry-identity');
++		if (entryId) { row.dataset.entryId = entryId; }
++		identity.append(element(doc, 'strong', 'lp-entry-name', entry.name));
++		if (entry.primary) { identity.append(element(doc, 'small', 'lp-entry-default', t('Default', '默认入口'))); }
++		row.append(projectDetailMark(doc, entry.avatarUrl, 'extensions'), identity, element(doc, 'small', 'lp-entry-type', typeLabel(entry.type, t)));
++		const openEntry = options.openEntry;
++		if (entry.available === false) {
++			row.append(element(doc, 'small', 'lp-entry-unavailable', t('Unavailable', '不可用')));
++		} else if (entryId && openEntry) {
++			const label = t('Open entry', '打开入口');
++			const button = element(doc, 'button', 'lp-outline studio-project-action');
++			button.type = 'button'; button.append(icon(doc, 'play'), label);
++			button.setAttribute('aria-label', `${label}: ${entry.name}`);
++			button.dataset.key = `entry:${options.uri}:${entryId}`;
++			button.addEventListener('click', () => openEntry(entryId));
++			row.append(button);
++		}
++		list.append(row);
++	}
++	section.append(element(doc, options.heading ?? 'h2', 'lp-entry-title', t('Project entries', '项目入口')), list);
++	return section;
++}
