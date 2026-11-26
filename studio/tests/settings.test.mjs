@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
-const compiled = await build({ stdin: { contents: "export * from './extensions/studio-workstation/src/settings'; export * from './extensions/studio-workstation/src/user-settings';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const compiled = await build({ stdin: { contents: "export * from './extensions/studio-workstation/src/settings'; export * from './extensions/studio-workstation/src/user-settings';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false,
+  define: { __STEAMHARNESS_STUDIO_RUNTIME_VERSIONS__: JSON.stringify({ coreVersion: '0.2.7', cliVersion: '0.2.8' }) } });
 const require = createRequire(import.meta.url);
 
 function fixture(workspace = true) {
@@ -23,10 +24,11 @@ function fixture(workspace = true) {
     },
   });
   const vscode = { ConfigurationTarget: { Global: 1, Workspace: 2 }, env: { language: 'en' }, version: '1.141.0',
+    Uri: { file: path => path, joinPath: (...parts) => parts.join('/') },
     extensions: { all: [{ packageJSON: { contributes: { themes: [{ id: 'Dark', label: 'Dark' }, { id: 'Light', label: 'Light' }] } } }] },
     workspace: { workspaceFolders: workspace ? [{}] : [], getConfiguration: configuration } };
   const module = { exports: {} };
-  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id) });
+  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), TextDecoder });
   return { ...module.exports, global, local, writes, vscode };
 }
 
@@ -40,6 +42,30 @@ test('settings read the selected scope and identify workspace overrides without 
   assert.equal(workspaceFont.overridden, false); assert.equal(workspaceFont.value, 18);
   assert.equal(fixture(false).settingsState('0.1.0', 'workspace', []).target, 'user');
   assert.equal(f.writes.length, 0);
+});
+
+test('About distinguishes the configured Studio version, attached runtime versions and the editor engine', async () => {
+  const f = fixture();
+  const reads = [];
+  f.vscode.workspace.fs = { readFile: async path => {
+    reads.push(path);
+    if (path !== '/attached/runtime-packages.json') throw new Error('File not found');
+    return new TextEncoder().encode(JSON.stringify({ schemaVersion: 2, packages: { core: { version: '0.2.1' }, cli: { version: '0.2.2' } } }));
+  } };
+  const build = f.settingsState('0.1.0', 'user', []);
+  assert.equal(build.coreVersion, '0.2.7');
+  assert.equal(build.cliVersion, '0.2.8');
+  const attached = await f.readStudioRuntimeVersions('/attached');
+  const state = f.settingsState('0.1.2', 'user', [], 'system', false, attached);
+  assert.equal(state.studioVersion, '0.1.2');
+  assert.equal(state.coreVersion, '0.2.1');
+  assert.equal(state.cliVersion, '0.2.2');
+  assert.equal(state.vscodeVersion, '1.141.0');
+  const unavailable = f.settingsState(undefined, 'user', [], 'system', false, await f.readStudioRuntimeVersions('/missing'));
+  assert.equal(unavailable.studioVersion, undefined);
+  assert.equal(unavailable.coreVersion, undefined);
+  assert.equal(unavailable.cliVersion, undefined);
+  assert.deepEqual(reads, ['/attached/runtime-packages.json', '/missing/runtime-packages.json']);
 });
 
 test('permission settings persist only at user scope and reset to auto approve', async () => {

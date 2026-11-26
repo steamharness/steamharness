@@ -1,6 +1,23 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
-import type { SettingItem, SettingsProvider, SettingsState, SettingsTarget, SettingsViewState } from './settings-types';
+import type { SettingItem, SettingsProvider, SettingsState, SettingsTarget, SettingsViewState, StudioRuntimeVersions } from './settings-types';
+
+declare const __STEAMHARNESS_STUDIO_RUNTIME_VERSIONS__: StudioRuntimeVersions;
+const buildRuntimeVersions = typeof __STEAMHARNESS_STUDIO_RUNTIME_VERSIONS__ === 'undefined' ? {} : __STEAMHARNESS_STUDIO_RUNTIME_VERSIONS__;
+
+export async function readStudioRuntimeVersions(directory: string | undefined = Reflect.get(globalThis, 'process')?.env?.STEAMHARNESS_PROJECT_PACKAGE_DIR): Promise<StudioRuntimeVersions> {
+  if (!directory) return buildRuntimeVersions;
+  try {
+    const manifestUri = vscode.Uri.joinPath(vscode.Uri.file(directory), 'runtime-packages.json');
+    const manifest = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(manifestUri)));
+    if (manifest?.schemaVersion !== 1 && manifest?.schemaVersion !== 2) return {};
+    const version = (value: unknown) => typeof value === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(value) ? value : undefined;
+    return { coreVersion: version(manifest.packages?.core?.version), cliVersion: version(manifest.packages?.cli?.version) };
+  } catch {
+    // An explicitly attached runtime may differ from (or be missing from) this build.
+    return {};
+  }
+}
 
 export const SYSTEM_THEME = '__system__';
 
@@ -69,7 +86,8 @@ export function themeOptions(): { value: string; label: string }[] {
   return [{ value: SYSTEM_THEME, label: t('Follow system') }, ...[...themes].map(([value, label]) => ({ value, label }))];
 }
 
-export function settingsState(studioVersion: string, target: SettingsTarget, providers: SettingsProvider[], languagePreference = 'system', notifications = false): SettingsState {
+export function settingsState(studioVersion: string | undefined, target: SettingsTarget, providers: SettingsProvider[], languagePreference = 'system', notifications = false,
+  versions: StudioRuntimeVersions = buildRuntimeVersions): SettingsState {
   const configuration = vscode.workspace.getConfiguration();
   const workspaceAvailable = !!vscode.workspace.workspaceFolders?.length || !!vscode.workspace.workspaceFile;
   if (!workspaceAvailable) { target = 'user'; }
@@ -90,7 +108,8 @@ export function settingsState(studioVersion: string, target: SettingsTarget, pro
     }
     return { ...item, value, configured, overridden: !workspace && item.section === 'editor' && inspected?.workspaceValue !== undefined };
   });
-  return { target, workspaceAvailable, items, language: vscode.env.language, languagePreference, studioVersion, vscodeVersion: vscode.version, providers };
+  return { target, workspaceAvailable, items, language: vscode.env.language, languagePreference, studioVersion,
+    ...versions, vscodeVersion: vscode.version, providers };
 }
 
 export async function updateSetting(key: string, value: unknown, target: SettingsTarget, reset: boolean): Promise<void> {

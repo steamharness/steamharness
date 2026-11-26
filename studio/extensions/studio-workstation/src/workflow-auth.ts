@@ -10,8 +10,8 @@ import { registerProjectConnectionStatus } from './workflow-connection-status';
 import { AccountSections } from './account-sections';
 import type { AccountSectionProvider } from './account-section-types';
 import { accountMenuState, accountScopeKey } from './account-menu-state';
-import { settingsState, settingsViewState, updateSetting } from './settings';
-import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewState } from './settings-types';
+import { readStudioRuntimeVersions, settingsState, settingsViewState, updateSetting } from './settings';
+import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewState, StudioProductInfo, StudioRuntimeVersions } from './settings-types';
 import type { ProjectSidebar } from './project-sidebar';
 import { UserModels, USER_MODELS_SECRET } from './user-models';
 import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
@@ -43,6 +43,8 @@ export class AccountController implements vscode.Disposable {
   private loginAbort?: AbortController;
   private pendingLogin?: { state?: string; client: ServerAuthClient; started: DeviceStart };
   private viewState: SettingsViewState = { section: 'general', target: 'user' };
+  private productInfo?: StudioProductInfo;
+  private runtimeVersions?: StudioRuntimeVersions;
   private settingsTimer?: ReturnType<typeof setTimeout>;
   private sidebar?: ProjectSidebar;
   private settingWrites: Promise<void> = Promise.resolve();
@@ -217,7 +219,14 @@ export class AccountController implements vscode.Disposable {
   }
 
   async initialize(): Promise<void> {
-    this.launchpad = await vscode.commands.executeCommand<boolean>('studio.internalIsLaunchpad').then(value => value === true, () => false);
+    const [launchpad, productInfo, runtimeVersions] = await Promise.all([
+      vscode.commands.executeCommand<boolean>('studio.internalIsLaunchpad').then(value => value === true, () => false),
+      vscode.commands.executeCommand<StudioProductInfo>('studio.internalGetProductInfo').then(undefined, () => undefined),
+      readStudioRuntimeVersions(),
+    ]);
+    this.launchpad = launchpad;
+    this.productInfo = productInfo;
+    this.runtimeVersions = runtimeVersions;
     if (this.launchpad) {
       this.disposables.push(vscode.window.registerWebviewViewProvider(LAUNCHPAD_SETTINGS_VIEW, {
         resolveWebviewView: (view, _context, token) => {
@@ -606,7 +615,9 @@ export class AccountController implements vscode.Disposable {
   }
 
   private settingsSnapshot(): SettingsState {
-    const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders(), this.languagePreference, this.hasDesktopNotifications);
+    const state = settingsState(this.productInfo?.studioVersion, this.viewState.target ?? 'user', this.sections.getProviders(),
+      this.languagePreference, this.hasDesktopNotifications, this.runtimeVersions);
+    state.studioLogo = this.productInfo?.logo;
     this.viewState.target = state.target;
     state.nodeRuntime = this.runtimeStatus;
     state.remoteAccess = !!this.remoteAccess;

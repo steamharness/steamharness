@@ -64,7 +64,14 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <section id="settings-sidebar" class="settings-panel" aria-label="${t('Right Sidebar')}" hidden></section>
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
         <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p role="status">${t('Loading...')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
-        <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about"><span class="settings-product-icon codicon codicon-terminal" aria-hidden="true"></span><h2>SteamHarness Studio</h2><p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p><dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd><dt>${t('VS Code version')}</dt><dd id="settings-vscode-version"></dd></dl><button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button></div></section>
+        <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about">
+          <img id="settings-studio-logo" class="settings-product-icon" alt="" hidden><h2>SteamHarness Studio</h2>
+          <p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p>
+          <dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd>
+            <dt>${t('Core version')}</dt><dd id="settings-core-version"></dd><dt>${t('CLI version')}</dt><dd id="settings-cli-version"></dd>
+            <dt>${t('VS Code engine version')}</dt><dd id="settings-vscode-version"></dd></dl>
+          <button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button>
+        </div></section>
         <div id="settings-no-results" class="settings-empty" hidden><p>${t('No matching settings')}</p>${launchpad ? '' : `<p class="muted">${t('Other editor and extension settings are available in settings JSON.')}</p><button type="button" class="secondary" data-settings-action="json-current">${t('Open settings JSON')}</button>`}</div>
       </section>
     </div>`;
@@ -361,7 +368,15 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       card.prepend(note); group.append(card); find<HTMLElement>('settings-editor').append(group);
     }
     targetDropdown.update([{ value: 'user', label: t('User') }, { value: 'workspace', label: t('Workspace'), disabled: !snapshot.workspaceAvailable }], snapshot.target);
-    find('settings-studio-version').textContent = snapshot.studioVersion;
+    const logo = find<HTMLImageElement>('settings-studio-logo');
+    const logoSource = snapshot.studioLogo;
+    if (logoSource && /^data:image\/png;base64,[\w+/=]+$/u.test(logoSource)) {
+      if (logo.getAttribute('src') !== logoSource) logo.src = logoSource;
+      logo.hidden = false;
+    } else { logo.hidden = true; logo.removeAttribute('src'); }
+    find('settings-studio-version').textContent = snapshot.studioVersion || t('Unavailable');
+    find('settings-core-version').textContent = snapshot.coreVersion || t('Unavailable');
+    find('settings-cli-version').textContent = snapshot.cliVersion || t('Unavailable');
     find('settings-vscode-version').textContent = snapshot.vscodeVersion;
     filter();
   }

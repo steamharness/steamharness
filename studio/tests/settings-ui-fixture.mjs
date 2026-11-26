@@ -4,8 +4,10 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 
 const root = new URL('../', import.meta.url);
-const compiled = await build({ stdin: { contents: `export { settingsState } from './extensions/studio-workstation/src/settings'; export { configureLocalization } from './extensions/studio-workstation/src/localization';`,
-  resolveDir: new URL('.', root).pathname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const compiled = await build({ stdin: { contents: `export { settingsState } from './extensions/studio-workstation/src/settings'; export { configureLocalization } from './extensions/studio-workstation/src/localization';
+  export { STEAMHARNESS_ICON_DATA_URI } from './upstream/vscode/src/vs/workbench/common/studioBranding';`,
+  resolveDir: new URL('.', root).pathname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false,
+  define: { __STEAMHARNESS_STUDIO_RUNTIME_VERSIONS__: JSON.stringify({ coreVersion: '0.2.7', cliVersion: '0.2.8' }) } });
 const require = createRequire(import.meta.url);
 const chinese = JSON.parse(await readFile(new URL('extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json', root), 'utf8'));
 
@@ -20,7 +22,7 @@ export function settingsFixture(language = 'en', providers = [], target = 'user'
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id) });
   module.exports.configureLocalization(language === 'en' ? {} : chinese, language);
-  return module.exports.settingsState('0.1.0', target, providers, 'system', notifications);
+  return { ...module.exports.settingsState('0.1.0', target, providers, 'system', notifications), studioLogo: module.exports.STEAMHARNESS_ICON_DATA_URI };
 }
 
 export async function selectSettingsOption(page, control, value) {

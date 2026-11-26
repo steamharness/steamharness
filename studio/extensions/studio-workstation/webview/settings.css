@@ -102,7 +102,8 @@
 .settings-action-card { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 20px; }
 .settings-action-card > p { width: 100%; margin-bottom: 2px; }
 .settings-about { padding: 32px; }
-.settings-product-icon { display: block; font-size: 32px; color: var(--vscode-descriptionForeground); margin-bottom: 20px; }
+.settings-product-icon { display: block; width: 48px; height: 48px; object-fit: contain; margin-bottom: 16px; }
+.settings-product-icon[hidden] { display: none; }
 .settings-about > p { margin-top: 8px; }
 .settings-about dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 20px; margin: 24px 0; }
 .settings-empty { padding: 24px; color: var(--vscode-descriptionForeground); }

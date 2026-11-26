@@ -15,7 +15,7 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false, serverUrl = 'http://127.0.0.1:7126', uiKind = 1 } = {}) {
+async function fixture(t, { signedIn = true, sessionCookie, platform = true, connect = signedIn && platform, launchpad = false, serverUrl = 'http://127.0.0.1:7126', uiKind = 1, productInfo } = {}) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, requestUrls: [], statuses: [], messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
   const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': 'https://obsolete.example.test' };
@@ -38,6 +38,7 @@ async function fixture(t, { signedIn = true, sessionCookie, platform = true, con
       executeCommand: async (id, ...args) => {
         f.executed.push({ id, args });
         if (id === 'studio.internalIsLaunchpad') { return launchpad; }
+        if (id === 'studio.internalGetProductInfo') { return productInfo; }
         if (id === 'studio.internalGetDisplayLanguage') { return f.languagePreference; }
         if (id === 'studio.internalGetDesktopNotificationStatus') { return f.desktopNotificationStatus; }
         if (id === 'studio.internalOpenNotificationSettings') { return true; }
@@ -210,7 +211,8 @@ test('only enhanced desktop settings expose IM notification switches and system 
 });
 
 test('launchpad settings reuse the account page without creating an editor or login panel', async t => {
-  const f = await fixture(t, { launchpad: true, signedIn: false });
+  const productInfo = { studioVersion: '0.3.4', logo: 'data:image/png;base64,AA==' };
+  const f = await fixture(t, { launchpad: true, signedIn: false, productInfo });
   const execute = f.vscode.commands.executeCommand;
   let current, opens = 0;
   f.vscode.commands.executeCommand = async (id, ...args) => {
@@ -248,6 +250,12 @@ test('launchpad settings reuse the account page without creating an editor or lo
   await current.send({ type: 'ready' });
   assert.notEqual(current, first);
   assert.equal(section(current), 'account');
+  await f.commands.get('studio.openSettings')({ section: 'about', target: 'user' });
+  assert.equal(section(current), 'about');
+  const { state } = current.messages.filter(message => message.type === 'settings').at(-1);
+  assert.equal(state.studioVersion, productInfo.studioVersion);
+  assert.equal(state.studioLogo, productInfo.logo);
+  assert.equal(state.vscodeVersion, f.vscode.version);
   assert.equal(opens, 2);
   assert.equal(f.panels.length, 0);
 });

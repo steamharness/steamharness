@@ -31,7 +31,8 @@ export async function buildExtension({ watch = false } = {}) {
     format: 'cjs',
     sourcemap: true,
     logLevel: 'info',
-    define: { __STEAMHARNESS_SERVICE_CHANNEL__: JSON.stringify(checkoutServiceChannel({ root: ROOT })), __STEAMHARNESS_DEFAULT_SERVER_URL__: JSON.stringify(publicServiceUrls(checkoutServiceChannel({ root: ROOT })).server) },
+    define: { __STEAMHARNESS_SERVICE_CHANNEL__: JSON.stringify(checkoutServiceChannel({ root: ROOT })), __STEAMHARNESS_DEFAULT_SERVER_URL__: JSON.stringify(publicServiceUrls(checkoutServiceChannel({ root: ROOT })).server),
+      __STEAMHARNESS_STUDIO_RUNTIME_VERSIONS__: JSON.stringify({ coreVersion: harness.version, cliVersion: cli.version }) },
   };
   const options = [
     { ...shared, entryPoints: ['src/extension-node.ts'], platform: 'node', target: 'node22', outfile: 'dist/extension.js' },

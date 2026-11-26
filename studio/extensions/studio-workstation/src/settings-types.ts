@@ -37,13 +37,24 @@ export interface SettingsProvider {
   icon?: string;
 }
 
-export interface SettingsState {
+export interface StudioProductInfo {
+  studioVersion?: string;
+  logo?: string;
+}
+
+export interface StudioRuntimeVersions {
+  coreVersion?: string;
+  cliVersion?: string;
+}
+
+export interface SettingsState extends StudioRuntimeVersions {
   target: SettingsTarget;
   workspaceAvailable: boolean;
   items: SettingState[];
   language: string;
   languagePreference: string;
-  studioVersion: string;
+  studioVersion?: string;
+  studioLogo?: string;
   vscodeVersion: string;
   providers: SettingsProvider[];
   remoteAccess?: boolean;

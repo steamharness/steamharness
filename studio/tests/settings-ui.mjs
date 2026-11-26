@@ -7,11 +7,12 @@ import { settingsFixture, settingsThemeCss, selectSettingsOption } from './setti
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const extension = path.join(root, 'extensions/studio-workstation');
+const assets = process.env.STEAMHARNESS_STUDIO_TEST_SETTINGS_ASSETS ?? path.join(extension, 'dist');
 const output = path.join(root, '.studio/settings-ui');
 await mkdir(output, { recursive: true });
 const [js, css, icons, font, chinese] = await Promise.all([
-  readFile(path.join(extension, 'dist/account-ui.js'), 'utf8'), readFile(path.join(extension, 'dist/account-ui.css'), 'utf8'),
-  readFile(path.join(extension, 'dist/codicons/codicon.css'), 'utf8'), readFile(path.join(extension, 'dist/codicons/codicon.ttf')),
+  readFile(path.join(assets, 'account-ui.js'), 'utf8'), readFile(path.join(assets, 'account-ui.css'), 'utf8'),
+  readFile(path.join(assets, 'codicons/codicon.css'), 'utf8'), readFile(path.join(assets, 'codicons/codicon.ttf')),
   readFile(path.join(extension, 'l10n/bundle.l10n.zh-cn.json'), 'utf8'),
 ]);
 const iconCss = icons.replace(/url\([^)]+\)/g, `url(data:font/ttf;base64,${font.toString('base64')})`);
@@ -271,6 +272,14 @@ try {
         await fits();
         await category('about').click();
         assert.equal(await page.locator('#settings-studio-version').textContent(), '0.1.0');
+        assert.equal(await page.locator('#settings-core-version').textContent(), '0.2.7');
+        assert.equal(await page.locator('#settings-cli-version').textContent(), '0.2.8');
+        assert.equal(await page.locator('#settings-vscode-version').textContent(), '1.141.0');
+        assert.equal(await page.locator('#settings-vscode-version').locator('xpath=preceding-sibling::dt[1]').textContent(), language === 'en' ? 'VS Code engine version' : 'VS Code 内核版本');
+        const logo = page.locator('#settings-studio-logo');
+        assert.equal(await logo.isVisible(), true);
+        assert.equal(await logo.getAttribute('src'), state.studioLogo);
+        await logo.evaluate(image => image.decode());
         await page.locator('[data-settings-action="documentation"]').click(); assert.equal((await last('settings-action')).action, 'documentation');
         await fits();
         const provider = { id: 'plugin', title: language === 'en' ? 'Plugin Information' : '扩展信息', icon: 'sparkle' };
