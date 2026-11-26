@@ -4,6 +4,7 @@ import { t } from './localization';
 import type { Launcher } from './workflow-cli-types';
 import type { RuntimeArchiveInspection, RuntimeDependencyCandidate, RuntimeDependencyInspection } from './project-runtime-dependencies-node';
 import type { RuntimeNpmUpdate } from './project-runtime-npm-node';
+import type { ProjectDependencyProgress } from './project-dependency-progress';
 
 const replaceCommand = 'studio.internalReplaceRuntimeDependencies';
 const stale = 'The project dependencies or Studio bundle changed. Refresh the comparison and try again.';
@@ -44,7 +45,7 @@ function npmUpdateTooltip(update: RuntimeNpmUpdate): string {
 
 export function registerRuntimeDependencyIndicators(context: vscode.ExtensionContext, service: NonNullable<Launcher['runtimeDependencies']>,
   prepare: (directory: string, signal: AbortSignal) => Promise<vscode.Disposable>, output: vscode.OutputChannel,
-  currentManifest: () => vscode.Uri | undefined): () => void {
+  dependencyProgress: ProjectDependencyProgress, currentManifest: () => vscode.Uri | undefined): () => void {
   const changed = new vscode.EventEmitter<void>(), lifetime = new AbortController();
   const status = vscode.window.createStatusBarItem('projectRuntimeDependencies', vscode.StatusBarAlignment.Left, 110);
   status.name = t('Runtime Dependencies');
@@ -160,6 +161,7 @@ export function registerRuntimeDependencyIndicators(context: vscode.ExtensionCon
       if (!candidate || replacing.has(key)) return;
       const unsaved = () => vscode.workspace.textDocuments.some(document => document.uri.toString() === key && document.isDirty);
       replacing.add(key); refresh();
+      let started = false;
       try {
         if (unsaved()) throw new Error(t('Save package.json before replacing runtime dependencies.'));
         const result = await service.inspect(candidate, lifetime.signal);
@@ -174,24 +176,23 @@ export function registerRuntimeDependencyIndicators(context: vscode.ExtensionCon
           modal: true, detail: `${comparisonLabel(result)}\n\n${description}`,
         }, use) !== use) return;
         if (!target(uri) || unsaved()) throw new Error(t('Save package.json before replacing runtime dependencies.'));
-        const version = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Replacing Studio runtime dependencies'), cancellable: true },
-          async (_, token) => {
-            const abort = new AbortController(), subscription = token.onCancellationRequested(() => abort.abort());
-            const signal = AbortSignal.any([abort.signal, lifetime.signal]);
+        started = true;
+        await dependencyProgress.run({ title: archivesMatch ? t('Reinstalling Studio runtime dependencies') : t('Replacing Studio runtime dependencies'),
+          directory: candidate.directory, signal: lifetime.signal, describeError: error => t('Could not replace runtime dependencies: {0}', error instanceof Error ? error.message : String(error)) },
+          async ({ signal, append }) => {
             let release: vscode.Disposable | undefined;
             try {
-              if (token.isCancellationRequested) abort.abort();
-              return await service.replace(candidate, revision, signal, async directory => {
+              const version = await service.replace(candidate, revision, signal, async directory => {
                 if (!target(uri) || unsaved()) throw new Error(t('Save package.json before replacing runtime dependencies.'));
                 release = await prepare(directory, signal);
-              }, chunk => output.append(chunk));
-            } finally { release?.dispose(); subscription.dispose(); }
+              }, chunk => { output.append(chunk); append(chunk); });
+              append(`\n${t('Installed Studio Core and CLI {0}.', version)}\n`);
+            } finally { release?.dispose(); }
           });
-        void vscode.window.showInformationMessage(t('Installed Studio Core and CLI {0}.', version));
       } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
+        if (!(error instanceof Error && error.name === 'AbortError')) {
           output.appendLine(String(error));
-          void vscode.window.showErrorMessage(t('Could not replace runtime dependencies: {0}', (error as Error).message));
+          if (!started) void vscode.window.showErrorMessage(t('Could not replace runtime dependencies: {0}', error instanceof Error ? error.message : String(error)));
         }
       } finally { replacing.delete(key); refresh(); }
     }));

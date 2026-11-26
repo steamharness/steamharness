@@ -36,7 +36,7 @@ class EventEmitter {
 
 function fixture(t, language = 'en') {
   const token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
-  const capture = { source, inspection: state(), confirm: false, calls: [], warnings: [], errors: [], inspections: [], watchers: [] };
+  const capture = { source, inspection: state(), confirm: false, calls: [], warnings: [], errors: [], inspections: [], watchers: [], progress: [] };
   const status = { visible: false, show() { this.visible = true; }, hide() { this.visible = false; }, dispose() { this.hide(); } };
   const document = { uri: Uri.file(`${project}/package.json`), isDirty: false, version: 1, getText: () => capture.source, positionAt: offset => offset };
   let provider, command;
@@ -61,13 +61,12 @@ function fixture(t, language = 'en') {
       createStatusBarItem: (id, alignment, priority) => Object.assign(status, { id, alignment, priority }),
       onDidChangeWindowState: () => ({ dispose() {} }),
       showWarningMessage: async (title, options, action) => { capture.warnings.push({ title, ...options, action }); return capture.confirm ? action : undefined; },
-      withProgress: async (_, run) => run({}, token), showInformationMessage: async message => capture.calls.push(message),
       showErrorMessage: async message => capture.errors.push(message),
     },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
-    AbortController, AbortSignal, setTimeout, clearTimeout });
+    AbortController, AbortSignal, Error, setTimeout, clearTimeout });
   module.exports.configureLocalization(language === 'zh-cn' ? zh : {}, language);
   const context = { subscriptions: [] };
   t.after(() => { for (const disposable of context.subscriptions.reverse()) disposable.dispose(); });
@@ -77,9 +76,11 @@ function fixture(t, language = 'en') {
       capture.inspections.push(candidate);
       return capture.inspect ? capture.inspect(candidate, signal) : capture.inspection;
     },
-    replace: async (_, revision, signal, prepare) => {
+    replace: async (_, revision, signal, prepare, log) => {
       assert.equal(revision, capture.inspection.revision);
       signal.throwIfAborted(); await prepare(project); capture.calls.push('install');
+      log('package manager output\n');
+      if (capture.installError) throw capture.installError;
       capture.inspection.matches = true;
       capture.inspection.packages[1].sameArchive = true;
       capture.inspection.packages[1].projectSha256 = capture.inspection.packages[1].studioSha256;
@@ -87,7 +88,14 @@ function fixture(t, language = 'en') {
     },
   }, async directory => {
     assert.equal(directory, project); capture.calls.push('prepare'); return { dispose: () => capture.calls.push('release') };
-  }, { append() {}, appendLine() {} }, () => capture.manifest);
+  }, { append() {}, appendLine() {} }, {
+    async run(options, task) {
+      const run = { options, log: '' };
+      capture.progress.push(run);
+      try { return await task({ signal: options.signal, append: chunk => { run.log += chunk; } }); }
+      catch (error) { run.error = options.describeError(error); throw error; }
+    },
+  }, () => capture.manifest);
   return { capture, document, vscode, status, select: uri => { capture.manifest = uri; updateProject(); }, lenses: () => provider.provideCodeLenses(document, token),
     invoke: lens => { assert.equal(lens.command.command, command.id); return command.run(...lens.command.arguments); } };
 }
@@ -105,11 +113,25 @@ test('shows the same-version archive mismatch on the dependency declaration and 
   assert.equal(f.capture.warnings[0].modal, true);
   assert.match(f.capture.warnings[0].detail, /同版本，归档不同/u);
   assert.deepEqual(f.capture.calls, []);
+  assert.deepEqual(f.capture.progress, []);
 
   f.capture.confirm = true;
   await f.invoke(action);
-  assert.deepEqual(f.capture.calls, ['prepare', 'install', 'release', '已安装 Studio 自带的 Core 和 CLI 0.2.0。']);
+  assert.deepEqual(f.capture.calls, ['prepare', 'install', 'release']);
+  assert.equal(f.capture.progress[0].options.title, '正在替换运行依赖');
+  assert.match(f.capture.progress[0].log, /package manager output\n\s*已安装 Studio 自带的 Core 和 CLI 0\.2\.0。/u);
   assert.deepEqual(Array.from(await f.lenses(), lens => lens.command.title), ['运行依赖与 Studio 一致']);
+});
+
+test('shows a package manager failure in the dependency details and releases the replacement lease', async t => {
+  const f = fixture(t);
+  f.capture.confirm = true;
+  f.capture.installError = new Error('registry offline');
+  await f.invoke((await f.lenses())[1]);
+  assert.deepEqual(f.capture.calls, ['prepare', 'install', 'release']);
+  assert.deepEqual(f.capture.errors, []);
+  assert.equal(f.capture.progress[0].error, 'Could not replace runtime dependencies: registry offline');
+  assert.match(f.capture.progress[0].log, /package manager output/);
 });
 
 test('distinguishes installation refresh from archive mismatch and ignores stale or untrusted actions', async t => {

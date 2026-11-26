@@ -12,6 +12,7 @@ import { activateInternalLayer } from './internal-layer';
 import { openProjectFolder } from './project-window';
 import { bindProjectHistory, isMissingProject, pruneMissingProjectHistory, readProjectHistory, updateProjectHistory } from './project-history';
 import { ProjectSidebar } from './project-sidebar';
+import { ProjectDependencyProgress } from './project-dependency-progress';
 
 class RecentProjectsProvider {
   private readonly change = new vscode.EventEmitter<void>();
@@ -254,9 +255,11 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   const restoreRecent = () => recent.reconcile().then(rememberCurrentWorkspace).catch(error => output.appendLine(`Recent projects: ${String(error)}`));
   if (accountReady) void accountReady.then(restoreRecent);
   else await restoreRecent();
-  const workflows = await activateProject(context, launcher, output, account, icons, sidebar);
+  const dependencyProgress = new ProjectDependencyProgress();
+  context.subscriptions.push(dependencyProgress);
+  const workflows = await activateProject(context, launcher, output, account, icons, sidebar, dependencyProgress);
   context.subscriptions.push(new StudioStartController(context, launcher, account, workflows, recent,
     project => saveRecent(previous => rememberProjects(previous, [{ uri: vscode.Uri.file(project.directory).toString(), label: project.name, kind: 'folder', lastOpened: Date.now() }],
-      recentLimit())), output));
+      recentLimit())), output, dependencyProgress));
   output.appendLine(`Studio ${context.extension.packageJSON.version} activated.`);
 }

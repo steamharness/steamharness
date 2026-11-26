@@ -22,7 +22,7 @@ const uri = filename => ({ scheme: 'file', fsPath: filename, toString: () => pat
 function fixture(t, options = {}) {
   const commands = new Map(), storage = options.storage ?? new Map(), calls = [], intervals = new Map(), projectsChanged = new Emitter(), accountChanged = new Emitter(), trustChanged = new Emitter(), windowChanged = new Emitter(), workspaceChanged = new Emitter();
   const files = storage.get('test.files') ?? new Map(); storage.set('test.files', files);
-  const f = { calls, storage, intervals, projectsChanged, accountChanged, projects: [], recent: [], warnings: [], errors: [], installs: [], progress: [],
+  const f = { calls, storage, intervals, projectsChanged, accountChanged, projects: [], recent: [], warnings: [], errors: [], installs: [], progress: [], dependencyTasks: [],
     name: 'New project', parent: path.resolve('/projects'), newWindow: true, inspectedId: id, manifestId: options.manifestId ?? id,
     files, install: options.install, inspect: options.inspect, create: options.create, register: options.register,
     projectId: options.projectId ?? id, idAllocationError: options.idAllocationError,
@@ -57,8 +57,7 @@ function fixture(t, options = {}) {
       showTextDocument: async document => { f.logDocument = document; },
       withProgress: async (options, action) => {
         f.progress.push(options);
-        const cancellation = new Emitter(); f.cancel = () => cancellation.fire();
-        return action({ report() {} }, { onCancellationRequested: cancellation.event, isCancellationRequested: false });
+        return action();
       } },
   };
   const launcher = {
@@ -87,7 +86,15 @@ function fixture(t, options = {}) {
     getProjects: () => f.projects, onDidChangeProjects: projectsChanged.event,
     getVersionStatus: () => ({ status: 'unpublished', canDownload: false }), onDidChangeVersions: new Emitter().event,
   },
-  { getChildren: () => f.recent, onDidChangeTreeData: new Emitter().event, reconcile: async () => { await f.reconcile?.(); } }, async project => { f.remembered = project; }, { appendLine() {}, append() {} });
+  { getChildren: () => f.recent, onDidChangeTreeData: new Emitter().event, reconcile: async () => { await f.reconcile?.(); } }, async project => { f.remembered = project; }, { appendLine() {}, append() {} }, {
+    async run(options, task) {
+      const abort = new AbortController(), run = { options, stages: [], log: '' };
+      f.dependencyTasks.push(run);
+      f.cancel = () => abort.abort();
+      try { return await task({ signal: AbortSignal.any([abort.signal, options.signal]), report: stage => run.stages.push(stage), append: chunk => { run.log += chunk; } }); }
+      catch (error) { run.error = options.describeError(error); throw error; }
+    },
+  });
   t.after(() => controller.dispose());
   return Object.assign(f, { controller, execute: vscode.commands.executeCommand, state: async () => commands.get('studio.internalGetStartState')(),
     savedSetups: () => storage.get('studio.pendingProjectSetups') ?? [],
@@ -179,15 +186,19 @@ test('creation opens the project before installation and hands progress, logs an
   await until(() => failInstall, 'The new project window did not start installation');
   assert.equal(target.calls.some(([name]) => name === 'typescript.reloadProjects'), false);
   assert.equal((await target.state()).installing, id); assert.equal(target.savedSetups()[0].installOnOpen, false);
-  assert.equal(target.progress.length, 1); assert.equal(target.installs[0], opened[1].fsPath);
+  assert.equal(target.progress.length, 0); assert.equal(target.installs[0], opened[1].fsPath);
+  assert.equal(target.dependencyTasks[0].options.directory, opened[1].fsPath);
+  assert.deepEqual(target.dependencyTasks[0].stages, ['Installing Dependencies']);
   assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Creating Project');
   failInstall(); await until(async () => !(await target.state()).busy, 'Installation did not finish');
   assert.equal((await target.state()).pending[0].status, 'failed');
+  assert.deepEqual(target.warnings, []);
+  assert.match(target.dependencyTasks[0].log, /install log[\s\S]*offline registry/);
   assert.equal(target.calls.some(([name]) => name === 'typescript.reloadProjects'), false);
   await target.execute('studio.showProjectSetupLog', id); assert.match(target.logDocument.getText(), /install log/);
   assert.equal(target.logDocument.uri.scheme, 'file'); assert.equal(path.basename(target.logDocument.uri.fsPath), 'installation.log');
   target.manifestId = 'changed'; await target.execute('studio.retryProjectSetup', id); assert.match(target.errors.at(-1), /identity changed/);
-  target.manifestId = id; target.install = undefined; await target.execute('studio.retryProjectSetup', id);
+  target.manifestId = id; target.install = undefined; await target.dependencyTasks[0].options.retry();
   assert.equal((await target.state()).pending.length, 0); assert.equal(target.remembered.id, id); assert.equal(f.created, 1);
   assert.equal(target.calls.some(([name]) => name === 'vscode.openFolder'), false);
   assert.equal(target.calls.filter(([name]) => name === 'typescript.reloadProjects').length, 1);
@@ -272,7 +283,8 @@ test('ID allocation errors in the opened project window retain its files and can
   await until(async () => !(await target.state()).busy, 'Registration failure did not settle');
   assert.equal(target.registrations, 1); assert.equal(target.savedSetups()[0].projectId, '');
   assert.equal((await target.state()).pending[0].stage, 'registration');
-  assert.match(target.warnings[0], /Project files were created.*Server offline/);
+  assert.deepEqual(target.warnings, []);
+  assert.match(target.dependencyTasks[0].error, /Server offline/);
   target.register = undefined;
   await target.execute('studio.retryProjectSetup', pending.id);
   assert.equal(target.registrations, 2); assert.equal(target.installs.length, 1);

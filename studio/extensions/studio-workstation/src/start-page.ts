@@ -11,6 +11,7 @@ import { rememberImportedProjects, type RecentProject } from './projects';
 import { updateProjectHistory } from './project-history';
 import { chooseProjectWindow, openProjectFolder, type ProjectWindowOptions } from './project-window';
 import { getStartRecommendationsProvider, onDidChangeStartRecommendations, normalizeStartRecommendations } from './start-page-recommendations';
+import type { ProjectDependencyProgress } from './project-dependency-progress';
 export { registerStartRecommendationsProvider } from './start-page-recommendations';
 
 const PENDING_KEY = 'studio.pendingProjectSetups';
@@ -105,7 +106,8 @@ export class StudioStartController implements vscode.Disposable {
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
     private readonly account: AccountController, private readonly projects: ProjectSource,
     private readonly recent: { getChildren(): RecentProject[]; onDidChangeTreeData: vscode.Event<void>; reconcile?(): Promise<void> },
-    private readonly remember: (project: CreatedProject) => Promise<void>, private readonly output: vscode.OutputChannel) {
+    private readonly remember: (project: CreatedProject) => Promise<void>, private readonly output: vscode.OutputChannel,
+    private readonly dependencyProgress: ProjectDependencyProgress) {
     this.state = { version: 1, platform: account.platform, labels: startPageLabels(), hasWorkspace: false, projects: [], recent: [], pending: [], busy: false,
       canCreate: !!launcher.templates && !!launcher.createProject && !!launcher.installDependencies };
     const register = <Args extends unknown[]>(command: string, callback: (...args: Args) => unknown): void => {
@@ -350,76 +352,78 @@ export class StudioStartController implements vscode.Disposable {
     this.state.installing = project.id;
     this.publish();
     try {
-      await this.updatePending({ ...project, stage });
-      await this.beginInstallationLog(project.id);
-      this.appendInstallationLog(`\nProject: ${project.name} (${project.directory})\n`);
-      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Preparing Project: {0}', project.name), cancellable: true },
-        async (progress, token) => {
-          const controller = new AbortController();
-          const cancellation = token.onCancellationRequested(() => controller.abort());
-          const signal = AbortSignal.any([controller.signal, this.creation.signal]);
-          try {
-            if (token.isCancellationRequested) { controller.abort(); }
-            if (!project.dependenciesInstalled) {
-              progress.report({ message: t('Installing Dependencies') });
-              await this.launcher.installDependencies!(project.directory, signal, message => this.appendInstallationLog(message));
-              signal.throwIfAborted();
-              project = { ...project, dependenciesInstalled: true };
-              this.appendInstallationLog(`\n${t('Dependencies installed successfully.')}\n`);
-              // The editor may have cached missing imports while dependencies were still installing.
-              if (/\.(?:[cm]?ts|tsx)$/i.test(project.entryFile) && this.isProjectWindow(project)
-                && vscode.extensions.getExtension('vscode.typescript-language-features')?.isActive) {
-                void vscode.commands.executeCommand('typescript.reloadProjects').then(undefined, () => undefined);
-              }
+      await this.dependencyProgress.run({ title: t('Preparing Project: {0}', project.name), directory: project.directory,
+        signal: this.creation.signal, describeError: error => this.errorMessage(error),
+        retry: () => vscode.commands.executeCommand('studio.retryProjectSetup', project.id),
+      }, async ({ signal, report, append }) => {
+        let logReady = false;
+        const log = (message: string): void => {
+          if (logReady) this.appendInstallationLog(message);
+          else this.output.append(message);
+          append(message);
+        };
+        try {
+          await this.updatePending({ ...project, stage });
+          await this.beginInstallationLog(project.id);
+          logReady = true;
+          this.appendInstallationLog(`\nProject: ${project.name} (${project.directory})\n`);
+          signal.throwIfAborted();
+          if (!project.dependenciesInstalled) {
+            report(t('Installing Dependencies'));
+            await this.launcher.installDependencies!(project.directory, signal, log);
+            signal.throwIfAborted();
+            project = { ...project, dependenciesInstalled: true };
+            log(`\n${t('Dependencies installed successfully.')}\n`);
+            // The editor may have cached missing imports while dependencies were still installing.
+            if (/\.(?:[cm]?ts|tsx)$/i.test(project.entryFile) && this.isProjectWindow(project)
+              && vscode.extensions.getExtension('vscode.typescript-language-features')?.isActive) {
+              void vscode.commands.executeCommand('typescript.reloadProjects').then(undefined, () => undefined);
             }
-            if (project.projectId === '') {
-              stage = 'registration';
-              await this.updatePending({ ...project, stage });
-              progress.report({ message: t('Generating a local project ID') });
-              if (!this.launcher.registerProject) {
-                throw new Error(t('Project created without an ID. Retry Project Setup after selecting a local Node runtime.'));
-              }
-              await this.validateCreated(project);
-              const projectId = await this.launcher.registerProject(project.directory, signal);
-              project = { ...project, projectId };
-              await this.updatePending({ ...project, stage });
-            }
-            stage = 'validation';
+          }
+          if (project.projectId === '') {
+            stage = 'registration';
             await this.updatePending({ ...project, stage });
-            progress.report({ message: t('Validating Project') });
-            this.appendInstallationLog(`${t('Validating Project')}\n`);
-            if (await this.launcher.prepareProjectTemplate?.(project.directory, signal)) {
-              this.appendInstallationLog(`${t('Template source matched to the installed SDK.')}\n`);
+            report(t('Generating a local project ID'));
+            if (!this.launcher.registerProject) {
+              throw new Error(t('Project created without an ID. Retry Project Setup after selecting a local Node runtime.'));
             }
-            signal.throwIfAborted();
             await this.validateCreated(project);
-            const inspected = await this.launcher.inspect([project.directory], { validationDetails: true });
-            signal.throwIfAborted();
-            const projectId = project.projectId ?? project.id;
-            if (!inspected.projects.some(entry => entry.id === projectId) || inspected.errors.length) { throw new Error(inspected.errors.join('\n') || t('Project validation failed')); }
-            this.appendInstallationLog(`${t('Project validation succeeded.')}\n`);
-            const uri = vscode.Uri.file(project.directory).toString();
-            await updateProjectHistory(this.context, history => ({ ...history,
-              imported: rememberImportedProjects(history.imported, [{ id: projectId, name: project.name, uri }]) }));
-            await this.remember({ ...project, id: projectId });
-            await vscode.commands.executeCommand('studio.refreshProjects');
-          } finally { cancellation.dispose(); }
-        });
-    } catch (error) {
-      const cancelled = this.creation.signal.aborted || error instanceof Error && error.name === 'AbortError';
-      const label = stage === 'dependencies' ? t('Installing Dependencies') : stage === 'validation' ? t('Validating Project') : t('Registering Project');
-      this.appendInstallationLog(`\n${t('Project setup failed at {0}: {1}', label, this.errorMessage(error))}\n`);
-      await this.updatePending({ ...project, stage, status: cancelled ? 'cancelled' : 'failed', installOnOpen: false, error: this.errorMessage(error) });
-      if (!this.disposed) {
-        const retry = t('Retry Project Setup'), open = t('Open Project Folder');
-        void vscode.window.showWarningMessage(t('Project files were created. {0}', cancelled ? t('Project setup cancelled') : this.errorMessage(error)), retry, open).then(answer => {
-          if (answer) { return vscode.commands.executeCommand(answer === retry ? 'studio.retryProjectSetup' : 'studio.openCreatedProject', project.id); }
-          return undefined;
-        });
-      }
+            const projectId = await this.launcher.registerProject(project.directory, signal);
+            project = { ...project, projectId };
+            await this.updatePending({ ...project, stage });
+          }
+          stage = 'validation';
+          await this.updatePending({ ...project, stage });
+          report(t('Validating Project'));
+          log(`${t('Validating Project')}\n`);
+          if (await this.launcher.prepareProjectTemplate?.(project.directory, signal)) {
+            log(`${t('Template source matched to the installed SDK.')}\n`);
+          }
+          signal.throwIfAborted();
+          await this.validateCreated(project);
+          const inspected = await this.launcher.inspect([project.directory], { validationDetails: true });
+          signal.throwIfAborted();
+          const projectId = project.projectId ?? project.id;
+          if (!inspected.projects.some(entry => entry.id === projectId) || inspected.errors.length) { throw new Error(inspected.errors.join('\n') || t('Project validation failed')); }
+          log(`${t('Project validation succeeded.')}\n`);
+          const uri = vscode.Uri.file(project.directory).toString();
+          await updateProjectHistory(this.context, history => ({ ...history,
+            imported: rememberImportedProjects(history.imported, [{ id: projectId, name: project.name, uri }]) }));
+          await this.remember({ ...project, id: projectId });
+          await vscode.commands.executeCommand('studio.refreshProjects');
+        } catch (error) {
+          const cancelled = this.creation.signal.aborted || error instanceof Error && error.name === 'AbortError';
+          const label = stage === 'dependencies' ? t('Installing Dependencies') : stage === 'validation' ? t('Validating Project') : t('Registering Project');
+          const detail = this.errorMessage(error);
+          log(`\n${t('Project setup failed at {0}: {1}', label, detail)}\n`);
+          await this.updatePending({ ...project, stage, status: cancelled ? 'cancelled' : 'failed', installOnOpen: false, error: detail });
+          throw error;
+        } finally { await this.flushInstallationLog(); }
+      });
+    } catch {
+      // The details tab and Project Overview expose the failure and retry action.
       return;
     } finally {
-      await this.flushInstallationLog();
       this.state.installing = undefined;
       this.publish();
     }

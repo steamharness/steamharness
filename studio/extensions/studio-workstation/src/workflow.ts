@@ -32,6 +32,7 @@ import { SideResourcePreview } from './workflow-resource-preview';
 import type { ProjectSidebar } from './project-sidebar';
 import { findProjectCandidates, ignoredProjectDirectories } from './project-candidates';
 import { registerRuntimeDependencyIndicators } from './project-runtime-dependency-lenses';
+import type { ProjectDependencyProgress } from './project-dependency-progress';
 
 class ProjectCatalog {
   private readonly change = new vscode.EventEmitter<void>();
@@ -47,7 +48,8 @@ class ProjectCatalog {
   dispose(): void { this.change.dispose(); }
 }
 
-export async function activateProject(context: vscode.ExtensionContext, launcher: Launcher, output: vscode.OutputChannel, account: AccountController, _projectIcons: ProjectIcons, sidebar: ProjectSidebar): Promise<{
+export async function activateProject(context: vscode.ExtensionContext, launcher: Launcher, output: vscode.OutputChannel, account: AccountController, _projectIcons: ProjectIcons,
+  sidebar: ProjectSidebar, dependencyProgress: ProjectDependencyProgress): Promise<{
   getProjects(): Project[]; onDidChangeProjects: vscode.Event<void>;
   getVersionStatus(project: Project): ProjectVersionStatus; onDidChangeVersions: vscode.Event<void>;
 }> {
@@ -638,7 +640,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     catch (error) { output.appendLine(String(error)); await vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)); }
   });
   const updateRuntimeDependencyStatus = launcher.runtimeDependencies && registerRuntimeDependencyIndicators(context, launcher.runtimeDependencies,
-    (directory, signal) => prepareProjectReplacement(vscode.Uri.file(directory).toString(), signal, false), output, () => {
+    (directory, signal) => prepareProjectReplacement(vscode.Uri.file(directory).toString(), signal, false), output, dependencyProgress, () => {
       const project = currentProject();
       if (!project || lockedWindow || project.assistant || project.builtin || project.distribution === 'release') return;
       const root = vscode.Uri.parse(project.uri);

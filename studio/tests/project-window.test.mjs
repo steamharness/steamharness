@@ -53,7 +53,7 @@ async function fixture(t, language = 'en', browser = false) {
       executeCommand: async (name, ...args) => name === 'studio.internalIsLaunchpad' ? f.launchpad === true : name === 'vscode.openFolder' ? f.opens.push({ uri: args[0].toString(), options: { ...args[1] } }) : callbacks.get(name)?.(...args) },
   };
   const module = { exports: {} };
-  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), URL });
+  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), URL, AbortController, clearTimeout });
   module.exports.configureLocalization(language === 'zh-cn' ? chinese : {}, language);
   const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [],
     globalState: { get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } };
