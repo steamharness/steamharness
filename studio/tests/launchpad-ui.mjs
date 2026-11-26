@@ -274,7 +274,12 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
   detected.set(history[4].uri,{projectType:'bot',distribution:'release',artwork:{entries:[avatar]},entries:[
     {entryId:'main',name:'Release bot',type:'bot',primary:true},{entryId:'board',name:'Release board',type:'kanban',primary:false}]});
   const startEvent = new Emitter();
-  const start = { state:undefined, onDidChange:startEvent.event, setVisible(){} };
+  let startVisible = false;
+  const start = { state:undefined, onDidChange:startEvent.event, setVisible(_id, visible) {
+    if (startVisible === visible) return;
+    startVisible = visible;
+    if (visible) return window.holdStartVisibility ? new Promise(resolve => { window.resumeStartVisibility = resolve; }) : Promise.resolve();
+  } };
   const storage = { getExtensionState:(id,global)=>global && JSON.parse(localStorage.getItem(id)) };
   window.activateProjects = () => {
     state.recent=applyRecentMetadata(history,detected);
@@ -282,6 +287,11 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     start.state=state; startEvent.fire();
   };
   window.delayProjects = () => {start.state=undefined; startEvent.fire();};
+  window.publishProjectScope = (restoring, owner) => {
+    start.state = { ...state, workspaceRestoring: restoring, workspaceOwner: owner,
+      recent: owner ? [{ uri: URI.file('/projects/account-project').toString(), kind: 'folder', label: 'Account project', lastOpened: 1 }] : [] };
+    startEvent.fire();
+  };
   const windows = [{ id:23, dirty:false, workspace:{id:'folder',uri:folders[0]} },{id:24,dirty:true,workspace:{id:'bot',uri:folders[2]}},{id:25,dirty:false,workspace:{id:'third',uri:folders[3]}}];
   const folderBots = [], removedFolderBots = [];
   const edits = new Emitter();
@@ -389,7 +399,7 @@ const bundle = await build({ stdin: { resolveDir: kernel, contents: `
     },removeRecentlyOpened:async ([uri])=>{
       window.actions.push(['forget',uri.path]); recent.workspaces=recent.workspaces.filter(row=>(row.folderUri??row.workspace.configPath).path!==uri.path); historyChange.fire();
     }},layout,commands,dialogs,{error:e=>{if(window.builtinErrors && /built-in project release|内置项目的发行文件/.test(e.message)) window.builtinErrors.push(e.message); else throw e;}},opener,webviews,files,storage,webviewViews,auxiliary,menus,hover,{writeText:async text=>window.actions.push(['copy',text])},
-    {profiles: [{ globalStorageHome: profileStorage.with({ scheme: 'vscode-userdata' }) }]});
+    {profiles: [{ globalStorageHome: profileStorage.with({ scheme: 'vscode-userdata' }) }]}, noticeStorage, {}, undefined);
     window.clearHistory=()=>{recent.workspaces=[];historyChange.fire();};
     window.refreshInbox=()=>CommandsRegistry.getCommand('studio.internalLaunchpadInboxChanged').handler(undefined,true);
     window.refreshSocial=()=>window.events['vscode:studioSocialChanged']({});
@@ -659,7 +669,8 @@ async function checkBuiltinProjects(page, language, screenshot) {
   await open.evaluate(button => { button.click(); button.click(); });
   const focus = details.getByRole('button', { name: t('Switch to window', '切换到项目窗口'), exact: true });
   await focus.waitFor();
-  assert.deepEqual(await page.evaluate(() => window.openRequests), [{openables:[{kind:'folderUri',path}],forceNewWindow:true,studioProjectEntry:{},noRecentEntry:true}]);
+  assert.deepEqual(JSON.parse(await page.evaluate(() => JSON.stringify(window.openRequests))),
+    [{openables:[{kind:'folderUri',path}],forceNewWindow:true,studioProjectEntry:{},noRecentEntry:true}]);
   await focus.click();
   await page.waitForFunction(() => window.actions.some(([id, windowId]) => id === 'focus' && windowId === 60));
   assert.equal(await page.evaluate(() => window.openRequests.length), 1);
@@ -671,12 +682,50 @@ async function checkBuiltinProjects(page, language, screenshot) {
   assert.equal(await page.evaluate(() => window.actions.some(([id]) => id === 'forget')), false);
 }
 
+async function checkAccountProjectLoading(page, language, enhanced) {
+  const loading = page.locator('.lp-library-loading');
+  const projects = page.locator('.lp-library-card[data-key^="all:"]');
+  const local = projects.filter({ hasText: 'Sample.code-workspace' });
+  const importProject = page.getByRole('button', { name: language === 'zh-cn' ? '导入项目' : 'Import project', exact: true });
+  // Give the already-returned native recent list time to paint if it leaks into the initial view.
+  const assertPending = async () => {
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.ok(await loading.isVisible());
+    assert.equal(await loading.getByRole('status').textContent(), language === 'zh-cn' ? '正在加载项目…' : 'Loading projects…');
+    assert.equal(await page.locator('.lp-library-card, .lp-index-row, .lp-empty').count(), 0);
+    assert.ok(await importProject.isDisabled());
+  };
+  await assertPending();
+  if (enhanced) {
+    await page.evaluate(() => {
+      window.updateAccount({ status: 'checking', hasAccount: false, scopeKey: undefined });
+      window.publishProjectScope(true);
+      window.resumeStartVisibility();
+    });
+    await assertPending();
+    await page.evaluate(() => window.updateAccount({ status: 'authenticated', hasAccount: true, scopeKey: 'a'.repeat(64), workspaceOwner: 'a'.repeat(64) }));
+    await assertPending();
+    await page.evaluate(() => window.publishProjectScope(false, 'a'.repeat(64)));
+    await projects.filter({ hasText: 'Account project' }).waitFor();
+    assert.equal(await projects.count(), 1);
+    assert.equal(await local.count(), 0);
+    await page.evaluate(() => { window.signOut(); window.activateProjects(); });
+  } else {
+    // When activation returns without a Studio state, a local-only profile can still open its history.
+    await page.evaluate(() => window.resumeStartVisibility());
+  }
+  await local.waitFor();
+  assert.equal(await projects.filter({ hasText: 'Account project' }).count(), 0);
+  assert.ok(await importProject.isEnabled());
+}
+
 const browser = await chromium.launch({ headless:true, executablePath:process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
 const statusGuideOnly = process.argv.includes('--status-guide-only');
 const folderBotsOnly = process.argv.includes('--folder-bots-only');
 const profileRowsOnly = process.argv.includes('--profile-rows-only');
 const notificationsOnly = process.argv.includes('--notifications-only');
 const builtinProjectsOnly = process.argv.includes('--builtin-projects-only');
+const accountProjectLoadingOnly = process.argv.includes('--account-project-loading-only');
 try {
   const project = await browser.newPage();
   await project.route('http://127.0.0.1:4321/', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
@@ -740,6 +789,7 @@ try {
       await page.evaluate(({html,snapshot})=>{window.settingsHtml=html;window.settingsSnapshot=snapshot;},{html,snapshot});
     }
     await page.addStyleTag({content:hostFocusCss}); await page.addStyleTag({content:css+'\n'+iconCss}); await page.addScriptTag({content:js});
+    if (accountProjectLoadingOnly) { await page.evaluate(() => { window.holdStartVisibility = true; }); }
     await checkEditorSashes(page, true);
     for (const [x,y] of sashPoints) { await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+10,y+10); await page.mouse.up(); }
     assert.equal(await page.evaluate(()=>new Set(window.sashDrags).size),2,'both resize directions still work in a project window');
@@ -773,6 +823,14 @@ try {
     }
     await page.evaluate(() => { window.showHome(); window.resumeHistory(); });
     assert.equal(await page.locator('#studio-launchpad-splash').count(), 0, 'revealing the resident launchpad does not replay startup');
+    if (accountProjectLoadingOnly) {
+      await checkAccountProjectLoading(page, language, enhanced);
+      await page.evaluate(() => window.cleanup());
+      assert.deepEqual(errors, []);
+      await page.close();
+      console.log(`${stem}: recent projects wait for the resolved account or local profile`);
+      continue;
+    }
     await checkProjectStatusGuide(page, language);
     if (builtinProjectsOnly) {
       await checkBuiltinProjects(page, language, () => page.screenshot({ path: fileURLToPath(new URL(stem+'-builtin-projects.png', proof)) }));

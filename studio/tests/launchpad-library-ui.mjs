@@ -87,7 +87,8 @@ export async function checkFolderBotBranches({ page, language, enhanced, screens
   assert.deepEqual(await detail.locator('.lp-detail-actions > button').allTextContents(), [t('Run project', '运行项目'), t('Switch to window', '切换到项目窗口'), '']);
   await checkDetailActionLayout(page, detail);
   if (!enhanced) {
-    assert.equal(await detail.locator('.lp-detail-secondary').isVisible(), false);
+    assert.equal(await botGroup.count(), 0);
+    assert.equal(await imGroup.count(), 0);
     assert.equal(await index.locator('.lp-index-toggle').count(), 0);
     await libraryTab.click();
     return;
