@@ -301,6 +301,7 @@ function initialize(): void {
   const dialogs = new ConversationTools({
     path: target => post({ type: 'open-path', ...target }),
     browser: url => post({ type: 'open-url', url }),
+    copyText: vscode.copyText, embeddedConversation: !!embeddedConversation,
     account: () => post({ type: 'open-account' }),
     configurations: configurationPanel,
     artifacts: { available: () => !!state?.botArtifacts && !hostHistory() && !embeddedConversation, open: () => library.open() },

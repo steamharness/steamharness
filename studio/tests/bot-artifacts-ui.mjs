@@ -141,6 +141,14 @@ try {
   finally { await persistence.close(); }
   await frame.locator('#new').click();
   await card.waitFor({ state: 'detached' });
+  await frame.locator('#project-info').click();
+  const details = frame.locator('#project-information-dialog[open]');
+  const artifactAction = details.getByRole('button', { name: 'Artifact library', exact: true });
+  await artifactAction.click(); await modal.waitFor();
+  assert.equal(await details.count(), 1);
+  await page.keyboard.press('Escape'); await modal.waitFor({ state: 'hidden' });
+  await artifactAction.locator(':scope:focus').waitFor();
+  await details.locator(':scope > header').getByRole('button', { name: 'Close', exact: true }).click();
   await openLibrary();
   assert.match(await modal.locator('.bot-artifact-identity').innerText(), /Bot instance: Fixture copy/u);
   const row = modal.locator('.bot-artifact-row');

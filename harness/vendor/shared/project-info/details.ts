@@ -39,6 +39,37 @@ export interface ProjectDetailSection {
 	expanded?: boolean;
 }
 
+export type ProjectBotAction = 'artifacts' | 'memory' | 'credentials';
+
+export function projectBotManagementLabel(t: ProjectDetailsLabel): string {
+	return t('Bot management', 'Bot 管理');
+}
+
+export function projectBotAction(kind: ProjectBotAction, t: ProjectDetailsLabel): [label: string, icon: string] {
+	switch (kind) {
+		case 'artifacts': return [t('Artifact library', '产物库'), 'archive'];
+		case 'memory': return [t('Memory management', '记忆管理'), 'database'];
+		case 'credentials': return [t('Credential management', '凭据管理'), 'key'];
+	}
+}
+
+export function projectDetailActionGroup(doc: Document, label: string, heading: 'h2' | 'h4' = 'h2') {
+	const group = element(doc, 'section', 'lp-detail-action-group');
+	group.setAttribute('aria-label', label);
+	const controls = element(doc, 'div', 'lp-detail-group-actions');
+	group.append(element(doc, heading, '', label), controls);
+	return { group, controls };
+}
+
+export function projectDetailButton(doc: Document, label: string, glyph: string, action: (button: HTMLButtonElement) => void, className = 'studio-project-action lp-outline'): HTMLButtonElement {
+	const button = element(doc, 'button', className);
+	button.type = 'button';
+	if (glyph) { button.append(icon(doc, glyph)); }
+	button.append(label);
+	button.addEventListener('click', () => action(button));
+	return button;
+}
+
 interface EntryListOptions {
 	heading?: 'h2' | 'h4';
 	uri?: string;
@@ -166,11 +197,9 @@ export function renderProjectEntryList(doc: Document, entries: readonly ProjectD
 			row.append(element(doc, 'small', 'lp-entry-unavailable', t('Unavailable', '不可用')));
 		} else if (entryId && openEntry) {
 			const label = t('Open entry', '打开入口');
-			const button = element(doc, 'button', 'lp-outline studio-project-action');
-			button.type = 'button'; button.append(icon(doc, 'play'), label);
+			const button = projectDetailButton(doc, label, 'play', () => openEntry(entryId));
 			button.setAttribute('aria-label', `${label}: ${entry.name}`);
 			button.dataset.key = `entry:${options.uri}:${entryId}`;
-			button.addEventListener('click', () => openEntry(entryId));
 			row.append(button);
 		}
 		list.append(row);

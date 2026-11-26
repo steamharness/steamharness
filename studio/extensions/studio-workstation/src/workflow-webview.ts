@@ -1,22 +1,23 @@
 export interface ProjectWindowChrome { active: boolean; projectUri?: string; height: number; left: number; right: number; revision: number }
 interface ConversationSelection { id: string; revision: string }
+interface ProjectFrameDetails { version: 1; revision: string; localUsage: boolean }
 const projectConversationPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 export const projectConversationId = (value: unknown): value is string => typeof value === 'string' && projectConversationPattern.test(value);
 
-export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false, nativeDownload = true, selection?: ConversationSelection, features?: { workflowDraft?: boolean; showScheduledRun?: string }): string {
+export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false, nativeDownload = true, selection?: ConversationSelection, features?: { workflowDraft?: boolean; showScheduledRun?: string; projectDetails?: ProjectFrameDetails }): string {
   const address = new URL(url);
   if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid SteamHarness Web URL.'); }
   const locale = language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
   address.searchParams.set('projectLocale', locale);
   const escape = (value: string): string => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]!));
-  const literal = (value: string | ProjectWindowChrome | ConversationSelection | undefined): string => (JSON.stringify(value) ?? 'undefined').replace(/</g, '\\u003c');
+  const literal = (value: string | ProjectWindowChrome | ConversationSelection | ProjectFrameDetails | undefined): string => (JSON.stringify(value) ?? 'undefined').replace(/</g, '\\u003c');
   const tracksConversation = !!(conversationView || selection);
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src ${escape(address.origin)}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
     <style nonce="${nonce}">html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--vscode-editor-background)}iframe{display:block;width:100%;height:100%;border:0}</style></head>
     <body><iframe id="workflow-frame" title="${escape(title)}" allow="clipboard-read; clipboard-write; microphone *" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups allow-modals"></iframe>
     <script nonce="${nonce}">
-      const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)};
+      const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)},projectDetails=${literal(features?.projectDetails)};
       let theme=${literal(theme)},windowChrome=${literal(windowChrome)},editCommands=false,contextMenu=false,clipboardImageRequestId;
       const postHost=message=>frame.contentWindow.postMessage(message,origin);
       const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
@@ -48,11 +49,16 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();postHost({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})});contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,clipboardImageVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,projectDetails,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,clipboardImageVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
           if(event.origin!==origin)return;
           const message=event.data;
+          if(message?.type==='workflow-project-usage'){
+            const {type,version,revision,requestId,part,cancel}=message;
+            if(projectDetails?.localUsage===true&&version===1&&revision===projectDetails.revision)vscode.postMessage({type,version,revision,requestId,part,cancel});
+            return;
+          }
           if(message?.type==='workflow-keyboard'&&message.version===1&&document.activeElement===frame){
             const key=message.event;
             if(key&&['keydown','keyup'].includes(key.type)&&typeof key.key==='string'&&key.key.length<=64&&typeof key.code==='string'&&key.code.length<=64&&Number.isInteger(key.keyCode)&&key.keyCode>=0&&key.keyCode<=255&&['ctrlKey','metaKey','altKey','shiftKey','repeat'].every(name=>typeof key[name]==='boolean')){
@@ -91,6 +97,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
           return;
         }
         if(event.data?.type!=='workflow-host')return;
+        if(event.data.projectUsage&&event.data.projectUsage.revision!==projectDetails?.revision)return;
         if(event.data.theme==='dark'||event.data.theme==='light')theme=event.data.theme;
         if(event.data.windowChrome){windowChrome=event.data.windowChrome;if(!windowChrome.active)clearDragRegions();}
         postHost(event.data);

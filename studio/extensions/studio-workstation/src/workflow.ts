@@ -19,6 +19,7 @@ import { bindProjectPathPicker } from './workflow-path-picker';
 import { bindProjectPathOpen } from './workflow-path-open';
 import { bindProjectBrowserOpen, openBrowserLink } from './workflow-browser-open';
 import { bindProjectDownload } from './workflow-download';
+import { bindProjectUsage } from './workflow-project-usage';
 import { openProjectUserSettings } from './workflow-user-settings';
 import { ProjectFileIcons } from './workflow-file-icons';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
@@ -244,6 +245,10 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       let traceBinding = bindTrace();
       const clipboardBinding = bindProjectClipboard(panel.webview);
       const workingDirectory = vscode.Uri.file(project.folderBot?.directory ?? project.assistant?.workdir ?? project.folderPath);
+      const usageBinding = bindProjectUsage(panel.webview, {
+        uri: project.folderBot ? project.uri : workingDirectory.toString(),
+        identity: [project.id, project.distribution].join(':'), managed: !!project.folderBot,
+      }, () => !closed && projectAvailable(project), launcher.readProjectUsage);
       const pickerBinding = bindProjectPathPicker(panel.webview, workingDirectory);
       const pathOpenBinding = bindProjectPathOpen(panel.webview, workingDirectory);
       const browserOpenBinding = bindProjectBrowserOpen(panel.webview);
@@ -298,7 +303,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         && launcher.createRunDraft && bindDraftSave({ webview: panel.webview, project, address: () => session.ready.url,
           active: () => !closed && projectAvailable(project), create: launcher.createRunDraft, open: directory => openProjectFolder(vscode.Uri.file(directory), () => !disposed) });
       if (draft) listeners.push(draft);
-      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, browserOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, browserOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, usageBinding, panel.webview.onDidReceiveMessage(message => {
+        if (usageBinding.receive(message)) return;
         if (reconnect(message ?? {}, panel.webview)) return;
         if (account.platform && message?.type === 'workflow-server-project' && message.version === 1 && typeof message.projectId === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
           const open = async () => {
@@ -322,6 +328,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           return;
         }
         if (message?.type === 'workflow-frame-ready') {
+          usageBinding.clear();
           frameLoaded = true;
           if (botPanelPending) openBotPanel(botPanelPending);
           const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
@@ -357,7 +364,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       };
       const renderFrame = () => {
         frameLoaded = false;
-        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection, { workflowDraft: !!draft });
+        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection, { workflowDraft: !!draft, projectDetails: usageBinding.frame() });
       };
       const openConversation = (id: string) => {
         if (closed || project.projectType !== 'bot' || !projectConversationId(id)) return;

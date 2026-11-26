@@ -58,3 +58,26 @@ test('project frames advertise browser support and forward URL opens only from t
     assert.equal(posted.filter(item => item.type === message.type).length, 1);
   } finally { dom.window.close(); }
 });
+
+test('the usage bridge forwards only the bound frame revision and strips directory overrides', () => {
+  const posted = [], received = [];
+  const projectDetails = { version: 1, revision: 'open-project', localUsage: true };
+  const html = module.exports.projectFrameHtml('http://127.0.0.1:3000/entries/main/', 'Project', 'file:///project', 'light', 'nonce', 'en',
+    undefined, undefined, false, false, true, undefined, { projectDetails });
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://studio.test/', beforeParse(window) {
+    window.acquireVsCodeApi = () => ({ postMessage: message => posted.push(message), getState: () => undefined, setState() {} });
+  } });
+  try {
+    const frame = dom.window.document.querySelector('iframe');
+    frame.contentWindow.postMessage = message => received.push(message);
+    frame.dispatchEvent(new dom.window.Event('load'));
+    assert.deepEqual({ ...received.at(-1).projectDetails }, projectDetails);
+    const incoming = { type: 'workflow-project-usage', version: 1, revision: 'open-project', requestId: 'fresh', part: 'directory', uri: 'file:///unrelated' };
+    const send = (data, origin, source = frame.contentWindow) => dom.window.dispatchEvent(new dom.window.MessageEvent('message', { source, origin, data }));
+    send(incoming, 'https://other.test');
+    send({ ...incoming, revision: 'closed' }, 'http://127.0.0.1:3000');
+    send(incoming, 'http://127.0.0.1:3000');
+    const { uri: _uri, ...expected } = incoming;
+    assert.deepEqual(posted.filter(item => item.type === incoming.type).map(item => JSON.parse(JSON.stringify(item))), [expected]);
+  } finally { dom.window.close(); }
+});

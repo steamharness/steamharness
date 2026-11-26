@@ -28,7 +28,8 @@ const server = createServer((request, response) => {
   const target = pages.get(request.url);
   if (!target) { response.writeHead(404).end(); return; }
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
-  response.end(projectFrameHtml(target.url, 'Memory fixture', pathToFileURL(project).href, target.language === 'en' ? 'light' : 'dark', randomUUID(), target.language));
+  response.end(projectFrameHtml(target.url, 'Memory fixture', pathToFileURL(project).href, target.language === 'en' ? 'light' : 'dark', randomUUID(), target.language,
+    undefined, undefined, false, false, true, undefined, { projectDetails: { version: 1, revision: randomUUID(), localUsage: true } }));
 });
 
 async function launch(instance, language = 'en', local = true, assistant) {
@@ -102,12 +103,19 @@ try {
   const page = await browser.newPage({ viewport: { width: 1040, height: 740 } });
   page.setDefaultTimeout(15_000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  await page.addInitScript(() => {
+  await page.addInitScript(projectPath => {
     if (window !== window.top) return;
     let state;
     window.acquireVsCodeApi = () => ({ getState: () => state, setState: value => { state = value; },
-      postMessage: message => { if (message.type === 'workflow-frame-ready') document.body.dataset.frameReady = 'true'; } });
-  });
+      postMessage: message => {
+        if (message.type === 'workflow-frame-ready') document.body.dataset.frameReady = 'true';
+        if (message.type !== 'workflow-project-usage' || message.cancel) return;
+        const { requestId, revision, part } = message;
+        const usage = part === 'directory' ? { state: 'ok', bytes: 4096, path: projectPath, files: 3, directories: 1, folders: [] }
+          : { state: 'ok', size: { state: 'ok', bytes: 0 }, entries: [] };
+        window.postMessage({ type: 'workflow-host', projectUsage: { version: 1, revision, requestId, snapshot: { part, measuredAt: Date.now(), usage } } }, location.origin);
+      } });
+  }, project);
   const app = await launch(copy);
   assert.equal((await app.call({ action: 'list' }, false)).status, 401);
   assert.equal((await app.call({ action: 'list' }, true, { 'X-SteamHarness-Preview-Mount': `/p/${'a'.repeat(43)}` })).status, 404);
@@ -123,6 +131,29 @@ try {
   await bringUp(app);
   await frame.locator('#message').fill('Update C in the fixture'); await frame.locator('#send').click();
   await frame.getByText('Fixture turn complete').waitFor();
+  await frame.locator('#project-info').click();
+  const description = frame.locator('#project-information-dialog[open]');
+  const overview = description.locator('[data-section=overview]');
+  await overview.getByText('4 KiB', { exact: true }).waitFor();
+  assert.deepEqual(await overview.locator('.lp-project-details > :is(.lp-detail-facts,.lp-detail-secondary,.lp-project-usage,.lp-detail-entries)')
+    .evaluateAll(nodes => nodes.map(node => node.className)), ['lp-detail-facts', 'lp-detail-secondary', 'lp-project-usage', 'lp-detail-entries']);
+  assert.equal(await overview.locator('.lp-detail-facts dd').allTextContents().then(values => values.includes('Open')), true);
+  const folders = overview.getByText('Folder sizes', { exact: true });
+  await folders.click();
+  const scroll = await overview.evaluate(element => element.scrollTop);
+  const memoryAction = description.getByRole('button', { name: 'Memory management', exact: true });
+  await memoryAction.click(); await panel.waitFor(); assert.equal(await description.count(), 1);
+  const scrolledToAction = await overview.evaluate(element => element.scrollTop);
+  await panel.locator(':scope > header').getByRole('button', { name: 'Close', exact: true }).click();
+  await memoryAction.locator(':scope:focus').waitFor();
+  assert.equal(await folders.evaluate(element => element.parentElement.open), true);
+  assert.equal(await overview.evaluate(element => element.scrollTop), scrolledToAction);
+  if (process.env.STEAMHARNESS_UI_PROOF_DIR) {
+    await mkdir(process.env.STEAMHARNESS_UI_PROOF_DIR, { recursive: true });
+    await overview.evaluate((element, position) => { element.scrollTop = position; }, scroll);
+    await page.screenshot({ path: path.join(process.env.STEAMHARNESS_UI_PROOF_DIR, 'studio-project-overview.png') });
+  }
+  await description.locator(':scope > header').getByRole('button', { name: 'Close', exact: true }).click();
   await openPanel(); assert.equal(await panel.getByRole('heading', { level: 2 }).textContent(), 'Memory management');
   assert.equal(await panel.locator('.bot-memory-muted').first().textContent(), 'Bot instance: Memory copy');
   for (const source of [a, b]) {
@@ -170,8 +201,21 @@ try {
   await detail.getByText('Memory forgotten.').waitFor();
   assert.equal((await store.execute({ action: 'get', id: c.id })).memory, null);
   await page.goto('about:blank'); await app.close();
-  const zh = await launch(copy, 'zh-CN'); await page.setViewportSize({ width: 390, height: 650 });
-  await bringUp(zh); await openPanel();
+  const zh = await launch(copy, 'zh-CN');
+  await bringUp(zh);
+  await frame.locator('#project-info').click();
+  await overview.getByRole('heading', { name: '本机用量', exact: true }).waitFor();
+  await overview.getByText('4 KiB', { exact: true }).waitFor();
+  const memoryActionZh = overview.getByRole('button', { name: '记忆管理', exact: true });
+  if (process.env.STEAMHARNESS_UI_PROOF_DIR) {
+    await page.screenshot({ path: path.join(process.env.STEAMHARNESS_UI_PROOF_DIR, 'studio-project-overview-zh.png') });
+  }
+  await memoryActionZh.click(); await panel.waitFor();
+  await page.keyboard.press('Escape'); await panel.waitFor({ state: 'hidden' });
+  await memoryActionZh.locator(':scope:focus').waitFor();
+  await description.locator(':scope > header').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 650 });
+  await openPanel();
   assert.equal(await panel.getByRole('heading', { level: 2 }).textContent(), '\u8bb0\u5fc6\u7ba1\u7406');
   await panel.getByRole('button', { name: '\u5207\u6362\u8bb0\u5fc6\u76ee\u5f55' }).waitFor();
   await row(a.id).waitFor(); assert.equal(await row(c.id).count(), 0);

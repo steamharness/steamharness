@@ -44,6 +44,7 @@ const configurationPanel = mountProjectConfigurations(host, {
 });
 const dialogs = new ConversationTools({
   browser: url => host.postMessage({ type: 'open-url', url }),
+  copyText,
   account: () => { void host.postMessage({ type: 'open-account' }); },
   configurations: configurationPanel,
   usage: { available: () => usageAvailable, load: requestId => { host.postMessage({ type: 'usage', requestId }); } },

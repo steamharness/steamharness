@@ -1,4 +1,6 @@
-import { t } from '../localization';
+import { locale, t } from '../localization';
+import { projectBotAction, projectBotManagementLabel, projectDetailActionGroup, projectDetailButton } from '@steamharness/project-info/details';
+import { ProjectUsageView } from '@steamharness/project-info/local-usage';
 import type { Parameters, ToolPolicies, Project } from '../workflow-types';
 import type { SystemAiUsage } from '../workflow-auth-client';
 import { iconButton, markdownHtml, iconHtml, escapeHtml } from './ui';
@@ -10,11 +12,14 @@ import { SkillGuides, type SkillGuidesLoader } from './skill-guides';
 import type { ProjectConfigurationsPanel } from './project-configurations';
 import './project-settings.css';
 import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
+import { projectDetailsHost } from './project-details-host';
 
-export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'bot-management' | 'usage';
+export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage';
 export interface ProjectSettingsOptions {
   path?(target: FileLinkTarget): void;
   browser?(url: string): void;
+  copyText?(text: string): Promise<boolean>;
+  embeddedConversation?: boolean;
   account?(): void;
   configurations?: ProjectConfigurationsPanel;
   artifacts?: { available(): boolean; open(): void };
@@ -34,7 +39,8 @@ export class ConversationTools {
   private usageTimer?: ReturnType<typeof setTimeout>;
   private refresh?: HTMLButtonElement;
   private disposeImage?: () => void;
-  private disposeProject?: () => void;
+  private localUsage?: ProjectUsageView;
+  private readonly detailsHost;
   private disposeNavigation?: () => void;
   private refreshTools?: (tools: ReturnType<NonNullable<ProjectSettingsOptions['tools']>>) => void;
   private settingsProject?: string;
@@ -45,6 +51,7 @@ export class ConversationTools {
   private skillGuides?: SkillGuides;
   private readonly toolSections = new Map<string, boolean>();
   constructor(private readonly settings: ProjectSettingsOptions = {}) {
+    this.detailsHost = settings.embeddedConversation ? undefined : projectDetailsHost(settings.copyText);
     this.dialog.id = 'project-information-dialog'; this.dialog.className = 'conversation-dialog';
     this.title.id = 'conversation-dialog-title'; this.dialog.setAttribute('aria-labelledby', this.title.id);
     const header = document.createElement('header'); header.append(this.title, iconButton('close', t("Close"), () => this.close()));
@@ -56,7 +63,7 @@ export class ConversationTools {
   get open(): boolean { return this.dialog.open; }
   get activeSection(): ProjectSettingsSection | undefined { return this.open ? this.section : undefined; }
   private cleanup(): void {
-    this.disposeImage?.(); this.disposeImage = undefined; this.disposeProject?.(); this.disposeProject = undefined;
+    this.disposeImage?.(); this.disposeImage = undefined; this.localUsage?.dispose(); this.localUsage = undefined;
     this.disposeNavigation?.(); this.disposeNavigation = undefined; this.refreshTools = undefined;
     this.skillGuides?.dispose(); this.skillGuides = undefined;
     this.settings.configurations?.deactivate(); this.usageOpen = false; this.usageRequestId = undefined; this.usageBody = undefined;
@@ -96,19 +103,27 @@ export class ConversationTools {
     this.showSettings(project, initialTab, this.settings.tools?.()); this.settingsProject = key;
   }
 
-  private botManagement(): HTMLElement | undefined {
-    const actions = document.createElement('div'); actions.className = 'project-settings-bot-actions';
-    for (const [icon, message, feature] of [
-      ['archive', 'Bot artifact library', this.settings.artifacts],
-      ['database', 'Memory management', this.settings.memory],
-      ['key', 'Bot credentials', this.settings.credentials],
-    ] as const) {
+  private botManagement(project: Project): HTMLElement | undefined {
+    if (project.projectType !== 'bot') return;
+    const label = (en: string, zh: string) => locale() === 'zh-CN' ? zh : en;
+    const { group, controls } = projectDetailActionGroup(document, projectBotManagementLabel(label), 'h4');
+    const entry = project.entries.filter(entry => entry.type === 'bot').length > 1 ? project.name : undefined;
+    for (const kind of ['artifacts', 'memory', 'credentials'] as const) {
+      const feature = this.settings[kind];
       if (!feature?.available()) continue;
-      const label = t(message);
-      const open = iconButton(icon, label, () => { if (feature.available()) { this.close(); feature.open(); } });
-      open.className = 'prompt-button'; open.append(label); actions.append(open);
+      const [title, icon] = projectBotAction(kind, label);
+      const open = projectDetailButton(document, entry ? `${title} · ${entry}` : title, icon, button => {
+        if (!feature.available()) return;
+        // showModal restores the focused trigger when the child closes.
+        button.focus({ preventScroll: true });
+        feature.open();
+      });
+      open.setAttribute('aria-haspopup', 'dialog');
+      controls.append(open);
     }
-    return actions.childElementCount ? actions : undefined;
+    if (!controls.childElementCount) return;
+    const section = document.createElement('div'); section.className = 'lp-detail-secondary'; section.append(group);
+    return section;
   }
 
   permissions(parameters: Parameters, policies: ToolPolicies, changed: (policies: ToolPolicies) => void): void {
@@ -143,7 +158,16 @@ export class ConversationTools {
       tabs.push({ id, tab, panel, activate, mounted: false }); navigation.append(tab); content.append(panel);
       tab.onclick = () => this.selectSection?.(id);
     };
-    if (project) add('overview', t('Overview'), 'info', undefined, projectInformation(project));
+    if (project) {
+      const bridge = this.detailsHost?.usage;
+      if (bridge && project.uri.startsWith('file:')) {
+        const label = (en: string, zh: string) => locale() === 'zh-CN' ? zh : en;
+        this.localUsage = new ProjectUsageView({ uri: project.uri, projectId: project.id, distribution: project.distribution }, label, bridge, 'h4');
+      }
+      add('overview', t('Overview'), 'info', undefined, projectInformation(project, {
+        secondaryActions: this.botManagement(project), studio: this.detailsHost?.studio, usage: this.localUsage?.element,
+      }));
+    }
     if (project && this.settings.configurations) {
       const configurations = this.settings.configurations;
       add('configurations', t('Project configurations'), 'settings-gear', t('Manage configuration profiles, values and publication permissions.'), configurations.element, () => configurations.activate());
@@ -181,8 +205,6 @@ export class ConversationTools {
       const skills = this.skillGuides = new SkillGuides(this.settings.skills);
       add('skills', t('Skills'), 'book', t('Browse project and Core guides. Select a skill to preview its complete SKILL.md.'), skills.element, () => skills.activate());
     }
-    const botManagement = project?.projectType === 'bot' ? this.botManagement() : undefined;
-    if (botManagement) add('bot-management', t('Bot management'), 'database', '', botManagement);
     const usage = this.settings.usage;
     if (project && usage?.available()) {
       const container = document.createElement('div'); container.className = 'project-settings-usage';
@@ -195,6 +217,7 @@ export class ConversationTools {
       const selected = tabs.find(item => item.id === id) ?? tabs[0]; if (!selected) return;
       if (this.section === 'configurations' && selected.id !== this.section) this.settings.configurations?.deactivate();
       this.section = selected.id;
+      this.localUsage?.setVisible(selected.id === 'overview');
       for (const item of tabs) {
         const active = item === selected; item.tab.setAttribute('aria-selected', String(active)); item.tab.tabIndex = active ? 0 : -1; item.panel.hidden = !active;
       }

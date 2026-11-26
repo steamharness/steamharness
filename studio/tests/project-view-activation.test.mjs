@@ -191,6 +191,7 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
       if (message.type !== 'workflow-browser-open') return false;
       browserRequests.push({ panel: panels.find(panel => panel.webview === webview), url: message.url }); return true;
     } }), bindProjectResourceCards: adapter, bindProjectDownload: adapter,
+    bindProjectUsage: () => ({ ...adapter(), clear() {}, frame() { return { version: 1, revision: 'fixture', localUsage: false }; } }),
     projectAvatarDataUrl: () => 'data:image/svg+xml,icon', chromeFor: () => ({ active: false }),
     projectFrameHtml: (...args) => { frames.push(args); return args[0]; }, output: { appendLine: line => logs.push(line) },
     createWorkspace: (...args) => createWorkspace(...args),

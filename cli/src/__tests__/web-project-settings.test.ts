@@ -88,20 +88,26 @@ it('opens one settings shell with five sections, accessible vertical navigation 
   click('Close'); expect(document.activeElement).toBe(trigger); expect(dialog.open).toBe(false);
 });
 
-it.each(['en', 'zh-CN'] as const)('keeps the overview read-only and retains Bot actions in their own tab in %s', language => {
+it.each(['en', 'zh-CN'] as const)('places Bot management in the details and leaves them mounted while opening actions in %s', language => {
   initI18n({ preference: language }); botManagementAvailable = true; const zh = language === 'zh-CN';
   dialogs.projectInfo(project);
-  expect(panel('overview').querySelector('button')).toBeNull();
-  expect(tab('bot-management').textContent).toBe(zh ? 'Bot 管理' : 'Bot management');
+  const overview = panel('overview'), group = overview.querySelector('.lp-detail-action-group')!;
+  expect(tab('bot-management')).toBeNull();
+  expect(group.getAttribute('aria-label')).toBe(zh ? 'Bot 管理' : 'Bot management');
+  expect(overview.querySelector('.lp-detail-secondary')?.nextElementSibling?.className).toBe('lp-detail-entries');
+  const declarations = overview.querySelector('details')!; declarations.open = false;
+  overview.scrollTop = 42;
   const actions = [
-    [zh ? 'Bot 产物库' : 'Bot artifact library', openArtifacts],
+    [zh ? '产物库' : 'Artifact library', openArtifacts],
     [zh ? '记忆管理' : 'Memory management', openMemory],
-    [zh ? 'Bot 凭据库' : 'Bot credentials', openCredentials],
+    [zh ? '凭据管理' : 'Credential management', openCredentials],
   ] as const;
   for (const [label, handler] of actions) {
-    dialogs.projectInfo(project, 'bot-management');
-    click(label, panel('bot-management')); expect(handler).toHaveBeenCalledOnce(); expect(dialogs.open).toBe(false);
+    const trigger = click(label, group);
+    expect(handler).toHaveBeenCalledOnce(); expect(dialogs.open).toBe(true);
+    expect(dialogs.activeSection).toBe('overview'); expect(document.activeElement).toBe(trigger);
   }
+  expect(panel('overview')).toBe(overview); expect(overview.scrollTop).toBe(42); expect(declarations.open).toBe(false);
 });
 
 it('preserves configuration drafts, tool search and section scroll while navigating', async () => {

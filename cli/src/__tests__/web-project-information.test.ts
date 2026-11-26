@@ -40,3 +40,13 @@ it('shows the assistant working directory and supplies useful fallbacks for opti
     ['Default name', project.name], ['Version', 'Not declared'], ['Working directory', '/opened-folder'], ['Declarations', 'Not declared'],
   ]));
 });
+
+it('uses the same format, window status, and location labels as the Studio library without inventing declarations', () => {
+  initI18n({ preference: 'zh-CN' });
+  const view = projectInformation({ ...project, distribution: 'release' }, { studio: true });
+  expect(rows(view)).toEqual([
+    ['项目形式', '发行版 · Steam'], ['项目类型', 'Bot'], ['版本', '1.2.3'],
+    ['窗口状态', '已打开'], ['位置', '/project'], ['项目 ID', project.id],
+  ]);
+  expect(view.querySelector('.lp-detail-disclosure')).toBeNull();
+});

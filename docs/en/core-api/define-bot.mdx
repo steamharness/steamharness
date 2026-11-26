@@ -154,7 +154,7 @@ An entry with incoming links cannot be forgotten. Inspect those links and remove
 
 In local Studio, open **Project details → Bot management → Credential management** to see saved credentials. The list shows only aliases and types for the selected Bot entry or instance. It does not show secret values or start a conversation.
 
-In a local Studio Bot conversation, open **Project information → Bot management → Bot credentials** to add, replace, or delete credentials. Enter an API key, token, or password in a masked native prompt. For SSH, select a local OpenSSH or PEM private key file. The list shows aliases and types, but not values.
+In a local Studio Bot conversation, go to **Project information → Overview** and select **Credential management** under **Bot management** to add, replace, or delete credentials. Enter an API key, token, or password in a masked native prompt. For SSH, select a local OpenSSH or PEM private key file. The list shows aliases and types, but not values.
 
 An Agent Bot can call `bot_credentials_request` with a `name` (alias) and `kind` (`api-key`, `password`, `ssh-private-key`, or `structured`). Select **Open secure input** on the conversation card to enter the credential in Studio or confirm an existing one. The Bot receives only the alias, type, and status: `saved`, `existing`, or `declined`.
 

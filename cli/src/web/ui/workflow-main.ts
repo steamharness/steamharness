@@ -75,6 +75,7 @@ let prompt: InputPrompt | undefined, promptKey = '';
 const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools({
   path: target => post({ type: 'open-path', ...target }),
   browser: url => post({ type: 'open-url', url }),
+  copyText: host.copyText,
   account: () => post({ type: 'open-account' }),
   configurations: configurationPanel,
   skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId }) },
