@@ -1,0 +1,253 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 92227d49c2b96c71aaef1f42ef60655d35931a94..ccd1558a977d65f4e90fd93bf19f0656cdd52bd6 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -54,6 +54,11 @@ export interface StudioStartState {
+ 	canCreate: boolean;
+ }
+ 
++/** A missing extension snapshot does not yet confirm that this is a local profile. */
++export function isStudioProjectScopeReady(state: StudioStartState | undefined, owner: string | undefined, activationSettled: boolean): boolean {
++	return state ? !state.workspaceRestoring && state.workspaceOwner === owner : activationSettled && owner === undefined;
++}
++
+ export const IStudioStartService = createDecorator<IStudioStartService>('studioStartService');
+ export interface IStudioStartService {
+ 	readonly _serviceBrand: undefined;
+diff --git a/src/vs/workbench/browser/studioLaunchpadLibrary.ts b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+index dfb3a9d50a23218b7cd6d8a00763da54078f302b..7a002355ba73df02c11bbb1bd2da18ae78d532c6 100644
+--- a/src/vs/workbench/browser/studioLaunchpadLibrary.ts
++++ b/src/vs/workbench/browser/studioLaunchpadLibrary.ts
+@@ -57,6 +57,7 @@ export class LaunchpadLibrary extends Disposable {
+ 	private readonly content = element('div');
+ 	private readonly loading = element('div', 'lp-library-loading lp-collection');
+ 	private readonly createButton: HTMLButtonElement;
++	private readonly importButton: HTMLButtonElement;
+ 	private readonly search = element('input', 'lp-query');
+ 	private readonly filters = element('div', 'lp-filters');
+ 	private readonly categoryButton: HTMLButtonElement;
+@@ -109,7 +110,8 @@ export class LaunchpadLibrary extends Disposable {
+ 		this.categoryButton = addFilter('product', ''); this.categoryButton.hidden = true;
+ 		const heading = element('div', 'lp-library-heading'), manage = element('div', 'lp-library-actions');
+ 		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary'); this.createButton.disabled = true;
+-		manage.append(button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline'), this.createButton);
++		this.importButton = button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline');
++		manage.append(this.importButton, this.createButton);
+ 		heading.append(element('h1', '', t('Project library', '项目仓库')), manage);
+ 		const status = element('p', 'lp-library-loading-status', t('Loading projects…', '正在加载项目…'));
+ 		status.setAttribute('role', 'status');
+@@ -123,7 +125,8 @@ export class LaunchpadLibrary extends Disposable {
+ 	}
+ 
+ 	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory, builtinProjects: LaunchpadProject[] = [], loading = false): void {
+-		this.createButton.disabled = !canCreate;
++		this.createButton.disabled = loading || !canCreate;
++		this.importButton.disabled = loading;
+ 		const wasLoading = !this.loading.hidden;
+ 		if (wasLoading !== loading) {
+ 			this.loading.hidden = !loading;
+diff --git a/src/vs/workbench/browser/studioLaunchpadView.ts b/src/vs/workbench/browser/studioLaunchpadView.ts
+index dcb5de9440569bea629ad3849182ec904bed140f..fc52ff7c0b0fd2458c645f654844eac807826de7 100644
+--- a/src/vs/workbench/browser/studioLaunchpadView.ts
++++ b/src/vs/workbench/browser/studioLaunchpadView.ts
+@@ -137,7 +137,7 @@ export class StudioLaunchpadView extends Disposable {
+ 		const key = event.key.toLowerCase(); if (key !== 'f1' && (!(event.ctrlKey || event.metaKey) || !['p', 'f', 'o'].includes(key) || (event.shiftKey && key !== 'p'))) { return; }
+ 		event.preventDefault(); event.stopImmediatePropagation(); if (key === 'o') { this.openOptions(this.commandCenter); } else { this.search(key === 'f1' || event.shiftKey); }
+ 	}
+-	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
++	get canDropProject(): boolean { return !this.element.hidden && !this.state?.libraryLoading && !this.picker.dialog.open; }
+ 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
+ 	setVisible(visible: boolean): void {
+ 		this.element.hidden = !visible;
+@@ -159,6 +159,7 @@ export class StudioLaunchpadView extends Disposable {
+ 	showImportedProjects(singleUri?: string): void { this.library.resetFilters(); this.select('library', singleUri); }
+ 	update(state: LaunchpadState): void {
+ 		const previous = this.state; this.state = state;
++		if (state.libraryLoading) { this.setProjectDropActive(false); }
+ 		this.consoleButton.hidden = !state.platform;
+ 		this.accountButton.hidden = !this.profile && !(this.actions.account && state.platform);
+ 		if (previous?.account?.scopeKey !== state.account?.scopeKey || previous?.account?.signedIn !== state.account?.signedIn) { this.picker.close(); }
+diff --git a/src/vs/workbench/browser/studioWebLaunchpad.ts b/src/vs/workbench/browser/studioWebLaunchpad.ts
+index 053e220e19918fc754f899ccf89e16b73af19855..72d51328c181e3bc83de44fb4ccc483f64d26f96 100644
+--- a/src/vs/workbench/browser/studioWebLaunchpad.ts
++++ b/src/vs/workbench/browser/studioWebLaunchpad.ts
+@@ -29,7 +29,7 @@ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewS
+ import { IHostService } from '../services/host/browser/host.js';
+ import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
+ import { IStatusbarService, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
+-import { IStudioStartService, StudioStartState } from './parts/editor/studioStart.js';
++import { IStudioStartService, StudioStartState, isStudioProjectScopeReady } from './parts/editor/studioStart.js';
+ import { LaunchpadProject, StudioLaunchpadView } from './studioLaunchpadView.js';
+ import { InboxAction, LaunchpadAccount, LaunchpadDirectory, LaunchpadInbox, LaunchpadMenuAccount, SocialResult } from './studioLaunchpadProfile.js';
+ import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
+@@ -340,10 +340,9 @@ export class StudioWebLaunchpad extends Disposable {
+ 	}
+ 
+ 	private async refreshProjects(): Promise<void> {
++		if (!this.projectScopeReady()) { return; }
+ 		const state = this.start.state;
+ 		const owner = this.account?.workspaceOwner;
+-		if (state?.workspaceRestoring || state?.workspaceOwner !== owner) { return; }
+-		if (!state && !this.startVisibilitySettled) { return; }
+ 		const revision = this.revision;
+ 		const history = owner ? undefined : await this.workspaces.getRecentlyOpened();
+ 		if (revision !== this.revision || this._store.isDisposed) { return; }
+@@ -401,7 +400,7 @@ export class StudioWebLaunchpad extends Disposable {
+ 
+ 	private paint(): void {
+ 		const state = this.start.state;
+-		const recent = !state?.workspaceRestoring && this.projectOwner === this.account?.workspaceOwner ? this.projects : undefined;
++		const recent = this.projectScopeReady() && this.projectOwner === this.account?.workspaceOwner ? this.projects : undefined;
+ 		const builtins = new Set(this.builtinProjects?.map(project => project.uri));
+ 		this.view.update({ windows: [], recent: recent?.filter(project => !builtins.has(project.uri)) ?? [], builtinProjects: this.builtinProjects,
+ 			libraryLoading: recent === undefined,
+@@ -409,11 +408,16 @@ export class StudioWebLaunchpad extends Disposable {
+ 			notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(), dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds });
+ 	}
+ 
++	private projectScopeReady(): boolean {
++		return isStudioProjectScopeReady(this.start.state, this.account?.workspaceOwner, this.startVisibilitySettled);
++	}
++
+ 	private async importFolders(): Promise<void> {
++		if (!this.projectScopeReady()) { return; }
+ 		const owner = this.account?.workspaceOwner;
+ 		const uris = await this.dialogs.showOpenDialog({ title: studioLabel('Import project', '导入项目'), openLabel: studioLabel('Import', '导入'),
+ 			canSelectFolders: true, canSelectFiles: false, canSelectMany: true, availableFileSystems: [Schemas.vscodeRemote] });
+-		if (!uris?.length || this._store.isDisposed || owner !== this.account?.workspaceOwner) { return; }
++		if (!uris?.length || this._store.isDisposed || !this.projectScopeReady() || owner !== this.account?.workspaceOwner) { return; }
+ 		if (owner) {
+ 			const local = uris.filter(uri => uri.scheme === Schemas.vscodeRemote && uri.authority === this.authority)
+ 				.map(uri => uri.with({ scheme: Schemas.file, authority: '' }).toString());
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index cd7de7cd6586098318976e5ad174012020f13060..569aae6b01f168723ca1b2cb17ab1cf987aa3da4 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -37,7 +37,7 @@ import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../
+ import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
+ import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+-import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
++import { IStudioStartService, isStudioProjectScopeReady } from '../browser/parts/editor/studioStart.js';
+ import { projectUsageBridge } from '../browser/studioProjectUsage.js';
+ import { IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+@@ -66,6 +66,7 @@ export class StudioLaunchpad extends Disposable {
+ 	private readonly appRequests = new Map<string, string>();
+ 	private windows: LaunchpadProject[] = [];
+ 	private recent: LaunchpadProject[] = [];
++	private startVisibilitySettled = false;
+ 	private hasProjectSnapshot = false;
+ 	private managedWorkspaceUris = new Set<string>();
+ 	private builtinWorkspaceUris = new Set<string>();
+@@ -311,7 +312,8 @@ export class StudioLaunchpad extends Disposable {
+ 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
+ 				scopeKey: state.scopeKey, workspaceOwner: state.workspaceOwner, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+ 			if (workspaceChanged) {
+-				++this.windowRevision; this.recent = []; this.libraryExtras = undefined; this.missing.clear(); this.savedProjects.clear();
++				++this.windowRevision; ++this.libraryCategoryRevision; this.hasProjectSnapshot = false;
++				this.recent = []; this.libraryExtras = undefined; this.missing.clear(); this.savedProjects.clear();
+ 				this.refreshProjects.schedule();
+ 			}
+ 			if (scopeChanged) {
+@@ -330,7 +332,7 @@ export class StudioLaunchpad extends Disposable {
+ 		}));
+ 		const updateStart = () => {
+ 			if (start.state && !this.builtinProjects && !this.refreshBuiltins.isScheduled()) { this.refreshBuiltins.schedule(); }
+-			if (start.state?.workspaceOwner && start.state.workspaceOwner === this.account?.workspaceOwner) { this.scheduleLibraryCategory(); }
++			this.scheduleLibraryCategory();
+ 			if (platform !== !!start.state?.platform) {
+ 				platform = !!start.state?.platform;
+ 				const revision = ++accountRevision;
+@@ -367,7 +369,7 @@ export class StudioLaunchpad extends Disposable {
+ 		this._register(toDisposable(() => mainWindow.clearInterval(inboxPoll)));
+ 		this._register(addDisposableListener(document, 'visibilitychange', () => {
+ 			if (document.hidden) { clearProjectDrop(); }
+-			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
++			this.updateStartVisibility();
+ 			if (!document.hidden) { changed(); this.refreshInbox.schedule(); this.refreshSocialState(); if (!this.refreshBuiltins.isScheduled()) { this.refreshBuiltins.schedule(); } }
+ 		}));
+ 		// The resident window never becomes an editor, including while an app is opening or closing.
+@@ -391,13 +393,29 @@ export class StudioLaunchpad extends Disposable {
+ 		this.settings.close();
+ 		this.view.closePicker();
+ 		this.view.setVisible(true);
+-		this.start.setVisible('launchpad', !document.hidden);
++		this.updateStartVisibility();
+ 		if (fromSettings) { this.view.focusSettings(); }
+ 		else { this.view.element.focus({ preventScroll: true }); }
+ 		this.refreshInbox.schedule();
+ 		this.refreshSocialState();
+ 	}
+ 
++	private updateStartVisibility(): void {
++		const visible = !document.hidden && !this.view.element.hidden;
++		const activation = this.start.setVisible('launchpad', visible);
++		if (visible && !this.start.state && !this.startVisibilitySettled && activation) {
++			void activation.then(() => {
++				if (this._store.isDisposed) { return; }
++				this.startVisibilitySettled = true;
++				if (!this.start.state) { this.paint(); }
++			});
++		}
++	}
++
++	private projectScopeReady(): boolean {
++		return isStudioProjectScopeReady(this.start.state, this.account?.workspaceOwner, this.startVisibilitySettled);
++	}
++
+ 	private refreshSocialState(): void {
+ 		this.notices.refresh();
+ 		if (!this.account?.signedIn) { return; }
+@@ -460,6 +478,7 @@ export class StudioLaunchpad extends Disposable {
+ 	}
+ 
+ 	private async pickProjectsToImport(): Promise<void> {
++		if (!this.projectScopeReady()) { return; }
+ 		const owner = this.account?.workspaceOwner;
+ 		const zh = this.language.startsWith('zh');
+ 		const uris = await this.dialogs.showOpenDialog({ title: zh ? '导入项目' : 'Import project', openLabel: zh ? '导入' : 'Import',
+@@ -468,6 +487,7 @@ export class StudioLaunchpad extends Disposable {
+ 	}
+ 
+ 	private async importFolders(uris: URI[]): Promise<void> {
++		if (!this.projectScopeReady()) { return; }
+ 		const owner = this.account?.workspaceOwner;
+ 		const folders = (await Promise.all(uris.map(async uri => {
+ 			try {
+@@ -476,7 +496,7 @@ export class StudioLaunchpad extends Disposable {
+ 				return undefined; // The folder may have moved since the picker or drop.
+ 			}
+ 		}))).filter(folder => folder !== undefined);
+-		if (this._store.isDisposed || owner !== this.account?.workspaceOwner) { return; }
++		if (this._store.isDisposed || !this.projectScopeReady() || owner !== this.account?.workspaceOwner) { return; }
+ 		if (folders.length) {
+ 			if (owner) {
+ 				if (!await this.commands.executeCommand<boolean>('studio.internalEditWorkspaceHistory', owner, 'import', folders.map(({ folderUri }) => folderUri.toString()))) { return; }
+@@ -673,7 +693,7 @@ export class StudioLaunchpad extends Disposable {
+ 	private scheduleLibraryCategory(): void {
+ 		++this.libraryCategoryRevision;
+ 		// Resolve parent aliases against the first native snapshot before showing managed projects.
+-		if (this.hasProjectSnapshot && this.start.state?.platform) { this.refreshLibraryCategory.schedule(this.libraryExtras ? undefined : 0); }
++		if (this.hasProjectSnapshot && this.start.state?.platform && this.projectScopeReady()) { this.refreshLibraryCategory.schedule(this.libraryExtras ? undefined : 0); }
+ 		else { this.refreshLibraryCategory.cancel(); }
+ 	}
+ 
+@@ -816,7 +836,7 @@ export class StudioLaunchpad extends Disposable {
+ 	private projectHistory(): LaunchpadProject[] {
+ 		const owner = this.account?.workspaceOwner;
+ 		const state = this.start.state;
+-		if (state?.workspaceRestoring || state?.workspaceOwner !== owner) { return []; }
++		if (!this.projectScopeReady()) { return []; }
+ 		if (!owner) { return this.recent; }
+ 		return (state?.recent ?? []).flatMap(row => row.kind === 'folder' || row.kind === 'workspace'
+ 			? [{ ...row, kind: row.kind, name: row.projectName || row.label, path: URI.parse(row.uri).fsPath }] : []);
+@@ -826,7 +846,7 @@ export class StudioLaunchpad extends Disposable {
+ 		const state = this.start.state;
+ 		const owner = this.account?.workspaceOwner;
+ 		const historyRows = this.projectHistory();
+-		const loading = !!state?.workspaceRestoring || state?.workspaceOwner !== owner;
++		const loading = !this.projectScopeReady() || !owner && !this.hasProjectSnapshot;
+ 		// The native window list does not carry an account identity. It must not offer a switch to another profile's window.
+ 		const windows = loading || owner ? [] : this.windows;
+ 		const projects = this.libraryExtras?.projects ?? [];
