@@ -1,0 +1,21 @@
+---
+title: "Studio v0.1.0"
+description: "Release notes for Studio v0.1.0."
+---
+
+# Studio v0.1.0
+
+2026-11-26
+
+#### Added
+
+- Select the version at the bottom left of the launchpad to open About in Settings. Studio, Core, CLI, and VS Code versions are listed separately. {/* note: studio-about-component-versions */}
+- Manage a Bot and its profiles from project details without starting the project. When you do start it, the status bar shows dependency checks and installation progress. {/* note: project-bot-management-and-progress */}
+
+#### Changed
+
+- Studio starts its own version series at `0.1.0` and no longer uses the VS Code version as its product version. This release follows `1.141.1`; it is not a downgrade. {/* note: independent-studio-version-series */}
+
+#### Fixed
+
+- Rebuilding a managed project preserves existing project data, and historical usage stays with its original project. {/* note: managed-project-data-and-usage */}
