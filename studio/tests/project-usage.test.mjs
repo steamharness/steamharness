@@ -15,6 +15,7 @@ const { outputFiles } = await build({ stdin: { contents: `export { readProjectUs
 const { readProjectUsage, ProjectUsageService } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 
 const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const unrelatedId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const instance1 = '11111111-1111-4111-8111-111111111111';
 const instance2 = '22222222-2222-4222-8222-222222222222';
 const timestamp = Date.UTC(2026, 0, 5);
@@ -40,6 +41,21 @@ async function write(filename, content) {
 
 const declare = (directory, entries) => write(path.join(directory, 'steamharness.json'), JSON.stringify(doc(entries)));
 const data = (storage, entryId, prefix = []) => path.join(storage, ...prefix, 'projects', projectId, 'entries', entryId);
+const memoryName = (id = projectId, entryId = 'agent') => createHash('sha256').update(JSON.stringify([id, entryId])).digest('hex') + '.sqlite';
+const memoryPath = (directory, id, entryId) => path.join(directory, 'runtime', 'memories', memoryName(id, entryId));
+
+async function putMemory(file, count) {
+  await mkdir(path.dirname(file), { recursive: true });
+  const db = new DatabaseSync(file);
+  try {
+    db.exec('CREATE TABLE bot_memories(project_id TEXT, entry_id TEXT)');
+    const insert = db.prepare('INSERT INTO bot_memories VALUES (?, ?)');
+    for (let i = 0; i < count; i++) insert.run(projectId, 'agent');
+    insert.run(projectId, 'other');
+    insert.run(unrelatedId, 'agent');
+  } finally { db.close(); }
+  return (await stat(file)).size;
+}
 
 async function history(root, rows, wal = true) {
   const file = path.join(root, 'runtime', 'history.sqlite');
@@ -79,14 +95,8 @@ test('counts committed WAL rows and cold databases without initializing missing 
   const runs = await history(data(f.storage, 'task'), [['run', { state: { createdAt: timestamp } }],
     ['run', { state: { createdAt: timestamp - 10 } }], ['run', { state: { createdAt: timestamp + 10 } }, 1]]);
   runs.db.close();
-  const key = createHash('sha256').update(JSON.stringify([projectId, 'agent'])).digest('hex');
-  const memoryFile = path.join(data(f.storage, 'agent'), 'runtime', 'memories', `${key}.sqlite`);
-  await mkdir(path.dirname(memoryFile));
-  const memory = new DatabaseSync(memoryFile);
-  memory.exec('PRAGMA journal_mode=WAL; CREATE TABLE bot_memories(project_id TEXT, entry_id TEXT)');
-  const insert = memory.prepare('INSERT INTO bot_memories VALUES (?, ?)');
-  insert.run(projectId, 'agent'); insert.run(projectId, 'other');
-  memory.close();
+  const memoryFile = memoryPath(data(f.storage, 'agent'));
+  await putMemory(memoryFile, 1);
   await write(path.join(data(f.storage, 'agent'), 'runtime', 'agents', 'agent.sqlite'), Buffer.alloc(20));
 
   const wal = await readFile(`${conversations.file}-wal`);
@@ -100,7 +110,7 @@ test('counts committed WAL rows and cold databases without initializing missing 
   assert.equal(usage.size.bytes, agent.conversation.bytes + agent.memory.bytes + task.workflow.bytes);
   assert.deepEqual(await readFile(`${conversations.file}-wal`), wal);
   assert.deepEqual(await readdir(path.dirname(runs.file)), ['history.sqlite']);
-  assert.deepEqual(await readdir(path.dirname(memoryFile)), [`${key}.sqlite`]);
+  assert.deepEqual(await readdir(path.dirname(memoryFile)), [memoryName()]);
   await assert.rejects(readdir(data(f.storage, 'empty-task')), { code: 'ENOENT' });
   conversations.db.exec('ROLLBACK');
 });
@@ -127,28 +137,19 @@ test('corrupt, linked, or busy history never looks like an empty history', async
 test('folder Bot memory usage includes the scoped stores but does not read other instances', async t => {
   const f = await fixture(t);
   await declare(f.project, [{ ...bot, folderContext: true }]);
-  const fileName = createHash('sha256').update(JSON.stringify([projectId, 'agent'])).digest('hex') + '.sqlite';
   const locate = (instanceId, folder) => path.join(data(f.storage, 'agent', ['folder-bots', instanceId]), 'runtime',
-    ...(folder ? ['memories-by-directory', createHash('sha256').update(folder).digest('hex')] : []), 'memories', fileName);
-  const create = async (file, count) => {
-    await mkdir(path.dirname(file), { recursive: true });
-    const db = new DatabaseSync(file);
-    try {
-      db.exec('CREATE TABLE bot_memories(project_id TEXT, entry_id TEXT)');
-      const insert = db.prepare('INSERT INTO bot_memories VALUES (?, ?)');
-      for (let i = 0; i < count; i++) insert.run(projectId, 'agent');
-    } finally { db.close(); }
-    return (await stat(file)).size;
-  };
+    ...(folder ? ['memories-by-directory', createHash('sha256').update(folder).digest('hex')] : []), 'memories', memoryName());
   const managed = { instanceId: instance1, directory: f.project, projectId, entryId: 'agent', name: 'Folder Bot', projectDirectory: f.project };
   const scoped = locate(instance1, 'linked-project');
-  const scopedBytes = await create(scoped, 2);
-  await create(locate(instance2, 'linked-project'), 4);
+  const scopedBytes = await putMemory(scoped, 2);
+  const secondBytes = await putMemory(locate(instance2, 'linked-project'), 4);
   assert.deepEqual((await f.read('runtime', { managed })).usage.entries[0].memory,
     { state: 'ok', location: scoped, created: true, records: 2, bytes: scopedBytes });
-  const primary = locate(instance1), primaryBytes = await create(primary, 1);
+  const primary = locate(instance1), primaryBytes = await putMemory(primary, 1);
   assert.deepEqual((await f.read('runtime', { managed })).usage.entries[0].memory,
     { state: 'ok', location: primary, created: true, records: 3, bytes: scopedBytes + primaryBytes });
+  assert.deepEqual((await f.read('runtime')).usage.entries[0].memory,
+    { state: 'ok', location: primary, created: true, records: 7, bytes: scopedBytes + primaryBytes + secondBytes });
 });
 
 test('only distinct built Kanban directories are attributed to an entry', async t => {
@@ -165,7 +166,7 @@ test('only distinct built Kanban directories are attributed to an entry', async 
   assert.equal(usage.size.bytes, 0);
 });
 
-test('source, compiled release, and two folder Bot instances use separate Studio namespaces', async t => {
+test('project usage combines source, release and folder Bot records while an instance only sees its own data', async t => {
   const f = await fixture(t);
   await declare(f.project, [bot]);
   const release = path.join(f.root, 'release'), releasedEntry = 'entries/agent';
@@ -176,15 +177,104 @@ test('source, compiled release, and two folder Bot instances use separate Studio
   await write(path.join(release, 'steamharness.release.json'), JSON.stringify({ kind: 'steamharness.project.release', version: 1,
     projectId, projectVersion: '1.0.0', buildId: digest, inputHash: digest, entries: [{ entryId: 'agent', root: releasedEntry, entry: 'main.js', structure: `${releasedEntry}/structure.json` }],
     files: releaseFiles.map(path => ({ path, size: 0, sha256: digest })) }));
-  for (const [index, prefix] of [[], ['release'], ['folder-bots', instance1], ['folder-bots', instance2]].entries()) {
+  for (const [index, prefix] of [[], ['release'], ['folder-bots', instance1], ['folder-bots', instance2, 'release']].entries()) {
     const db = await history(data(f.storage, 'agent', prefix), [['conversation', { messages: new Array(index + 1).fill({}) }]]);
     db.db.close();
   }
+  const otherProject = path.join(f.storage, 'folder-bots', instance1, 'projects', unrelatedId, 'entries', 'agent');
+  (await history(otherProject, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
+  // A second checkout with the same manifest identity does not create another copy of the storage.
+  const secondCheckout = path.join(f.root, 'another checkout');
+  await declare(secondCheckout, [bot]);
   const releaseUri = pathToFileURL(release).href;
   const variant = instanceId => ({ instanceId, directory: f.project, projectId, entryId: 'agent', name: 'Folder Bot', projectDirectory: f.project });
   const states = await Promise.all([f.read('runtime'), f.read('runtime', { uri: releaseUri }),
-    f.read('runtime', { managed: variant(instance1) }), f.read('runtime', { managed: variant(instance2) })]);
-  assert.deepEqual(states.map(snapshot => snapshot.usage.entries[0]?.conversation.messages), [1, 2, 3, 4]);
+    f.read('runtime', { uri: pathToFileURL(secondCheckout).href }), f.read('runtime', { managed: variant(instance1) }), f.read('runtime', { managed: variant(instance2) })]);
+  assert.deepEqual(states.map(snapshot => snapshot.usage.entries[0]?.conversation.messages), [10, 10, 10, 3, 4]);
+  assert.equal(states[0].usage.location, undefined);
+  assert.equal(states[0].usage.entries[0].conversation.sessions, 4);
+  assert.equal(states[4].usage.location, path.dirname(path.dirname(data(f.storage, 'agent', ['folder-bots', instance2, 'release']))));
+});
+
+test('measures assistant histories across workdirs and exact memory-only scopes without mixing projects or accounts', async t => {
+  const f = await fixture(t);
+  await declare(f.project, [bot, workflow]);
+  function hashed(storage, workdir, id = projectId) {
+    return path.join(storage, createHash('sha256').update(`assistant:${id}:${workdir}`).digest('hex').slice(0, 24));
+  }
+  async function registered(directory, entry, id = projectId) {
+    await write(path.join(directory, 'project.json'), JSON.stringify({ version: 1, projectId: id, entryId: entry.entryId, projectType: entry.type }));
+  }
+  const first = hashed(f.storage, f.project), second = hashed(f.storage, path.join(f.root, 'a closed workdir'));
+  await registered(first, bot, projectId.toUpperCase());
+  const firstHistory = await history(first, [['conversation', { messages: [{}, {}] }], ['conversation', { messages: [{}] }, 1]]);
+  firstHistory.db.close();
+  const firstMemory = await putMemory(memoryPath(first), 2);
+  // Studio Control and the Bot can write different record kinds under the same assistant workdir.
+  await registered(second, workflow);
+  const secondHistory = await history(second, [['conversation', { messages: [{}, {}, {}] }],
+    ['run', { state: { createdAt: timestamp } }], ['run', { state: { createdAt: timestamp + 500 } }, 1]]);
+  secondHistory.db.close();
+  const secondMemory = await putMemory(memoryPath(second), 5);
+  const memoryOnly = hashed(f.storage, path.join(f.root, 'a selected memory directory'));
+  const elsewhere = await putMemory(memoryPath(memoryOnly), 3);
+  // Without a project marker, only the exact scoped memory file can be attributed, not arbitrary history.
+  (await history(memoryOnly, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
+  const otherProject = hashed(f.storage, f.project, unrelatedId);
+  await registered(otherProject, bot, unrelatedId);
+  (await history(otherProject, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
+  await putMemory(memoryPath(otherProject), 20);
+  const otherAccount = hashed(path.join(f.root, 'other-account', 'runs'), f.project);
+  await registered(otherAccount, bot);
+  (await history(otherAccount, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
+  await symlink(otherAccount, path.join(f.storage, 'f'.repeat(24)), 'junction');
+
+  const { usage } = await f.read('runtime');
+  assert.equal(usage.state, 'ok');
+  assert.equal(usage.location, undefined);
+  const [agent, task] = usage.entries;
+  assert.deepEqual([agent.conversation.sessions, agent.conversation.messages], [2, 5]);
+  assert.deepEqual(agent.memory, { state: 'ok', created: true, records: 10, bytes: firstMemory + secondMemory + elsewhere });
+  assert.deepEqual([task.workflow.runs, task.workflow.lastRunAt], [1, timestamp]);
+  assert.equal(agent.conversation.bytes + task.workflow.bytes, (await stat(firstHistory.file)).size + (await stat(secondHistory.file)).size);
+  assert.equal(usage.size.bytes, agent.conversation.bytes + task.workflow.bytes + agent.memory.bytes +
+    (await stat(path.join(first, 'project.json'))).size + (await stat(path.join(second, 'project.json'))).size);
+});
+
+test('does not count the same cold history or memory database twice across runtime roots', async t => {
+  const f = await fixture(t);
+  await declare(f.project, [bot]);
+  const source = data(f.storage, 'agent'), release = data(f.storage, 'agent', ['release']);
+  const { db, file } = await history(source, [['conversation', { messages: [{}, {}] }]]);
+  db.close();
+  const memory = memoryPath(source), memoryBytes = await putMemory(memory, 1);
+  await mkdir(path.dirname(memoryPath(release)), { recursive: true });
+  await link(file, path.join(release, 'runtime', 'history.sqlite'));
+  await link(memory, memoryPath(release));
+  const { usage } = await f.read('runtime');
+  assert.equal(usage.state, 'ok');
+  const [agent] = usage.entries;
+  const historyBytes = (await stat(file)).size;
+  assert.deepEqual(agent.conversation, { state: 'ok', sessions: 1, messages: 2, bytes: historyBytes });
+  assert.equal(agent.memory.records, 1);
+  assert.equal(agent.memory.bytes, memoryBytes);
+  assert.equal(usage.size.bytes, memoryBytes + historyBytes);
+});
+
+test('an unreadable scope or linked memory database is not reported as empty', async t => {
+  const f = await fixture(t);
+  await declare(f.project, [bot]);
+  const local = data(f.storage, 'agent'), outside = path.join(f.root, 'outside');
+  await putMemory(memoryPath(outside), 1);
+  await mkdir(path.dirname(memoryPath(local)), { recursive: true });
+  await symlink(memoryPath(outside), memoryPath(local), 'file');
+  const linked = await f.read('runtime');
+  assert.equal(linked.usage.state, 'partial');
+  assert.equal(linked.usage.entries[0].memory.created, undefined);
+  assert.equal(linked.usage.entries[0].memory.records, undefined);
+  const timedOut = await readProjectUsage({ uri: f.uri, storage: f.storage, part: 'runtime' }, 0);
+  assert.equal(timedOut.usage.state, 'partial');
+  assert.equal(timedOut.usage.entries[0].conversation.sessions, undefined);
 });
 
 test('worker service shares measurements, isolates cancellation and honors explicit refresh', async t => {
