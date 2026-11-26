@@ -9,6 +9,11 @@
     ".": {
       "types": "./index.ts",
       "import": "./index.ts"
-    }
+    },
+    "./details": {
+      "types": "./details.ts",
+      "import": "./details.ts"
+    },
+    "./details.css": "./details.css"
   }
 }

@@ -79,15 +79,7 @@
 .project-settings-heading { flex-shrink: 0; margin-bottom: 24px; }
 .project-settings-heading > h3 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
 .project-settings-heading > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.project-settings-identity { display: flex; align-items: center; gap: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--settings-surface); }
-.project-settings-identity > .codicon { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; font-size: 24px; color: var(--settings-accent); background: color-mix(in srgb, var(--settings-accent) 10%, transparent); }
-.project-settings-identity > div { min-width: 0; }
-.project-settings-identity .project-information-name { font-size: 16px; margin-bottom: 4px; }
-.project-settings-identity .project-information-description { margin: 0; font-size: 12px; }
-.project-settings-overview .project-information-section { margin-bottom: 12px; padding: 0; border: 1px solid var(--border); border-radius: 8px; }
-.project-settings-overview .project-information-section summary { min-height: 42px; padding: 10px 14px; border-radius: 8px; list-style: none; font-size: 13px; }
-.project-settings-overview .project-information-section summary:hover { background: var(--vscode-list-hoverBackground, var(--selection)); }
-.project-settings-overview .project-information-section dl { font-size: 12px; gap: 12px 24px; margin: 4px 18px 18px; }
+.project-settings-bot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .project-settings-panel[data-section=configurations] { display: flex; flex-direction: column; overflow: hidden; }
 .project-settings-panel[data-section=configurations] > .project-settings-heading { margin-bottom: 12px; }
 .project-configurations.project-configurations-embedded { display: flex; flex: 1; flex-direction: column; width: auto; max-height: none; min-width: 0; min-height: 0; overflow: hidden; }
@@ -138,9 +130,6 @@
 }
 @media (max-width: 440px) {
   .project-settings-panel { padding: 18px 16px; }
-  .project-settings-identity { align-items: flex-start; gap: 12px; padding: 16px; }
-  .project-settings-identity > .codicon { width: 36px; height: 36px; font-size: 20px; }
-  .project-settings-overview .project-information-section dl { grid-template-columns: minmax(72px, 90px) minmax(0, 1fr); gap: 10px 14px; margin-right: 14px; margin-left: 14px; }
   .project-settings-panel .permissions-table { min-width: 0; }
   .project-settings-panel .permissions-table th:nth-child(2) { width: 52px; }
   .project-settings-panel .permissions-table th:nth-child(3) { width: 76px; }

@@ -11,7 +11,7 @@ import type { ProjectConfigurationsPanel } from './project-configurations';
 import './project-settings.css';
 import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 
-export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage';
+export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'bot-management' | 'usage';
 export interface ProjectSettingsOptions {
   path?(target: FileLinkTarget): void;
   browser?(url: string): void;
@@ -96,42 +96,19 @@ export class ConversationTools {
     this.showSettings(project, initialTab, this.settings.tools?.()); this.settingsProject = key;
   }
 
-  private overview(project: Project): HTMLElement {
-    const overview = document.createElement('div'); overview.className = 'project-settings-overview';
-    const identity = document.createElement('div'); identity.className = 'project-settings-identity';
-    identity.innerHTML = iconHtml('package');
-    const text = document.createElement('div');
-    const heading = document.createElement('h3'); heading.className = 'project-information-name'; heading.textContent = project.aggregateName;
-    text.append(heading);
-    if (project.manifest?.description) {
-      const description = document.createElement('p'); description.className = 'project-information-description'; description.textContent = project.manifest.description; text.append(description);
+  private botManagement(): HTMLElement | undefined {
+    const actions = document.createElement('div'); actions.className = 'project-settings-bot-actions';
+    for (const [icon, message, feature] of [
+      ['archive', 'Bot artifact library', this.settings.artifacts],
+      ['database', 'Memory management', this.settings.memory],
+      ['key', 'Bot credentials', this.settings.credentials],
+    ] as const) {
+      if (!feature?.available()) continue;
+      const label = t(message);
+      const open = iconButton(icon, label, () => { if (feature.available()) { this.close(); feature.open(); } });
+      open.className = 'prompt-button'; open.append(label); actions.append(open);
     }
-    identity.append(text); overview.append(identity);
-    if (this.settings.artifacts?.available()) {
-      const open = iconButton('archive', t('Bot artifact library'), () => { this.close(); this.settings.artifacts?.open(); });
-      open.className = 'prompt-button'; open.append(document.createTextNode(t('Bot artifact library')));
-      overview.append(open);
-    }
-    if (this.settings.memory?.available()) {
-      const open = iconButton('database', t('Memory management'), () => { this.close(); this.settings.memory?.open(); });
-      open.className = 'prompt-button'; open.append(document.createTextNode(t('Memory management'))); overview.append(open);
-    }
-    if (this.settings.credentials?.available()) {
-      const open = iconButton('key', t('Bot credentials'), () => { this.close(); this.settings.credentials?.open(); });
-      open.className = 'prompt-button'; open.append(document.createTextNode(t('Bot credentials'))); overview.append(open);
-    }
-    for (const section of projectInformation(project)) {
-      const details = document.createElement('details'); details.className = 'project-information-section'; details.open = !!section.expanded;
-      const summary = document.createElement('summary'); summary.innerHTML = `${iconHtml('chevron-right')}<span>${escapeHtml(section.title)}</span>`;
-      const list = document.createElement('dl');
-      for (const row of section.rows) {
-        const label = document.createElement('dt'), value = document.createElement('dd'); label.textContent = row.label; value.textContent = row.value;
-        if (row.avatarUrl) { const icon = document.createElement('img'); icon.src = row.avatarUrl; icon.alt = ''; icon.className = 'entry-information-icon'; label.prepend(icon); }
-        list.append(label, value);
-      }
-      details.append(summary, list); overview.append(details);
-    }
-    return overview;
+    return actions.childElementCount ? actions : undefined;
   }
 
   permissions(parameters: Parameters, policies: ToolPolicies, changed: (policies: ToolPolicies) => void): void {
@@ -150,20 +127,23 @@ export class ConversationTools {
     this.disposeNavigation = () => narrow?.removeEventListener?.('change', orientation);
     const content = document.createElement('div'); content.className = 'project-settings-content';
     const tabs: { id: ProjectSettingsSection; tab: HTMLButtonElement; panel: HTMLElement; activate?: () => void; mounted: boolean }[] = [];
-    const add = (id: ProjectSettingsSection, label: string, icon: string, description: string, child?: HTMLElement, activate?: () => void) => {
+    const add = (id: ProjectSettingsSection, label: string, icon: string, description: string | undefined, child?: HTMLElement, activate?: () => void) => {
       const tab = document.createElement('button'); tab.type = 'button'; tab.dataset.tab = id; tab.title = label; tab.setAttribute('role', 'tab');
       tab.innerHTML = iconHtml(icon); const name = document.createElement('span'); name.textContent = label; tab.append(name);
       tab.id = `project-information-${id}-${crypto.randomUUID()}`;
       const panel = document.createElement('section'); panel.className = 'project-settings-panel'; panel.dataset.section = id; panel.id = `${tab.id}-panel`;
       panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', tab.id); panel.tabIndex = 0; tab.setAttribute('aria-controls', panel.id);
-      const heading = document.createElement('div'); heading.className = 'project-settings-heading';
-      const title = document.createElement('h3'); title.textContent = label;
-      const hint = document.createElement('p'); hint.textContent = description; heading.append(title, hint); panel.append(heading);
+      if (description !== undefined) {
+        const heading = document.createElement('div'); heading.className = 'project-settings-heading';
+        const title = document.createElement('h3'); title.textContent = label; heading.append(title);
+        if (description) { const hint = document.createElement('p'); hint.textContent = description; heading.append(hint); }
+        panel.append(heading);
+      }
       if (child) panel.append(child);
       tabs.push({ id, tab, panel, activate, mounted: false }); navigation.append(tab); content.append(panel);
       tab.onclick = () => this.selectSection?.(id);
     };
-    if (project) add('overview', t('Overview'), 'info', t('Project details, declarations and entry windows.'), this.overview(project));
+    if (project) add('overview', t('Overview'), 'info', undefined, projectInformation(project));
     if (project && this.settings.configurations) {
       const configurations = this.settings.configurations;
       add('configurations', t('Project configurations'), 'settings-gear', t('Manage configuration profiles, values and publication permissions.'), configurations.element, () => configurations.activate());
@@ -201,6 +181,8 @@ export class ConversationTools {
       const skills = this.skillGuides = new SkillGuides(this.settings.skills);
       add('skills', t('Skills'), 'book', t('Browse project and Core guides. Select a skill to preview its complete SKILL.md.'), skills.element, () => skills.activate());
     }
+    const botManagement = project?.projectType === 'bot' ? this.botManagement() : undefined;
+    if (botManagement) add('bot-management', t('Bot management'), 'database', '', botManagement);
     const usage = this.settings.usage;
     if (project && usage?.available()) {
       const container = document.createElement('div'); container.className = 'project-settings-usage';

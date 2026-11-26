@@ -1,0 +1,40 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.lp-project-details, .lp-detail-entries {
+	--detail-fg: var(--vscode-foreground,var(--vscode-editor-foreground));
+	--detail-muted: var(--vscode-descriptionForeground,var(--detail-fg));
+	--detail-line: var(--vscode-contrastBorder,var(--vscode-panel-border,color-mix(in srgb,var(--detail-fg) 15%,transparent)));
+	color: var(--detail-fg); font: 13px/1.45 var(--vscode-font-family,system-ui); letter-spacing: 0; user-select: text;
+}
+.lp-project-details { max-width: 880px; margin-inline: auto; }
+.lp-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 4px 21px; border-bottom: 1px solid var(--detail-line); }
+.lp-detail-project { display: flex; align-items: center; gap: 14px; flex: 1 1 254px; min-width: 0; }
+.lp-detail-mark { display: grid; place-items: center; flex: none; width: 52px; height: 52px; background: var(--vscode-sideBar-background,var(--vscode-editor-background)); border-radius: 6px; }
+.lp-detail-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
+.lp-detail-mark .codicon { font-size: 28px; }
+.lp-detail-identity { min-width: 0; overflow-wrap: anywhere; }
+.lp-project-details .lp-section-kicker { color: var(--detail-muted); font-size: 12px; }
+.lp-project-details .lp-detail-title { margin: 0; color: var(--vscode-editor-foreground,var(--detail-fg)); font-size: 24px; line-height: 1.22; font-weight: 600; }
+.lp-detail-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; max-width: 100%; margin-inline-start: auto; }
+.lp-project-details .lp-detail-description { margin: 16px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lp-detail-facts { margin: 16px 0 22px; }
+.lp-detail-facts > div { display: grid; grid-template-columns: minmax(90px,22%) minmax(0,1fr); gap: 12px; padding-block: 6px; }
+.lp-detail-facts dt, .lp-detail-entries small { color: var(--detail-muted); }
+.lp-detail-facts dt, .lp-detail-facts dd { overflow-wrap: anywhere; }
+.lp-detail-facts dd { margin: 0; white-space: pre-wrap; }
+.lp-detail-entries { border-top: 1px solid var(--detail-line); padding-top: 18px; }
+.lp-detail-entries .lp-entry-title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
+.lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
+.lp-detail-entries li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; padding: 8px 0; border-bottom: 1px solid var(--detail-line); }
+.lp-entry-identity { display: flex; align-items: baseline; gap: 4px 7px; flex-wrap: wrap; flex: 1 1 90px; min-width: 0; overflow-wrap: anywhere; }
+.lp-detail-entries strong { min-width: 0; font-weight: 500; }
+.lp-detail-entries li > img { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
+.lp-detail-disclosure { padding-block: 8px; }
+.lp-detail-disclosure + .lp-detail-disclosure { border-top: 1px solid var(--detail-line); }
+.lp-detail-disclosure > summary { width: fit-content; max-width: 100%; padding-block: 4px; cursor: pointer; font-weight: 500; overflow-wrap: anywhere; }
+.lp-detail-disclosure > summary:hover { background: var(--vscode-toolbar-hoverBackground); }
+.lp-detail-disclosure > summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.lp-detail-disclosure > .lp-detail-facts { margin: 4px 0 0; }

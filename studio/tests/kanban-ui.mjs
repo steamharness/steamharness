@@ -40,11 +40,11 @@ try {
   browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true }); context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' }); page = await context.newPage(); page.setDefaultTimeout(20_000); page.on('pageerror', error => proof.errors.push(error.message));
   await page.goto(launch.url); await ready(); const preview = await board(); await preview.locator('.task').first().waitFor();
   assert.equal(await page.locator('#web-account').innerText(), server.profile.displayName); assert.equal(await preview.locator('.task').count(), 3);
-  await page.locator('#project-info').click(); await page.locator('.project-information-name').waitFor();
-  assert.equal(await page.locator('.project-information-name').innerText(), launch.project.aggregateName);
+  await page.locator('#project-info').click(); await page.locator('.lp-detail-title').waitFor();
+  assert.equal(await page.locator('.lp-detail-title').innerText(), launch.project.aggregateName);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.locator('.conversation-dialog[open] header button').last().click();
-  await page.locator('.project-information-name').waitFor({ state: 'hidden' });
+  await page.locator('.lp-detail-title').waitFor({ state: 'hidden' });
   proof.checks.push('project information opens from the left toolbar');
   assert.equal(await page.locator('#kanban-fields [data-param]').count(), 8); assert.equal(await page.locator('#kanban-fields input[type=checkbox]:checked').count(), 4);
   const rootStyle = await preview.locator('body').evaluate(element => getComputedStyle(element).backgroundColor); assert.equal(rootStyle, 'rgb(255, 255, 255)');

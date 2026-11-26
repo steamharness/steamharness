@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, expect, it } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
 import { createDefaultProjectInfo } from '@steamharness/project-info';
@@ -9,27 +10,33 @@ const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultE
   uri: 'file:///project', folderPath: '/project', projectType: 'bot', fields: [], entrypoints: [] };
 afterEach(() => initI18n({ preference: 'zh-CN' }));
 
-it.each(['en', 'zh-CN'] as const)('shows authored metadata in %s and preserves declared names and permission direction', language => {
-  initI18n({ preference: language });
-  const sections = projectInformation({ ...project, projectInfo: { ...createDefaultProjectInfo(),
-    localizedNames: { en: 'Display name', 'zh-CN': '\u9879\u76ee\u540d\u79f0' }, declarations: ['multilingual', 'custom'],
-    platformSupport: { mode: 'specific', platforms: ['macos', 'linux'] },
+const rows = (view: ParentNode) => [...view.querySelectorAll('dt')].map(label => [label.textContent, label.nextElementSibling?.textContent]);
 
-  }, entrypoints: [{ id: 'main', title: 'Original entrypoint', fields: [] }], defaultEntrypoint: 'main' });
-  expect(sections[0].title).toBe(language === 'en' ? 'Basic information' : '\u57fa\u672c\u4fe1\u606f');
-  expect(sections[0].rows.map(row => row.value)).toEqual(['package-name', 'Bot', '1.2.3', project.id, '/project']);
-  expect(sections[1].rows[0].value).toBe('macOS, linux');
-  expect(sections[1].rows[1].value).toContain('custom');
-  expect(sections[2].rows).toEqual([{ label: 'en', value: 'Display name' }, { label: 'zh-CN', value: '\u9879\u76ee\u540d\u79f0' }]);
-  expect(sections[3].rows[0].value).toContain('main');
-  expect(sections[4].rows[0].label).toBe('Original entrypoint');
+it.each(['en', 'zh-CN'] as const)('shows authored metadata and project entries in %s', language => {
+  initI18n({ preference: language });
+  const zh = language === 'zh-CN';
+  const view = projectInformation({ ...project, distribution: 'source', projectInfo: { ...createDefaultProjectInfo(),
+    localizedNames: { en: 'Display name', 'zh-CN': '项目名称' }, declarations: ['multilingual', 'custom'],
+    platformSupport: { mode: 'specific', platforms: ['macos', 'linux'] },
+  }, entrypoints: [{ id: 'default', title: 'Original entrypoint', fields: [] }], defaultEntrypoint: 'default' });
+  expect(view.querySelector('.lp-detail-title')?.textContent).toBe('Test aggregate');
+  expect(view.querySelector('.lp-detail-description')?.textContent).toBe('Original description');
+  expect(rows(view.querySelector('.lp-detail-facts')!).map(([, value]) => value)).toEqual([
+    zh ? '源码' : 'Source', 'Bot', '1.2.3', 'package-name', '/project', project.id,
+  ]);
+  const [declaration, names, entrypoints] = view.querySelectorAll<HTMLDetailsElement>('details');
+  expect(declaration.open).toBe(true);
+  expect(rows(declaration).map(([, value]) => value)).toEqual(['macOS, linux', zh ? '多语言, custom' : 'Multiple languages, custom']);
+  expect(rows(names)).toEqual([['en', 'Display name'], ['zh-CN', '项目名称']]);
+  expect(rows(entrypoints)).toEqual([['Original entrypoint', zh ? 'default（默认）' : 'default (default)']]);
+  expect(view.querySelector('[data-entry-id=main] .lp-entry-default')?.textContent).toBe(zh ? '默认入口' : 'Default');
+  expect(view.querySelector('button, .lp-project-usage')).toBeNull();
 });
 
 it('shows the assistant working directory and supplies useful fallbacks for optional display metadata', () => {
   initI18n({ preference: 'en' });
-  const sections = projectInformation({ ...project, manifest: undefined, assistant: { workdir: '/opened-folder', roots: [] } });
-  expect(sections[0].rows[0].value).toBe(project.name);
-  expect(sections[0].rows[2].value).toBe('Not declared');
-  expect(sections[0].rows[4]).toEqual({ label: 'Working directory', value: '/opened-folder' });
-  expect(sections[1].rows[1].value).toBe('Not declared');
+  const view = projectInformation({ ...project, manifest: undefined, assistant: { workdir: '/opened-folder', roots: [] } });
+  expect(rows(view)).toEqual(expect.arrayContaining([
+    ['Default name', project.name], ['Version', 'Not declared'], ['Working directory', '/opened-folder'], ['Declarations', 'Not declared'],
+  ]));
 });

@@ -173,7 +173,7 @@ async function selectionCopies(url, language) {
   await page.evaluate(origin => document.querySelector('iframe').contentWindow.postMessage({ type: 'workflow-host', editCommand: 'copy', restoreFocus: true }, origin), new URL(url).origin);
   await copied(error);
   await frame.locator('#project-info').click();
-  for (const selector of ['.project-information-name', '.project-information-section[open] dt', '.project-information-section[open] dd', '.project-information-section[open] summary']) {
+  for (const selector of ['.lp-detail-title', '.lp-detail-facts dt', '.lp-detail-facts dd', '.lp-detail-disclosure[open] summary']) {
     const text = await select(frame, selector);
     assert.equal(await frame.locator(selector).first().evaluate(element => getComputedStyle(element).userSelect), 'text');
     await page.keyboard.press(copyKey); await copied(text);
@@ -204,10 +204,12 @@ try {
     assert.match(await page.locator('.param-action-summary').innerText(), /Alternate model/);
     assert.equal(await page.locator('[data-action-id=ai] > .codicon-sparkle').count(), 1);
     await page.locator('#project-info').click();
-    assert.equal(await page.locator('.project-information-name').innerText(), manifest.projectInfo.localizedNames[language]);
-    assert.equal(await page.locator('.project-information-description').innerText(), manifest.description);
+    assert.equal(await page.locator('.lp-detail-title').innerText(), manifest.projectInfo.localizedNames[language]);
+    assert.equal(await page.locator('.lp-detail-description').innerText(), manifest.description);
     assert.equal(await page.locator('#unsafe').count(), 0);
-    const values = await page.locator('.project-information-section[open] dd').allTextContents();
+    assert.equal(await page.locator('.lp-project-details button').count(), 0);
+    assert.equal(await page.locator('.lp-entry-default').innerText(), language === 'en' ? 'Default' : '默认入口');
+    const values = await page.locator('.lp-detail-facts dd').allTextContents();
     assert.ok(values.includes(manifest.name) && values.includes(manifest.version) && values.includes(manifest.id) && values.includes(await fs.realpath(projectDir)));
     await page.keyboard.press('Escape'); assert.equal(await page.locator('.conversation-dialog[open]').count(), 0);
     await page.locator('#message').fill('Conversation before starting a new one'); await page.locator('#send').click();
@@ -252,7 +254,7 @@ try {
     }
     await page.keyboard.press('Escape'); await page.locator('#project-info').click();
     await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'usage', sessionId: 'unrelated', usage: { balance: 999, groups: [] } } })));
-    assert.equal(await page.locator('.project-information-name').isVisible(), true);
+    assert.equal(await page.locator('.lp-detail-title').isVisible(), true);
     await closeDialog(); proof.checks.push(`${language}: loading, refresh, errors, missing data, no subscriptions and Escape cleanup`);
     for (const width of [1280, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });

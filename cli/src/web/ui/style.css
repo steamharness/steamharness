@@ -382,14 +382,6 @@ main.file-drop-active .composer { outline: 2px solid var(--vscode-focusBorder); 
 .image-preview-viewport.panning { cursor: grabbing; }
 .image-preview-stage { display: flex; align-items: center; justify-content: center; min-width: 100%; min-height: 100%; }
 .image-preview-stage .image-preview { flex: none; max-width: none; max-height: none; margin: 0; }
-.project-information-name { margin: 0 0 8px; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
-.project-information-description { margin: 0 0 16px; color: var(--muted); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.project-information-section { padding: 10px 0; border-top: 1px solid var(--border); }
-.project-information-section summary { display: flex; align-items: center; gap: 6px; min-height: 28px; font-weight: 500; cursor: pointer; overflow-wrap: anywhere; }
-.project-information-section[open] summary > .codicon { transform: rotate(90deg); }
-.project-information-section dl { display: grid; grid-template-columns: minmax(80px, 130px) minmax(0, 1fr); gap: 12px 16px; margin: 12px 0 4px; line-height: 1.5; }
-.project-information-section dt { color: var(--muted); overflow-wrap: anywhere; }
-.project-information-section dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .action-dialog { width: min(380px, calc(100vw - 32px)); }
 .action-dialog .action-description { margin: 0 0 16px; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
 .action-dialog label { display: grid; gap: 8px; }
@@ -559,7 +551,6 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 @media (max-width: 420px) {
   .toolbar { padding: 8px; }
   .project-title { gap: 2px; }
-  .project-information-section dl { grid-template-columns: minmax(72px, 95px) minmax(0, 1fr); gap: 10px; }
   h1 { font-size: 13px; }
   .message { margin-bottom: 22px; }
   .user .message-body { max-width: calc(100% - 128px); }

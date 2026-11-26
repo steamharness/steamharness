@@ -17,8 +17,10 @@ const host = { postMessage: vi.fn() };
 let dialogs: ConversationTools, readOnly: boolean, available: boolean;
 let configurations: ProjectConfigurationsPanel;
 let tools: Tool[], policies: ToolPolicies;
+let botManagementAvailable: boolean;
 let listener: EventListener | undefined;
 const policiesChanged = vi.fn();
+const openArtifacts = vi.fn(), openMemory = vi.fn(), openCredentials = vi.fn();
 const emit = (data: unknown) => window.dispatchEvent(new MessageEvent('message', { source: null, data }));
 const settle = () => vi.advanceTimersByTimeAsync(0);
 const tab = (id: string) => document.querySelector<HTMLButtonElement>(`.project-information-tabs [data-tab=${id}]`)!;
@@ -30,6 +32,7 @@ const click = (label: string, root: ParentNode = document) => {
 beforeEach(() => {
   vi.useFakeTimers(); initI18n({ preference: 'en' }); host.postMessage.mockReset(); policiesChanged.mockReset(); readOnly = false; available = true;
   tools = [{ name: 'read' }, { name: 'skill', description: 'Read SKILL.md' }]; policies = {};
+  botManagementAvailable = false; vi.clearAllMocks();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.open = true; } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value(this: HTMLDialogElement) { this.open = false; this.dispatchEvent(new Event('close')); } });
   const addEventListener = window.addEventListener.bind(window);
@@ -45,6 +48,9 @@ beforeEach(() => {
     path: target => host.postMessage({ type: 'open-path', ...target }),
     account: () => host.postMessage({ type: 'open-account' }),
     configurations,
+    artifacts: { available: () => botManagementAvailable, open: openArtifacts },
+    memory: { available: () => botManagementAvailable, open: openMemory },
+    credentials: { available: () => botManagementAvailable, open: openCredentials },
     tools: () => ({ parameters: { fields: [], tools }, policies, changed: policiesChanged, readOnly }),
     usage: { available: () => available, load: requestId => host.postMessage({ type: 'usage', requestId }) },
   });
@@ -80,6 +86,22 @@ it('opens one settings shell with five sections, accessible vertical navigation 
   expect(document.querySelectorAll('dialog')).toHaveLength(1); expect(host.postMessage.mock.calls.at(-1)?.[0].call.action).toBe('get');
   emit({ type: 'project-configuration-result', requestId: host.postMessage.mock.calls.at(-1)![0].requestId, value: state });
   click('Close'); expect(document.activeElement).toBe(trigger); expect(dialog.open).toBe(false);
+});
+
+it.each(['en', 'zh-CN'] as const)('keeps the overview read-only and retains Bot actions in their own tab in %s', language => {
+  initI18n({ preference: language }); botManagementAvailable = true; const zh = language === 'zh-CN';
+  dialogs.projectInfo(project);
+  expect(panel('overview').querySelector('button')).toBeNull();
+  expect(tab('bot-management').textContent).toBe(zh ? 'Bot 管理' : 'Bot management');
+  const actions = [
+    [zh ? 'Bot 产物库' : 'Bot artifact library', openArtifacts],
+    [zh ? '记忆管理' : 'Memory management', openMemory],
+    [zh ? 'Bot 凭据库' : 'Bot credentials', openCredentials],
+  ] as const;
+  for (const [label, handler] of actions) {
+    dialogs.projectInfo(project, 'bot-management');
+    click(label, panel('bot-management')); expect(handler).toHaveBeenCalledOnce(); expect(dialogs.open).toBe(false);
+  }
 });
 
 it('preserves configuration drafts, tool search and section scroll while navigating', async () => {

@@ -154,7 +154,7 @@ Studio 小助手可以在同一会话里使用多个已打开的工作区根目�
 
 在本地 Studio 的 **项目详情 → Bot 管理 → 凭据管理** 查看已保存的凭据。列表只显示所选 Bot 入口或分身的别名与类型，不显示密钥内容，也不需要启动对话。
 
-在本地 Studio 的 Bot 对话中，打开 **项目信息 → Bot 凭据库**，可以添加、替换或删除凭据。API Key、令牌和密码在原生窗口中遮罩录入；SSH 私钥通过文件选择器导入本地 OpenSSH 或 PEM 私钥文件。列表只显示别名和类型，不显示原值。
+在本地 Studio 的 Bot 对话中，打开 **项目信息 → Bot 管理 → Bot 凭据库**，可以添加、替换或删除凭据。API Key、令牌和密码在原生窗口中遮罩录入；SSH 私钥通过文件选择器导入本地 OpenSSH 或 PEM 私钥文件。列表只显示别名和类型，不显示原值。
 
 Agent Bot 可以调用 `bot_credentials_request`，传 `name`（别名）和 `kind`（`api-key`、`password`、`ssh-private-key` 或 `structured`）。在对话卡上选择 **打开安全输入**，由 Studio 原生窗口录入或确认已存凭据。Bot 只收到别名、类型和 `saved`、`existing` 或 `declined` 状态。
 

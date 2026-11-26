@@ -175,8 +175,8 @@ try {
   assert.equal(await frame.locator('#source').count(), 0);
   assert.equal(await frame.locator('.toolbar-actions #new').count(), 1);
   assert.equal(await frame.locator('#project-menu #new').count(), 0);
-  await frame.locator('#project-info').click(); await frame.locator('.project-information-name').waitFor();
-  assert.equal(await frame.locator('.project-information-name').innerText(), JSON.parse(await fs.readFile(path.join(fixtureDir, 'package.json'), 'utf8')).name);
+  await frame.locator('#project-info').click(); await frame.locator('.lp-detail-title').waitFor();
+  assert.equal(await frame.locator('.lp-detail-title').innerText(), JSON.parse(await fs.readFile(path.join(fixtureDir, 'package.json'), 'utf8')).name);
   await frame.locator('.conversation-dialog[open] header button').last().click();
   proof.checks.newConversationInToolbarAndProjectInformation = true;
   assert.equal(await frame.locator('.composer-footer, #runtime-state, #message-count').count(), 0);
