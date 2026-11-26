@@ -77,7 +77,7 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   emit({ ...first, type: 'error', requestType: 'stop', silent: true, message: 'Connection interrupted.' });
   expect(send.disabled).toBe(false); expect(feedback.getAttribute('role')).toBe('alert');
   expect(feedback.textContent).toContain('Stop was not confirmed: Connection interrupted.');
-  expect(document.querySelector('.pending')?.textContent).toBe('Responding...');
+  expect(document.querySelector('.pending-label.sr-only')?.textContent).toBe('Running');
   expect(document.querySelector<HTMLElement>('#error')!.hidden).toBe(true);
   send.click();
   const second = stopMessages()[1];

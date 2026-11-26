@@ -13,6 +13,7 @@ import { renderResultCard } from './result-card';
 
 interface OutputOptions {
   composer?: boolean;
+  runningIconOnly?: boolean;
   displayText?(text: string): string;
   copy(text: string, button: HTMLButtonElement): void;
   plan(text: string): void;
@@ -253,10 +254,13 @@ export class ConversationOutput {
     if ((message.status === 'running' || message.status === 'sending') && !message.pendingInput) {
       if (!this.pending) {
         this.pending = document.createElement('div'); this.pending.className = 'pending';
-        this.pending.innerHTML = `${iconHtml('loading')}<span class="pending-label"></span>`;
+        this.pending.innerHTML = `${iconHtml('loading')}<span class="pending-label"${this.options.runningIconOnly ? ' role="status"' : ''}></span>`;
       }
       const label = this.pending.querySelector('.pending-label')!;
-      const text = message.cancelRequested ? t('Stopping...') : message.status === 'sending' ? t('Sending message...') : activeAgentActivity(message)?.title ?? t("Responding...");
+      const iconOnly = this.options.runningIconOnly === true && message.status === 'running' && !message.cancelRequested;
+      const text = iconOnly ? t('Running') : message.cancelRequested ? t('Stopping...')
+        : message.status === 'sending' ? t('Sending message...') : activeAgentActivity(message)?.title ?? t('Responding...');
+      label.classList.toggle('sr-only', iconOnly);
       if (label.textContent !== text) { label.textContent = text; }
       if (this.pending.parentElement !== this.root) { this.root.append(this.pending); }
     } else { this.pending?.remove(); }

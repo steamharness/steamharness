@@ -263,7 +263,8 @@ it.each([false, true])('reuses Send now rows across stop and restart snapshots (
   expect(bubble?.previousElementSibling).toBe(oldReply);
   expect(bubble?.nextElementSibling).toBe(pending);
   expect(document.querySelectorAll('#transcript .message.user')).toHaveLength(2);
-  expect(pending?.querySelector('.pending')?.textContent).toBe('Responding...');
+  expect(pending?.querySelector('.pending > .codicon-loading')).not.toBeNull();
+  expect(pending?.querySelector('.pending-label.sr-only')?.textContent).toBe('Running');
   expect(document.querySelector<HTMLElement>('#stop-feedback')!.hidden).toBe(true);
   expect(send.ariaLabel).toBe('Stop');
 });

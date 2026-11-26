@@ -27,7 +27,9 @@ Creating a branch only changes saved conversation records: it does not call AI, 
 
 ## Agent batches and pending user messages
 
-After an Agent successfully calls `update_plan` in the current reply, a **Plan** entry appears beside “Responding…”, showing the completed count, total and first task in progress. Click it to expand the full list of pending, active and completed tasks. The plan and **Subagents** panels expand independently. Plan updates and confirmation pauses preserve expansion, selected task text and scroll position.
+A spinner below the reply shows that the Bot is running. After an Agent successfully calls `update_plan` in the current reply, a **Plan** entry appears beside the spinner with the completed count, total and first task in progress.
+
+Click **Plan** to see pending, active and completed tasks. The plan and **Subagents** panels expand independently. Plan updates and confirmation pauses preserve expansion, selected task text and scroll position.
 
 Use Enter or Space to toggle the plan, and Escape to close it and return focus to its entry. Progress changes are announced to screen readers while the panel is collapsed. Entry text wraps in narrow windows.
 
@@ -37,7 +39,7 @@ Reopened history follows the same rules. A plan belongs to the reply that create
 
 The **Errors** filter in Studio Trace collects run, node and tool failures and model retry reasons. Existing diagnostics remain available after a successful retry and can be filtered by conversation and turn. Execution failures do not occupy the operation alert above the composer. Parameter validation, attachment and resource-opening errors remain in that alert; use **×** to hide them. Dismissing a parameter error does not bypass validation.
 
-Durable Agent conversations show a **Subagents** entry beside “Responding…” with running, queued, failed and completed counts for the current conversation. Click to expand tasks, then expand an item to see its role, phase, progress, current activity, result and error. **Open child conversation** opens the corresponding independent conversation. Both anonymous delegations and named project roles are supported; tool calls, other conversations and independent forks are excluded from the counts.
+Durable Agent conversations show a **Subagents** entry beside the spinner with running, queued, failed and completed counts for the current conversation. Click to expand tasks, then expand an item to see its role, phase, progress, current activity, result and error. **Open child conversation** opens the corresponding independent conversation. Both anonymous delegations and named project roles are supported; tool calls, other conversations and independent forks are excluded from the counts.
 
 The entry updates from task snapshots, remains after the parent reply, and preserves expansion across subsequent replies. Offline snapshots are identified and child navigation stays disabled until reconnection. Studio and standalone CLI Web share this interface; Studio Tasks/Trace retains full task management.
 

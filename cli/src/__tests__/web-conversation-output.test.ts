@@ -1,11 +1,43 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
+import { initI18n } from '@steamharness/i18n';
 import { ConversationOutput } from '../web/ui/conversation-output';
 import type { Attachment, ConversationMessage, OutputItem } from '../web/workflow-types';
 import { markdownHtml } from '../web/ui/ui';
 
 const outputs: ConversationOutput[] = [];
 afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); });
+
+it.each(['en', 'zh-CN'] as const)('uses one stable Bot spinner without repeating the active command in %s', language => {
+  initI18n({ preference: language });
+  try {
+    const root = document.createElement('div'); document.body.append(root);
+    const output = new ConversationOutput(root, { runningIconOnly: true, copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(output);
+    const render = (status: string, items: OutputItem[] = [], cancelRequested = false) =>
+      output.update({ role: 'assistant', status, content: '', items, cancelRequested }, 'project', 'main', 'session', []);
+    render('sending');
+    const label = root.querySelector('.pending-label')!;
+    const spinner = root.querySelector('.pending > .codicon-loading')!;
+    expect(label.classList.contains('sr-only')).toBe(false);
+    expect(spinner.getAttribute('aria-hidden')).toBe('true');
+    render('running');
+    expect(label.classList.contains('sr-only')).toBe(true);
+    expect(label.getAttribute('role')).toBe('status');
+    expect(label.textContent).toBe(language === 'en' ? 'Running' : '运行中');
+    const command: OutputItem = { id: 'tool', metadata: { kind: 'agent-part', partType: 'tool', status: 'running' },
+      content: { tool: 'bash', input: { command: 'echo fixture' } } };
+    render('running', [command]);
+    expect(root.querySelector('.pending > .codicon-loading')).toBe(spinner);
+    expect(root.querySelector('.pending-label.sr-only')).toBe(label);
+    expect(root.querySelector('.pending')?.textContent).not.toContain('echo fixture');
+    expect(root.querySelector('[data-kind="command"] summary')?.textContent).toContain('echo fixture');
+    render('running', [command], true);
+    expect(label.classList.contains('sr-only')).toBe(false);
+    expect(label.textContent).toBe(language === 'en' ? 'Stopping...' : '正在停止...');
+    render('aborted', [command]);
+    expect(root.querySelector('.pending')).toBeNull();
+  } finally { initI18n({ preference: 'en' }); }
+});
 
 it('replaces live progress with a large inline image, clears running state and restores the image from history', () => {
   const root = document.createElement('div'), image = vi.fn(); document.body.append(root);

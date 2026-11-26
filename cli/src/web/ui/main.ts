@@ -1156,6 +1156,7 @@ function initialize(): void {
       view.output = new ConversationOutput(view.content, {
         displayText: text => displayMentions(text),
         composer: true,
+        runningIconOnly: state?.project.projectType === 'bot',
         artifact: item => library.card(item, !hostHistory() && !embeddedConversation),
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
         path: target => post({ type: 'open-path', ...target }),
