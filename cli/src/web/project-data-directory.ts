@@ -4,8 +4,6 @@ import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { projectEntryKey } from '@steamharness/project-manifest';
 import type { BotMemoryDirectories, createLocalRuntimePersistence, RuntimePersistence } from 'steamharness/runtime-storage';
-import type { FolderBotHost } from './host-config';
-import type { Project } from './workflow-types';
 
 export function webProjectDataDirectory(storageDir: string, projectId: string, entryId: string): string {
   projectEntryKey(projectId, entryId);
@@ -29,7 +27,11 @@ export function assistantDataDirectory(storageDir: string, projectId: string, wo
 
 export type WebBotMemoryDirectoryScope = Pick<BotMemoryDirectories, 'kind' | 'primary' | 'roots'>;
 
-export function botMemoryDirectoryScope(project: Project, folderBot: FolderBotHost | undefined): WebBotMemoryDirectoryScope | undefined {
+export function botMemoryDirectoryScope(project: {
+  projectType: string; id: string; entryId: string; conversation?: { engine?: string };
+  assistant?: { workdir: string; roots: readonly { folderPath: string }[] };
+  entries: readonly { entryId: string; folderContext?: boolean }[];
+}, folderBot: { projectId: string; directory: string } | undefined): WebBotMemoryDirectoryScope | undefined {
   if (project.projectType !== 'bot' || project.conversation?.engine !== 'agent') return;
   if (project.assistant) {
     const primary = project.assistant.workdir;

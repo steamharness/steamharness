@@ -30,8 +30,12 @@ export class BotArtifactLibrary {
   private previewUrl?: string;
   private next?: number;
   private opener?: HTMLElement;
+  private lifetime?: AbortController;
+  private readonly fetchArtifact: typeof requestBotArtifact;
 
-  constructor(private readonly options: { navigate(id: string, artifact: string): void }) {
+  constructor(private readonly options: { navigate?(id: string, artifact: string): void; request?: typeof requestBotArtifact;
+    save?(id: string, signal?: AbortSignal): Promise<Response>; onClose?(): void }) {
+    this.fetchArtifact = options.request ?? requestBotArtifact;
     this.dialog.className = 'conversation-dialog bot-artifact-library';
     this.title.id = 'bot-artifact-title'; this.dialog.setAttribute('aria-labelledby', this.title.id);
     const header = document.createElement('header');
@@ -47,10 +51,11 @@ export class BotArtifactLibrary {
     this.dialog.append(header, body);
     this.dialog.addEventListener('close', () => {
       if (this.dialog.open) return;
-      this.request?.abort(); this.closePreview();
+      this.lifetime?.abort(); this.request?.abort(); this.closePreview();
       this.opener?.focus({ preventScroll: true }); this.opener = undefined;
+      this.options.onClose?.();
     });
-    window.addEventListener('pagehide', () => { this.request?.abort(); this.closePreview(); });
+    window.addEventListener('pagehide', () => { this.lifetime?.abort(); this.request?.abort(); this.closePreview(); });
     document.body.append(this.dialog);
   }
 
@@ -72,6 +77,7 @@ export class BotArtifactLibrary {
     this.status.textContent = this.availability === 'ready' ? t('Loading artifacts…') : t('Update the project runtime to open its Bot artifact library.');
     this.refresh.disabled = this.availability !== 'ready'; this.more.hidden = true;
     if (!this.dialog.open) {
+      this.lifetime = new AbortController();
       if (document.activeElement instanceof HTMLElement) this.opener = document.activeElement;
       this.dialog.showModal();
     }
@@ -97,7 +103,7 @@ export class BotArtifactLibrary {
     let withdrawn = false;
     const removed = () => { withdrawn = true; state.textContent = t('Artifact removed'); controls.hidden = true; };
     root.addEventListener('bot-artifact-removed', removed);
-    const validate = () => void requestBotArtifact(`/${id}`).then(response => {
+    const validate = () => void this.fetchArtifact(`/${id}`).then(response => {
       if (withdrawn) return;
       if (response.status === 404) removed();
       else if (response.ok) { state.textContent = fileSize(Number(value.size) || 0); controls.hidden = false; }
@@ -112,9 +118,10 @@ export class BotArtifactLibrary {
     const button = iconButton('cloud-download', t('Download'), async () => {
       button.disabled = true;
       try {
-        const response = await requestBotArtifact(`/${id}/content`);
+        const response = this.options.save ? await this.options.save(id, this.lifetime?.signal) : await this.fetchArtifact(`/${id}/content`);
         if (response.status === 404) { error(t('Artifact removed')); return; }
         if (!response.ok) throw new Error();
+        if (this.options.save) return;
         const urls = URL;
         const url = urls.createObjectURL(await response.blob());
         const link = document.createElement('a'); link.href = url; link.download = name; link.click();
@@ -132,7 +139,7 @@ export class BotArtifactLibrary {
     this.refresh.disabled = this.more.disabled = true;
     this.status.textContent = t('Loading artifacts…');
     try {
-      const response = await requestBotArtifact(before ? `?before=${before}` : '', { signal: request.signal });
+      const response = await this.fetchArtifact(before ? `?before=${before}` : '', { signal: request.signal });
       if (!response.ok) throw new Error();
       const page = await response.json() as { artifacts: Artifact[]; nextBefore?: number };
       if (request.signal.aborted) return;
@@ -158,11 +165,12 @@ export class BotArtifactLibrary {
       if (!item.conversationId) return;
       this.opener = undefined;
       this.dialog.close();
-      this.options.navigate(item.conversationId, item.id);
+      this.options.navigate?.(item.conversationId, item.id);
     });
     if (!item.conversationId) { source.disabled = true; source.title = t('Source conversation unavailable'); }
-    actions.append(iconButton('preview', t('Open artifact'), () => { void this.showPreview(item.id); }), this.download(item.id, item.name), source,
-      iconButton('trash', t('Remove delivery'), () => { void this.remove(item); }));
+    actions.append(iconButton('preview', t('Open artifact'), () => { void this.showPreview(item.id); }), this.download(item.id, item.name));
+    if (this.options.navigate) actions.append(source);
+    actions.append(iconButton('trash', t('Remove delivery'), () => { void this.remove(item); }));
     row.append(label, actions); return row;
   }
 
@@ -172,7 +180,7 @@ export class BotArtifactLibrary {
     this.preview.hidden = false;
     this.preview.replaceChildren(detail(t('Loading artifacts…')));
     try {
-      const response = await requestBotArtifact(`/${id}`, { signal: request.signal });
+      const response = await this.fetchArtifact(`/${id}`, { signal: request.signal });
       if (request.signal.aborted) return;
       if (response.status === 404) { this.preview.replaceChildren(detail(t('Artifact removed'))); return; }
       if (!response.ok) throw new Error();
@@ -183,14 +191,15 @@ export class BotArtifactLibrary {
       const content = document.createElement('div');
       this.preview.replaceChildren(header, content);
       if (item.preview === 'image') {
-        const bytes = await requestBotArtifact(`/${id}/content?preview=1`, { signal: request.signal });
+        const bytes = await this.fetchArtifact(`/${id}/content?preview=1`, { signal: request.signal });
+        if (bytes.status === 415) { content.append(detail(t('Preview is unavailable. Download the file to open it.'))); return; }
         if (!bytes.ok) throw new Error();
         const blob = await bytes.blob(); if (request.signal.aborted) return;
         const image = document.createElement('img'); image.src = this.previewUrl = URL.createObjectURL(blob); image.alt = item.name;
         image.addEventListener('error', () => content.replaceChildren(detail(t('Preview is unavailable. Download the file to open it.'))), { once: true });
         content.append(image);
       } else if (item.preview === 'text') {
-        const bytes = await requestBotArtifact(`/${id}/content?preview=1`, { signal: request.signal });
+        const bytes = await this.fetchArtifact(`/${id}/content?preview=1`, { signal: request.signal });
         if (!bytes.ok) throw new Error();
         const text = await bytes.text(); if (request.signal.aborted) return;
         const pre = document.createElement('pre'); pre.textContent = text; content.append(pre);
@@ -207,15 +216,17 @@ export class BotArtifactLibrary {
   }
 
   private async remove(item: Artifact): Promise<void> {
-    const confirmed = await requestAction({ title: t('Remove delivery'), confirm: t('Remove delivery'),
+    const signal = this.lifetime?.signal;
+    const confirmed = await requestAction({ title: t('Remove delivery'), confirm: t('Remove delivery'), signal,
       description: t('Remove the delivered copy of {0}? The source file will be kept.', item.name), danger: true });
-    if (confirmed === undefined || !this.dialog.open) return;
+    if (confirmed === undefined || signal?.aborted || !this.dialog.open) return;
     try {
-      const response = await requestBotArtifact(`/${item.id}`, { method: 'DELETE' });
+      const response = await this.fetchArtifact(`/${item.id}`, { method: 'DELETE', signal });
       if (!response.ok) throw new Error();
+      if (signal?.aborted) return;
       this.closePreview();
       document.querySelectorAll(`[data-bot-artifact="${item.id}"]`).forEach(card => card.dispatchEvent(new Event('bot-artifact-removed')));
       if (this.dialog.open) await this.page();
-    } catch { this.status.textContent = t('Could not remove the delivered copy.'); }
+    } catch { if (!signal?.aborted) this.status.textContent = t('Could not remove the delivered copy.'); }
   }
 }

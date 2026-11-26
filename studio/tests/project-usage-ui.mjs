@@ -15,6 +15,10 @@ const bundle = await build({ stdin: { resolveDir: kernel, sourcefile: 'usage-fix
   bundle: true, platform: 'browser', format: 'iife', globalName: 'usageFixture', write: false, outdir: 'unused', loader: { '.ttf': 'dataurl', '.woff2': 'dataurl' } });
 const script = bundle.outputFiles.find(file => file.path.endsWith('.js')).text;
 const styles = bundle.outputFiles.find(file => file.path.endsWith('.css')).text;
+const managementBundle = await build({ entryPoints: [fileURLToPath(new URL('../../cli/src/web/ui/bot-management-standalone.ts', import.meta.url))],
+  bundle: true, platform: 'browser', format: 'iife', write: false, outdir: 'unused' });
+const panelScript = managementBundle.outputFiles.find(file => file.path.endsWith('.js')).text;
+const panelStyles = managementBundle.outputFiles.find(file => file.path.endsWith('.css')).text;
 
 const browser = await chromium.launch({ headless: true, executablePath: process.env.STUDIO_START_TEST_BROWSER_PATH || undefined });
 try {
@@ -23,6 +27,12 @@ try {
     const page = await browser.newPage({ viewport: { width: 1120, height: 840 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.route('http://localhost/launchpad-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Launchpad fixture</title>' }));
+    await page.route('http://localhost/launchpad-bot', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="${language}">
+      <style>${panelStyles}</style><script>window.acquireVsCodeApi = () => ({postMessage: message => parent.postMessage(message, '*')});</script>
+      <script defer src="/launchpad-bot.js"></script><body></body></html>` }));
+    await page.route('http://localhost/launchpad-bot.js', route => route.fulfill({ contentType: 'application/javascript', body: panelScript }));
+    await page.goto('http://localhost/launchpad-fixture');
     await page.setContent(`<style>
       :root { --vscode-foreground: ${light ? '#222' : '#ddd'}; --vscode-descriptionForeground: ${light ? '#555' : '#aaa'};
         --vscode-editor-background: ${light ? '#fff' : '#1f1f1f'}; --vscode-sideBar-background: ${light ? '#f6f6f6' : '#252526'};
@@ -100,7 +110,29 @@ try {
           projectType: 'bot', managed: true, entries: [assistant.entries[0]] };
         const library = new StudioLaunchpadView(window._VSCODE_NLS_LANGUAGE, {
           hoverService: { setupDelayedHover: () => ({ dispose() {} }) },
-          openBotArtifacts: () => {}, openBotMemory: () => {},
+          project: () => { throw new Error('Bot management opened a project.'); },
+          mountBotManagement: (kind, project, entryId, modal) => {
+            window.managementTarget = [kind, project.uri, entryId];
+            const frame = document.createElement('iframe');
+            frame.src = 'http://localhost/launchpad-bot';
+            frame.style.cssText = 'display:block; width:100%; height:100%; border:0';
+            const receive = event => {
+              if (event.source !== frame.contentWindow) return;
+              const message = event.data;
+              const post = value => frame.contentWindow.postMessage(value, '*');
+              if (message.type === 'init') post({ type: 'init', kind, status: 'ready', name: 'Project Assistant' });
+              if (message.type === 'ready') { modal.ready(); frame.focus(); }
+              if (message.type === 'close') modal.close();
+              if (message.type === 'request') {
+                const artifact = { id: 'ba_' + 'a'.repeat(32), name: 'Summary.txt', title: 'Summary', size: 4, createdAt: '2026-11-26T00:00:00Z' };
+                const json = kind === 'artifacts' ? { artifacts: [artifact] } : { memories: [], categories: [] };
+                post({ type: 'response', id: message.id, result: { status: 200, json } });
+              }
+            };
+            window.addEventListener('message', receive);
+            modal.lifetime.add({ dispose: () => { window.removeEventListener('message', receive); frame.remove(); } });
+            modal.surface.append(frame);
+          },
           detailActions: async (project, source) => project.uri === folderBot.uri ? (source === 'local' ? [
             ['profile', zh ? '分身档案…' : 'Profile…', 'settings-gear'], ['clone', zh ? '复制分身…' : 'Clone…', 'copy'],
             ['export', zh ? '导出模板…' : 'Export template…', 'export'], ['import', zh ? '导入模板…' : 'Import template…', 'cloud-upload'],
@@ -111,7 +143,9 @@ try {
             return { status: 'ok', rows: [{ name: 'fixture-credential-' + 'long-'.repeat(8), type: zh ? '结构化凭据' : 'Structured credential' }] };
           },
         });
-        document.getElementById('launchpad').append(library.element);
+        const parent = document.createElement('dialog'); parent.id = 'fixture-project-details'; parent.setAttribute('aria-label', 'Project details');
+        parent.style.cssText = 'position:fixed; inset:0; margin:0; padding:0; border:0; width:100vw; height:100dvh; max-width:none; max-height:none';
+        parent.append(library.element); document.getElementById('launchpad').append(parent); parent.showModal();
         library.update({ ...state, platform: true, account: { signedIn: true }, recent: [folderBot], builtinProjects: [assistant] });
         library.select('library', assistant.uri);
         window.showManagedActions = () => library.select('library', folderBot.uri);
@@ -209,7 +243,8 @@ try {
     const credentialButton = management.getByRole('button', { name: credentialTitle, exact: true });
     assert.equal(await page.evaluate(() => window.credentialRequests.length), 0);
     await credentialButton.click();
-    const credentials = management.getByRole('region', { name: credentialTitle, exact: true });
+    const credentialDialog = page.getByRole('dialog', { name: credentialTitle, exact: true });
+    const credentials = credentialDialog.locator('.lp-bot-credential-list');
     await credentials.getByRole('cell', { name: 'fixture-credential-' + 'long-'.repeat(8), exact: true }).waitFor();
     assert.deepEqual(await credentials.getByRole('columnheader').allTextContents(), zh ? ['别名', '类型'] : ['Alias', 'Type']);
     assert.ok(await credentials.getByRole('cell', { name: zh ? '结构化凭据' : 'Structured credential', exact: true }).isVisible());
@@ -217,8 +252,36 @@ try {
     assert.deepEqual(await page.evaluate(() => window.credentialRequests), [['file:///Assistant', 'main']]);
     await page.setViewportSize({ width: 410, height: 840 });
     assert.equal(await credentials.evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1), true);
-    await credentialButton.click();
-    await credentials.waitFor({ state: 'detached' });
+    await page.keyboard.press('Escape');
+    await credentialDialog.waitFor({ state: 'detached' });
+    assert.equal(await credentialButton.evaluate(button => button === document.activeElement), true);
+    assert.equal(await details.getByRole('heading', { name: 'Project Assistant' }).isVisible(), true);
+
+    const artifactButton = management.getByRole('button', { name: zh ? '产物库' : 'Artifact library', exact: true });
+    await artifactButton.click();
+    const botPanel = page.frameLocator('.lp-bot-modal iframe');
+    const artifacts = botPanel.locator('.bot-artifact-library[open]');
+    await artifacts.getByText('Summary', { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.managementTarget), ['artifacts', 'file:///Assistant', 'main']);
+    await artifacts.getByRole('button', { name: zh ? '移除交付件' : 'Remove delivery', exact: true }).click();
+    const confirm = botPanel.locator('.action-dialog[open]');
+    await confirm.waitFor();
+    await page.keyboard.press('Escape');
+    await confirm.waitFor({ state: 'detached' });
+    assert.equal(await artifacts.evaluate(dialog => dialog.open), true);
+    assert.equal(await page.locator('#fixture-project-details').evaluate(dialog => dialog.open), true);
+    await page.keyboard.press('Escape');
+    await page.locator('.lp-bot-modal').waitFor({ state: 'detached' });
+    assert.equal(await artifactButton.evaluate(button => button === document.activeElement), true);
+
+    const memoryButton = management.getByRole('button', { name: zh ? '记忆管理' : 'Memory management', exact: true });
+    await memoryButton.click();
+    const memory = botPanel.locator('.bot-memory-dialog[open]');
+    await memory.getByRole('button', { name: zh ? '新建记忆' : 'New memory', exact: true }).waitFor();
+    assert.equal(await memory.evaluate(dialog => dialog.scrollWidth <= dialog.clientWidth + 1), true);
+    await memory.getByRole('button', { name: zh ? '关闭' : 'Close', exact: true }).click();
+    await page.locator('.lp-bot-modal').waitFor({ state: 'detached' });
+    assert.equal(await memoryButton.evaluate(button => button === document.activeElement), true);
 
     await page.evaluate(() => window.showManagedActions());
     const actions = management.locator('.lp-detail-group-actions');

@@ -56,7 +56,7 @@ export class BotMemoryPanel {
   private filters: object = {};
   private writing = false;
 
-  constructor(private readonly options: { navigate(id: string): void }) {
+  constructor(private readonly options: { navigate?(id: string): void; request?: typeof requestBotMemory; onClose?(): void }) {
     this.dialog.className = 'conversation-dialog bot-memory-dialog';
     const title = text('h2', t('Memory management')); title.id = 'bot-memory-title'; this.dialog.setAttribute('aria-labelledby', title.id);
     const header = document.createElement('header');
@@ -67,7 +67,7 @@ export class BotMemoryPanel {
     this.list.className = 'bot-memory-list'; this.detail.className = 'bot-memory-detail';
     this.more = command(t('Load more'), () => { if (this.moreOffset !== undefined) void this.page(this.moreOffset); }); this.more.hidden = true;
     this.dialog.append(header, this.body);
-    this.dialog.addEventListener('close', () => { if (!this.dialog.open) this.stop(); });
+    this.dialog.addEventListener('close', () => { if (!this.dialog.open) { this.stop(); this.options.onClose?.(); } });
     window.addEventListener('pagehide', () => this.stop());
     document.body.append(this.dialog);
   }
@@ -154,7 +154,7 @@ export class BotMemoryPanel {
 
   private async api<T>(request: object, signal?: AbortSignal): Promise<T> {
     signal?.throwIfAborted();
-    const response = await requestBotMemory({ ...request, projectPath: this.projectPath }, signal);
+    const response = await (this.options.request ?? requestBotMemory)({ ...request, projectPath: this.projectPath }, signal);
     const result = await response.json();
     if (!response.ok) throw new Error(t(errorLabels[result.code] ?? 'Could not load or change Bot memory.'));
     return result as T;
@@ -279,7 +279,7 @@ export class BotMemoryPanel {
     row.append(header, text('p', `${t(actors[source.actor])} · ${date(change.changedAt)}`, 'bot-memory-muted'));
     if (source.runId) row.append(text('p', t('Source run: {0}', source.runId), 'bot-memory-muted'));
     if (source.requestId) row.append(text('p', t('Source request: {0}', source.requestId), 'bot-memory-muted'));
-    if (source.conversationId && change.sourceAvailable) row.append(command(t('Open source conversation'), () => { this.dialog.close(); this.options.navigate(source.conversationId!); }));
+    if (source.conversationId && change.sourceAvailable && this.options.navigate) row.append(command(t('Open source conversation'), () => { this.dialog.close(); this.options.navigate?.(source.conversationId!); }));
     if (change.delta) {
       const details = document.createElement('details'); details.append(text('summary', t('View changes')));
       if ('fields' in change.delta) {

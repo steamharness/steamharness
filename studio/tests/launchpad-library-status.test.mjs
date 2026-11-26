@@ -10,6 +10,10 @@ const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('studi
 
 function fixture(t, language = 'en', actions = {}) {
   const { window } = new JSDOM('', { runScripts: 'outside-only' });
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () {
+    if (this.open) { this.open = false; this.dispatchEvent(new window.Event('close')); }
+  };
   const { LaunchpadLibrary } = window.eval(`${outputFiles[0].text}\nstudio;`);
   const project = (name, extra) => ({ uri: `file:///${name}`, kind: 'folder', path: `/${name}`, name, ...extra });
   let read = async () => [];
@@ -49,7 +53,7 @@ for (const language of ['en', 'zh-cn']) {
   });
 
   test(`the artifact library is a secondary action for the chosen Bot entry (${language})`, t => {
-    const calls = [], f = fixture(t, language, { openBotArtifacts: (p, entry) => calls.push([p.uri, entry]), openBotMemory: (p, entry) => calls.push([p.uri, entry, 'memory']) });
+    const calls = [], f = fixture(t, language, { mountBotManagement: (kind, p, entry) => calls.push([kind, p.uri, entry]) });
     const bot = f.project('aggregate', { projectType: 'workflow', entries: [
       { type: 'workflow', entryId: 'build', name: 'Build', primary: true },
       { type: 'bot', entryId: 'ops', name: 'Ops' }, { type: 'bot', entryId: 'qa', name: 'QA' },
@@ -62,19 +66,22 @@ for (const language of ['en', 'zh-cn']) {
     assert.deepEqual(controls.map(button => button.textContent.trim()), language === 'zh-cn' ? ['产物库 · Ops', '产物库 · QA'] : ['Artifact library · Ops', 'Artifact library · QA']);
     assert.equal(f.library.element.querySelector('.lp-detail-actions button[data-key^="bot-artifacts:"]'), null);
     controls[1].click();
+    assert.ok(f.library.element.querySelector('.lp-bot-modal[open]'));
+    f.library.element.querySelector('.lp-bot-modal button').click();
+    assert.equal(f.window.document.activeElement, controls[1]);
     const memory = [...secondary.querySelectorAll('button[data-key^="bot-memory:"]')];
     assert.deepEqual(memory.map(button => button.textContent.trim()), language === 'zh-cn' ? ['记忆管理 · Ops', '记忆管理 · QA'] : ['Memory management · Ops', 'Memory management · QA']);
     assert.equal(f.library.element.querySelector('.lp-detail-actions button[data-key^="bot-memory:"]'), null);
     memory[0].click();
-    assert.deepEqual(calls, [[bot.uri, 'qa'], [bot.uri, 'ops', 'memory']]);
+    assert.deepEqual(calls, [['artifacts', bot.uri, 'qa'], ['memory', bot.uri, 'ops']]);
   });
 
   test(`folder Bot actions join the existing toolbar without moving focus (${language})`, async t => {
     let resolveLocal;
     const local = new Promise(resolve => { resolveLocal = resolve; });
     const calls = [], f = fixture(t, language, {
-      openBotArtifacts: (project, entry) => calls.push([project.uri, entry]),
-      openBotMemory: () => {}, readBotCredentials: async () => ({ status: 'ok', rows: [] }),
+      mountBotManagement: (_kind, project, entry) => calls.push([project.uri, entry]),
+      readBotCredentials: async () => ({ status: 'ok', rows: [] }),
       detailActions: (_project, source) => source === 'local' ? local : undefined,
       runDetailAction: async (project, id) => { calls.push([project.uri, id]); },
     });
@@ -93,6 +100,7 @@ for (const language of ['en', 'zh-cn']) {
     assert.deepEqual([...toolbar.children].slice(3).map(button => button.dataset.detailAction), ['profile', 'clone']);
     assert.equal(f.window.document.activeElement, initial[0]);
     initial[0].click();
+    f.library.closeBotModal();
     toolbar.lastElementChild.click();
     assert.deepEqual(calls, [[bot.uri, 'agent'], [bot.uri, 'clone']]);
     await new Promise(resolve => setImmediate(resolve));
@@ -109,40 +117,42 @@ for (const language of ['en', 'zh-cn']) {
     f.library.update([project, other], [], true, '');
     f.library.show(project.uri);
     const controls = () => [...f.library.element.querySelectorAll('[data-key^="bot-credentials:"]')];
-    const list = () => f.library.element.querySelector('.lp-detail-secondary .lp-bot-credential-list');
+    const modal = () => f.library.element.querySelector('.lp-bot-modal[open]');
+    const list = () => modal()?.querySelector('.lp-bot-credential-list');
     const title = language === 'zh-cn' ? '凭据管理' : 'Credential management';
     assert.deepEqual(controls().map(button => button.textContent.trim()), [`${title} · Ops`, `${title} · QA`]);
     assert.equal(f.library.element.querySelector('.lp-detail-actions [data-key^="bot-credentials:"]'), null);
     assert.deepEqual(calls, []);
     controls()[0].click();
-    assert.equal(controls()[0].getAttribute('aria-expanded'), 'true');
-    assert.ok(list().querySelector('[role="status"]'));
+    assert.equal(controls()[0].getAttribute('aria-haspopup'), 'dialog');
+    assert.ok(modal().querySelector('[role="status"]'));
     await render();
+    modal().close();
     controls()[1].click();
     await render();
     assert.deepEqual(calls, [[project.uri, 'ops'], [project.uri, 'qa']]);
     pending[1]({ status: 'ok', rows: [{ name: 'fixture-qa', type: 'SSH private key' }] });
     pending[0]({ status: 'ok', rows: [{ name: 'fixture-ops', type: 'Password' }] });
     await render();
-    assert.equal(controls()[1].getAttribute('aria-expanded'), 'true');
+    assert.equal(modal().querySelector('h2').textContent, `${title} · QA`);
     assert.deepEqual([...list().querySelectorAll('td')].map(cell => cell.textContent), ['fixture-qa', 'SSH private key']);
     assert.deepEqual([...list().querySelectorAll('th')].map(cell => cell.textContent), language === 'zh-cn' ? ['别名', '类型'] : ['Alias', 'Type']);
     assert.equal(list().querySelectorAll('button,input,textarea').length, 0);
-    controls()[1].click();
-    assert.equal(list(), null);
+    modal().querySelector('button').click();
+    assert.equal(modal(), null);
     controls()[0].click();
     await render();
     f.library.show(other.uri);
     pending[2]({ status: 'ok', rows: [{ name: 'fixture-stale', type: 'Password' }] });
     await render();
-    assert.equal(list(), null);
+    assert.equal(modal(), null);
     assert.equal(controls().length, 0);
     f.library.show(project.uri);
     controls()[0].click();
     await render();
     pending[3]({ status: 'ok', rows: [] });
     await render();
-    assert.equal(list().textContent, language === 'zh-cn' ? '暂无已保存的凭据。' : 'No saved credentials.');
+    assert.equal(modal().querySelector('[role=status]').textContent, language === 'zh-cn' ? '暂无已保存的凭据。' : 'No saved credentials.');
   });
 
   test(`the library heading opens a localized status guide by hover or activation (${language})`, t => {

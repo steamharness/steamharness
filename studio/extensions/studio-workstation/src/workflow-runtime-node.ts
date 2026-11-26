@@ -38,6 +38,7 @@ import { WorkflowScheduleRuntime } from './workflow-schedule-runtime';
 import { openProjectSchedules } from './workflow-schedule-view';
 import { canAccessBotCredentialStorage, createBotCredentialInteraction } from './bot-credentials';
 import { createBotCredentialListReader } from './bot-credential-list';
+import { registerBotManagementView } from './bot-management-view';
 import type { AccountWorkspace } from './account-workspace-data';
 
 interface RuntimeScope {
@@ -220,6 +221,13 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     analysisReads.set(scope, pending);
     return pending;
   };
+  if (desktop) context.subscriptions.push(registerBotManagementView(context, { captureScope,
+    currentOwner: () => account.workspace?.()?.owner ?? null,
+    target: { assistantId: DEVELOPER_ASSISTANT_PROJECT_ID, isBuiltinProjectDirectory, localAssistantDirectory: assistantDirectory,
+      resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
+      trusted: directory => vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false),
+    },
+  }));
   const assertAvailable = (requiresWorkspaceTrust = true): void => {
     if (requiresWorkspaceTrust && !vscode.workspace.isTrusted) { throw new Error(t("Trust the current workspace first.")); }
     if (controller.signal.aborted) { throw new Error('Workflow host has stopped.'); }

@@ -7,6 +7,8 @@ const textTypes = new Set(['md', 'txt', 'log', 'csv', 'tsv', 'json', 'jsonl', 'y
 const textPreviewLimit = 64 * 1024;
 const extension = (name: string) => name.split('.').at(-1)?.toLowerCase() ?? '';
 type JsonResponse = (response: ServerResponse, code: number, output: unknown) => void;
+export type BotArtifactResult = { status: number; json: unknown }
+  | { status: 200; content: { name: string; bytes: Uint8Array; mime: string; preview: boolean; truncated: boolean } };
 
 function publicArtifact(artifact: BotArtifact, hasSource: (artifact: BotArtifact) => boolean) {
   const type = extension(artifact.name);
@@ -15,44 +17,55 @@ function publicArtifact(artifact: BotArtifact, hasSource: (artifact: BotArtifact
     ...(hasSource(artifact) ? { conversationId: artifact.source.conversationId } : {}) };
 }
 
+/** The caller must bind the store to an authorized project and Bot entry. */
+export function readBotArtifactResult(url: URL, method: string | undefined, store: BotArtifactStore | undefined,
+  hasSource: (artifact: BotArtifact) => boolean = () => false, imagePreviewLimit = Infinity): BotArtifactResult {
+  const error = (status: number, code: string) => ({ status, json: { code } });
+  if (!store) return error(404, 'BOT_ARTIFACTS_UNAVAILABLE');
+  const match = idPattern.exec(url.pathname);
+  if (url.pathname === '/api/bot-artifacts' && method === 'GET') {
+    const raw = url.searchParams.get('before');
+    const before = raw === null ? undefined : Number(raw);
+    if (before !== undefined && (!/^\d+$/u.test(raw!) || !Number.isSafeInteger(before) || before < 1)) return error(400, 'INVALID_CURSOR');
+    const page = store.list(before);
+    return { status: 200, json: { artifacts: page.artifacts.map(artifact => publicArtifact(artifact, hasSource)), nextBefore: page.nextBefore } };
+  }
+  if (!match) return error(404, 'BOT_ARTIFACT_NOT_FOUND');
+  const id = match[1]!;
+  if (!match[2] && method === 'DELETE') {
+    // Repeating a confirmed removal is safe and cannot touch the source file.
+    store.delete(id);
+    return { status: 200, json: { removed: true } };
+  }
+  if (method !== 'GET') return error(405, 'METHOD_NOT_ALLOWED');
+  if (!match[2]) {
+    const record = store.get(id);
+    return record ? { status: 200, json: publicArtifact(record, hasSource) } : error(404, 'BOT_ARTIFACT_NOT_FOUND');
+  }
+  const preview = url.searchParams.get('preview') === '1';
+  if (preview && Number.isFinite(imagePreviewLimit)) {
+    const record = store.get(id);
+    if (record && raster.has(extension(record.name)) && record.size > imagePreviewLimit) return error(415, 'BOT_ARTIFACT_PREVIEW_UNAVAILABLE');
+  }
+  const record = store.read(id);
+  if (!record) return error(404, 'BOT_ARTIFACT_NOT_FOUND');
+  const type = extension(record.artifact.name);
+  if (preview && !raster.has(type) && !textTypes.has(type)) return error(415, 'BOT_ARTIFACT_PREVIEW_UNAVAILABLE');
+  const text = preview && textTypes.has(type);
+  const bytes = text ? record.bytes.subarray(0, textPreviewLimit) : record.bytes;
+  return { status: 200, content: { name: record.artifact.name, bytes, preview, truncated: bytes.length < record.bytes.byteLength,
+    mime: preview ? raster.get(type) ?? 'text/plain; charset=utf-8' : 'application/octet-stream' } };
+}
+
 /** Invoked only after the project web host authenticates a local Studio request. */
 export function respondToBotArtifacts(request: IncomingMessage, response: ServerResponse, url: URL,
   store: BotArtifactStore | undefined, json: JsonResponse, hasSource: (artifact: BotArtifact) => boolean): void {
-  if (!store) { json(response, 404, { code: 'BOT_ARTIFACTS_UNAVAILABLE' }); return; }
-  const match = idPattern.exec(url.pathname);
-  if (url.pathname === '/api/bot-artifacts' && request.method === 'GET') {
-    const raw = url.searchParams.get('before');
-    const before = raw === null ? undefined : Number(raw);
-    if (before !== undefined && (!/^\d+$/u.test(raw!) || !Number.isSafeInteger(before) || before < 1)) { json(response, 400, { code: 'INVALID_CURSOR' }); return; }
-    const page = store.list(before);
-    json(response, 200, { artifacts: page.artifacts.map(artifact => publicArtifact(artifact, hasSource)), nextBefore: page.nextBefore });
-    return;
-  }
-  if (!match) { json(response, 404, { code: 'BOT_ARTIFACT_NOT_FOUND' }); return; }
-  const id = match[1]!;
-  if (!match[2] && request.method === 'DELETE') {
-    // Repeating a confirmed removal is safe and cannot touch the source file.
-    store.delete(id);
-    json(response, 200, { removed: true });
-    return;
-  }
-  if (request.method !== 'GET') { json(response, 405, { code: 'METHOD_NOT_ALLOWED' }); return; }
-  if (!match[2]) {
-    const record = store.get(id);
-    if (record) json(response, 200, publicArtifact(record, hasSource));
-    else json(response, 404, { code: 'BOT_ARTIFACT_NOT_FOUND' });
-    return;
-  }
-  const record = store.read(id);
-  if (!record) { json(response, 404, { code: 'BOT_ARTIFACT_NOT_FOUND' }); return; }
-  const preview = url.searchParams.get('preview') === '1';
-  const type = extension(record.artifact.name);
-  if (preview && !raster.has(type) && !textTypes.has(type)) { json(response, 415, { code: 'BOT_ARTIFACT_PREVIEW_UNAVAILABLE' }); return; }
-  const text = preview && textTypes.has(type);
-  const body = Buffer.from(record.bytes.buffer, record.bytes.byteOffset, text ? Math.min(textPreviewLimit, record.bytes.byteLength) : record.bytes.byteLength);
-  response.writeHead(200, { 'Content-Type': preview ? raster.get(type) ?? 'text/plain; charset=utf-8' : 'application/octet-stream',
-    'Content-Disposition': preview ? 'inline' : `attachment; filename*=UTF-8''${encodeURIComponent(record.artifact.name).replace(/[!'()*]/gu, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`,
+  const result = readBotArtifactResult(url, request.method, store, hasSource);
+  if ('json' in result) { json(response, result.status, result.json); return; }
+  const { name, bytes, preview, truncated, mime } = result.content;
+  response.writeHead(result.status, { 'Content-Type': mime,
+    'Content-Disposition': preview ? 'inline' : `attachment; filename*=UTF-8''${encodeURIComponent(name).replace(/[!'()*]/gu, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`,
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox",
-    ...(text && body.length < record.bytes.byteLength ? { 'X-SteamHarness-Preview-Truncated': '1' } : {}) });
-  response.end(body);
+    ...(truncated ? { 'X-SteamHarness-Preview-Truncated': '1' } : {}) });
+  response.end(bytes);
 }

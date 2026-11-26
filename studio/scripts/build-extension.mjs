@@ -38,10 +38,15 @@ export async function buildExtension({ watch = false } = {}) {
     { ...shared, entryPoints: ['src/extension-node.ts'], platform: 'node', target: 'node22', outfile: 'dist/extension.js' },
     { ...shared, platform: 'browser', target: 'es2022', outfile: 'dist/extension-web.js' },
   ];
-  const usageWorker = { absWorkingDir: directory, entryPoints: ['src/project-usage-worker.ts'], bundle: true,
-    platform: 'node', format: 'cjs', target: 'node22', outfile: 'dist/project-usage-worker.cjs' };
-  if (watch) { await (await esbuild.context(usageWorker)).watch(); }
-  else { await esbuild.build(usageWorker); }
+  const worker = { absWorkingDir: directory, bundle: true, platform: 'node', target: 'node22' };
+  for (const options of [
+    { ...worker, entryPoints: ['src/project-usage-worker.ts'], format: 'cjs', outfile: 'dist/project-usage-worker.cjs' },
+    { ...worker, entryPoints: ['src/bot-management-worker.ts'], format: 'esm', outfile: 'dist/bot-management-worker.mjs',
+      banner: { js: "import { createRequire as __workerCreateRequire } from 'node:module'; const require = __workerCreateRequire(import.meta.url);" } },
+  ]) {
+    if (watch) { await (await esbuild.context(options)).watch(); }
+    else { await esbuild.build(options); }
+  }
   for (const option of options) {
     option.plugins = [overlayExtensionBuildPlugin(directory, path.join(ROOT, '.studio/extension-with-overlay'), path.basename(option.outfile))];
     if (watch) {
@@ -50,9 +55,11 @@ export async function buildExtension({ watch = false } = {}) {
       await esbuild.build(option);
     }
   }
-  for (const [entry, name] of [['account', 'account'], ['login', 'login'], ['trace', 'trace'], ['info', 'info'], ['versions', 'versions'], ['welcome', 'welcome'], ['schedules', 'schedules']]) {
+  const webviews = Object.fromEntries(['account', 'login', 'trace', 'info', 'versions', 'welcome', 'schedules'].map(name => [name, `webview/${name}.ts`]));
+  webviews['bot-management'] = path.join(monorepo, 'cli/src/web/ui/bot-management-standalone.ts');
+  for (const [name, entry] of Object.entries(webviews)) {
     const ui = {
-      absWorkingDir: directory, entryPoints: [`webview/${entry}.ts`], bundle: true, platform: 'browser',
+      absWorkingDir: directory, entryPoints: [entry], bundle: true, platform: 'browser',
       target: 'es2022', outfile: `dist/${name}-ui.js`, logLevel: 'info', loader: { '.svg': 'dataurl' },
     };
     if (watch) { await (await esbuild.context(ui)).watch(); }
