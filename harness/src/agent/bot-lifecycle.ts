@@ -6,6 +6,7 @@ import type { AgentSessionSnapshot } from "./session-types";
 export interface BotNodeLifecycle {
   memoryDefaultEnabled: boolean;
   prepare(input: AgentInput, context: NodeContext): Promise<AgentInput>;
+  readPreparedInput?(requestId: string, context: NodeContext): Promise<AgentInput | undefined>;
   completed(snapshot: AgentSessionSnapshot, input: AgentInput, context: NodeContext): Promise<void>;
 }
 const nodes = new WeakMap<object, BotNodeLifecycle>();

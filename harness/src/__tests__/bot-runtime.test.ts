@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { defineBot, type BotDefinition } from "../agent/bot";
 import { defineProjectExecutor } from "../executor/definition";
@@ -22,12 +25,12 @@ function context(): RunContext {
     tokenUsage: createDisabledProjectTokenUsageContext() };
 }
 const executorContext = (args = ["--message", "hello"]): ExecutorContext => ({ projectName: "bot", projectDir: ".", args, paramValues: {}, config: {}, abortSignal: new AbortController().signal });
-async function model() {
+async function model(responses = 1) {
   const ai = await import("@earendil-works/pi-ai");
   const faux = ai.fauxProvider({ models: [{ id: "bot-test", name: "Bot test", reasoning: true, contextWindow: 4096, maxTokens: 100 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   let calls = 0;
-  faux.setResponses([() => { calls++; return ai.fauxAssistantMessage([ai.fauxText("completed answer")]); }] as never[]);
+  faux.setResponses(Array.from({ length: responses }, () => () => { calls++; return ai.fauxAssistantMessage([ai.fauxText("completed answer")]); }));
   return { models, resolvedModel: models.getModel("faux", "bot-test")!, calls: () => calls };
 }
 
@@ -104,27 +107,34 @@ test("completion hook cannot return replacement output", async () => {
   await assert.rejects(Promise.resolve(bot.workflow.run(await bot.createInput(executorContext()), context())), /output replacement is forbidden/);
 });
 
-test("a durable owner prepares and completes subsequent requests before it closes", { timeout: 10_000 }, async () => {
+test("a durable owner uses each request's prepared directory for its tools and receipt", { timeout: 10_000 }, async t => {
   const ai = await import("@earendil-works/pi-ai");
-  const faux = ai.fauxProvider({ models: [{ id: "multi", name: "Multi", contextWindow: 4096, maxTokens: 100 }] });
+  const faux = ai.fauxProvider({ models: [{ id: "multi", name: "Multi", contextWindow: 100_000, maxTokens: 1000 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "bot-turn-workdir-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const id of ["first", "second"]) await mkdir(path.join(root, id));
   const requests: string[] = [];
-  faux.setResponses(Array.from({ length: 2 }, () => (request: unknown) => {
-    requests.push(JSON.stringify(request)); return ai.fauxAssistantMessage([ai.fauxText("answer")]);
-  }) as never[]);
+  faux.setResponses(["first", "second"].flatMap(id => [
+    (request: unknown) => { requests.push(JSON.stringify(request)); return ai.fauxAssistantMessage([ai.fauxToolCall("bash", {
+      command: `node -e "require('node:fs').writeFileSync('${id}.txt',process.cwd())"`,
+    })], { stopReason: "toolUse" }); },
+    ai.fauxAssistantMessage("answer"),
+  ]));
   const run = context(); const scope = run.conversation.conversationId!;
-  const prepared: string[] = [], completed: string[] = [];
+  const prepared: Array<[string, string | undefined]> = [], completed: string[] = [], receiptDirs: string[] = [];
   let snapshot: import("../agent/session-types").AgentSessionSnapshot | undefined;
   run.nodeHooks = { onNodeChunk(event) {
     const chunk = event.chunk as { item?: { metadata?: { kind?: string }; content?: unknown } };
     if (chunk.item?.metadata?.kind === "agent-session") snapshot = chunk.item.content as typeof snapshot;
   } };
-  const bot = defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "multi")!, tools: [] },
-    prepareInput(input) { prepared.push(input.prompt); return { ...input, prompt: `prepared: ${input.prompt}`, systemPrompt: `policy for ${input.prompt}` }; },
-    onCompleted(result) { completed.push(result.requestId); },
+  const bot = defineBot({ engine: "agent", agent: { models, resolvedModel: models.getModel("faux", "multi")!, tools: ["bash"], permissionPolicy: "workspace" },
+    prepareInput(input) { prepared.push([input.prompt, input.workdir]); return { ...input, workdir: path.join(root, input.prompt), prompt: `prepared: ${input.prompt}`, systemPrompt: `policy for ${input.prompt}` }; },
+    onCompleted(result) { completed.push(result.requestId); receiptDirs.push(result.output.workdir); },
   });
+  run.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, projectName: "bot", runId: "owner-cwd" });
   const host = createAgentSessionHost(scope);
-  const running = Promise.resolve(bot.workflow.run({ errCode: 0, errMessage: "", prompt: "first", requestId: "first" }, run));
+  const running = Promise.resolve(bot.workflow.run({ errCode: 0, errMessage: "", prompt: "first", workdir: root, requestId: "first" }, run));
   const until = async (ready: () => boolean) => {
     const limit = Date.now() + 5000;
     while (!ready()) { if (Date.now() > limit) throw new Error("Bot lifecycle did not settle"); await new Promise(resolve => setTimeout(resolve, 10)); }
@@ -133,7 +143,9 @@ test("a durable owner prepares and completes subsequent requests before it close
     await until(() => completed.includes("first"));
     await controlAgentSession(scope, { type: "submit", requestId: "second", prompt: "second", mode: "followUp" });
     await until(() => completed.includes("second") && !!snapshot?.records.some(record => (record.data as { requestId?: string })?.requestId === "second"));
-    assert.deepEqual(prepared, ["first", "second"]);
+    for (const id of completed) assert.equal(await readFile(path.join(root, id, `${id}.txt`), "utf8"), path.join(root, id));
+    assert.deepEqual(receiptDirs, [path.join(root, "first"), path.join(root, "second")]);
+    assert.deepEqual(prepared, [["first", root], ["second", root]]);
     assert.deepEqual(completed, ["first", "second"]);
     assert.match(requests[1]!, /prepared: second/);
     assert.match(requests[1]!, /policy for second/);
@@ -211,7 +223,7 @@ for (const agent of ["build", "plan"] as const) test(`Auto Approve runs all enab
   assert.equal(run.toolPermissions.getTool("restricted")?.enabled, false);
 });
 
-test("notification failure stays visible in a live owner and reconnect retries without another model call", { timeout: 10_000 }, async () => {
+test("reconnect retries the notification with the saved working directory without preparing or calling the model again", { timeout: 10_000 }, async () => {
   const fake = await model(), run = context(), scope = run.conversation.conversationId!;
   let visible = false, notified = false;
   run.nodeHooks = { onNodeChunk(event) {
@@ -219,7 +231,8 @@ test("notification failure stays visible in a live owner and reconnect retries w
     if (chunk.item?.metadata?.kind === "agent-session") visible ||= !!chunk.item.content?.turns.some(turn => turn.items.some(item => item.metadata?.phase === "bot_completion"));
   } };
   const input: AgentInput = { errCode: 0, errMessage: "", prompt: "Hello", requestId: "notification" };
-  const first = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { throw new Error("Receipt unavailable"); } });
+  const first = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
+    prepareInput(value) { return { ...value, workdir: os.tmpdir() }; }, onCompleted() { throw new Error("Receipt unavailable"); } });
   const host = createAgentSessionHost(scope);
   const running = Promise.resolve(first.workflow.run(input, run)).catch(error => error);
   const until = async (ready: () => boolean) => {
@@ -228,11 +241,27 @@ test("notification failure stays visible in a live owner and reconnect retries w
   };
   try { await until(() => visible); assert.equal(fake.calls(), 1); }
   finally { host.suspend(); await running; }
-  const second = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] }, onCompleted() { notified = true; } });
+  const second = defineBot({ engine: "agent", agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
+    prepareInput() { return assert.fail('Recovery must reuse the prepared request'); },
+    onCompleted({ output }) { assert.equal(output.workdir, path.resolve(os.tmpdir())); notified = true; } });
   const reopened = createAgentSessionHost(scope, { resume: true });
   const resumed = Promise.resolve(second.workflow.run(input, run));
   try { await until(() => notified); assert.equal(fake.calls(), 1); }
   finally { reopened.close(); await resumed; }
+});
+
+test('separate account stores notify independently for identical project, entry, conversation and request IDs', async () => {
+  const fake = await model(2);
+  const first = context(), second = { ...context(), projectId: first.projectId };
+  const receipts: string[] = [];
+  const bot = defineBot({ engine: 'agent', agent: { models: fake.models, resolvedModel: fake.resolvedModel, tools: [] },
+    onCompleted({ output }) { receipts.push(output.workdir); } });
+  // Both hosts load the same Bot module, but each supplies its own conversation store.
+  for (const [index, host] of [first, second].entries()) {
+    const workdir = path.join(os.tmpdir(), `owner-${index}`);
+    await bot.workflow.run({ errCode: 0, errMessage: '', prompt: 'hello', workdir, requestId: 'same' }, host);
+  }
+  assert.deepEqual(receipts, [0, 1].map(i => path.join(os.tmpdir(), `owner-${i}`)));
 });
 
 test("parallel entries with the same conversation and request IDs keep their input and receipts isolated", async () => {

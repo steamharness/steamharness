@@ -122,7 +122,8 @@ function context(metadata: RunContext["metadata"], resources = createTestResourc
 
 test('Agent Bot shell, hooks and output use the account project directory unless a working directory was selected', async t => {
   const root = await fixture(t), source = path.join(root, 'source'), selected = path.join(root, 'selected');
-  await Promise.all([mkdir(source), mkdir(selected)]);
+  const nested = path.join(selected, 'nested');
+  await Promise.all([mkdir(source), mkdir(nested, { recursive: true })]);
   const previous = process.cwd(), previousOwner = process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY;
   t.mock.method(os, 'homedir', () => root);
   t.after(() => { process.chdir(previous); if (previousOwner === undefined) delete process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY; else process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY = previousOwner; });
@@ -132,6 +133,7 @@ test('Agent Bot shell, hooks and output use the account project directory unless
   for (const [kind, owner, expected] of [
     ['default', 'local', cwdFor('local')], ['default', account, cwdFor(account)],
     ['host', account, selected], ['input', account, selected], ['configured', account, selected], ['bound', account, selected],
+    ['relative-hook', account, nested], ['mutating-hook', account, nested],
   ]) {
     process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY = owner;
     const persistence = createLocalRuntimePersistence({ directory: path.join(root, 'store', owner, kind) });
@@ -145,12 +147,20 @@ test('Agent Bot shell, hooks and output use the account project directory unless
       fauxAssistantMessage([fauxToolCall('bash', { command: `node -e "const fs=require('node:fs'); fs.writeFileSync('agent-working-directory.txt','checked'); console.log(fs.realpathSync('.'))"` })], { stopReason: 'toolUse' }),
       request => { const result = request.messages.at(-1) as { content: { text?: string }[] }; shellCwd = result.content[0]?.text?.trim(); return fauxAssistantMessage('Done'); },
     ]);
-    const bot = defineBot({ engine: 'agent', memory: { enabled: false }, agent: { models, resolvedModel: models.getModel('faux', 'cwd')!, tools: ['bash'], permissionPolicy: 'workspace', ...(kind === 'configured' && { workdir: selected + path.sep }) },
-      prepareInput(input) { preparedCwd = input.workdir; return input; }, onCompleted({ output }) { completedCwd = output.workdir; } });
+    const bot = defineBot({ engine: 'agent', memory: { enabled: false }, agent: { models, resolvedModel: models.getModel('faux', 'cwd')!, tools: ['bash'], permissionPolicy: 'workspace', ...(kind === 'configured' && { workdir: selected + path.sep }),
+      ...(kind === 'bound' && { allowedDirectories: [source], createTools(_ctx, input) { assert.deepEqual(input.allowedDirectories, [selected]); return []; } }) },
+      prepareInput(input) {
+        preparedCwd = input.workdir;
+        if (kind === 'bound') return { ...input, workdir: source, allowedDirectories: [source] };
+        if (kind === 'relative-hook') return { ...input, workdir: 'nested' };
+        if (kind === 'mutating-hook') input.workdir = 'nested';
+        return input;
+      }, onCompleted({ output }) { completedCwd = output.workdir; } });
     bound.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, projectName: 'bot', runId: 'cwd' });
-    const output = await bot.workflow.run({ errCode: 0, errMessage: '', prompt: 'Check cwd', ...(kind === 'input' && { workdir: selected }), ...(kind === 'bound' && { workdir: source }) }, bound);
+    const hookChanged = kind.endsWith('-hook');
+    const output = await bot.workflow.run({ errCode: 0, errMessage: '', prompt: 'Check cwd', ...((kind === 'input' || hookChanged) && { workdir: selected }), ...(kind === 'bound' && { workdir: source }) }, bound);
     assert.equal(shellCwd, expected, `${kind}: bash cwd`);
-    assert.equal(preparedCwd, expected, `${kind}: prepareInput`);
+    assert.equal(preparedCwd, hookChanged ? selected : expected, `${kind}: prepareInput`);
     assert.equal(output.workdir, expected, `${kind}: workflow result`);
     assert.equal(completedCwd, expected, `${kind}: completion hook`);
     assert.equal(await readFile(path.join(expected, 'agent-working-directory.txt'), 'utf8'), 'checked');

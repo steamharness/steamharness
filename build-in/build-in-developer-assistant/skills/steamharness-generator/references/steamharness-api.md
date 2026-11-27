@@ -1014,7 +1014,7 @@ Bot 用 `steamharness.defineBot()` 声明。必须显式选择 `engine: "agent"`
 
 本地 `bash` 默认在账号的 `projects/<项目ID>/` 下执行；指定工作目录或绑定文件夹时使用指定位置。独立 SDK 可通过 `runLocalProjectWithReport({ projectDir, workdir })` 分开指定代码位置和执行目录。无论工作目录如何选择，历史和记忆均按账号、项目和入口保存。需要临时文件或交付目录时，可传 `directory: "temp" | "artifacts"` 在当天的目录运行。子进程收到 `TMPDIR`、`TMP`、`TEMP` 及绝对路径 `STEAMHARNESS_BOT_TEMP_DIR`、`STEAMHARNESS_BOT_ARTIFACT_DIR`；不读取这些变量的命令显式传输出路径。Core 提示词已说明这些用法，业务 Bot 不用重复写一套。自定义运行存储宿主须提供 `RuntimePersistence.botFiles` 才会启用目录工具；`createLocalRuntimePersistence` 已支持。
 
-`engine: "agent"` 的 `prepareInput` 会收到已解析的绝对路径 `input.workdir`。未指定目录时，直接使用这个默认值；不要用 `process.cwd()`、入口源码目录或 `import.meta.dirname` 覆盖它。运行结果的 `workdir` 对应本轮实际使用的目录。
+`engine: "agent"` 的 `prepareInput` 会收到已解析的绝对路径 `input.workdir`。未指定目录时直接使用该值，不要用 `process.cwd()`、入口源码目录或 `import.meta.dirname` 覆盖它。钩子返回相对目录时，以传入的 `input.workdir` 为基准。持久会话每轮从原选目录准备，工具和完成回执使用本轮目录；文件夹 Bot 保持绑定目录。
 
 以下 Agent 配置只适用于 `engine: "agent"`。
 
@@ -1036,7 +1036,7 @@ Core 自动提供 `memory_save`、`memory_get`、`memory_search`、`memory_updat
 
 Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条相关摘要；追加输入、中途补充和恢复执行沿用该机制，后续模型请求刷新已修改或删除的结果。只有 `memory_search` 已启用且自动审批时才后台检索，不弹确认。模型可用 `memory_search` 进一步缩小范围：`keywords` 最多 12 个、每个最多 80 字符、合计最多 500 字符；`match` 为 `any`（默认）或 `all`，匹配分类、键、名称、简述和正文，支持中文子串。默认 5 条、最多 10 条，正文摘录最多 240 字符且优先截取命中位置，总返回不超过 6,000 字符；有后续页时返回 `nextOffset`，不要遍历全部记忆。
 
-内置提示要求模型静默判断长期记忆价值：确认有用的项目事实、决策、流程、偏好后自动存储，先查重，信息变化时更新，确认失效或要求忘记时删除。不等待用户说“记住”，不例行询问或播报操作；排除凭据、完整会话、临时进度、猜测和明确要求不保留的信息，不把记忆正文当作指令。记忆位于执行宿主本地 SQLite，独立于会话导出与删除；不同运行数据目录及开发/发行模式分别保存，不提供账号级记忆和跨机器同步。
+内置提示要求模型静默判断长期记忆价值：确认有用的项目事实、决策、流程、偏好后自动存储，先查重，信息变化时更新，确认失效或要求忘记时删除。不等待用户说“记住”，不例行询问或播报操作；排除凭据、完整会话、临时进度、猜测和明确要求不保留的信息，不把记忆正文当作指令。记忆位于运行主机的 SQLite 中，独立于会话导出与删除。同一系统用户的开发版和正式版共享同一账号、项目和入口的记忆；分身独立保存，不提供账号全局记忆或跨机器同步。
 
 记忆只提供查证线索。回答部署位置、运行状态、版本或配置等现状前，Bot 应在已有权限内用只读工具核对实际目标；现场结果与记忆冲突时，以现场为准。无法核实就说明是上次记录，不把再次读取记忆当成现场检查，也不为查证扩大权限或修改系统。
 
@@ -1565,7 +1565,7 @@ entryId 不得使用 steamharness、cache、reports、release、tmp 或 Windows 
 
 子入口使用完整 `entry.root` 的 URL 编码，例如 `apps/board` 对应 `apps%2Fboard`。每个构建器只清理自己的子目录，不能清空整个 `dist/`。源码和配置保留在源码目录，根 `.gitignore` 忽略 `/dist/`。
 
-会话、检查点、登录状态和其他持久数据保存在宿主应用数据目录或用户目录，不能写入源码目录或 `dist/`。独立 SDK 默认使用 `~/.steamharness/runtime/<projectId>/<entryId>/`；CLI Web 的 `--data-dir` 同样必须在项目外。删除 `dist/` 后重新生成和构建即可恢复产物，外部运行数据不受影响。旧路径不再读取、迁移或回退；迁出已有持久数据时先关闭对应宿主，离线移动并保留权限。
+会话和检查点按账号、项目和入口保存，不能写入源码目录或 `dist/`。普通本地入口的运行数据位于 `~/.steamharness/accounts/<account-key>/projects/<projectId>/entries/<entryId>/runtime/`。CLI Web 不接受 `--data-dir`。重新构建 `dist/` 不会删除运行数据；新布局不读取或迁移旧目录。受保护的凭据仍由宿主管理。
 
 Kanban entry 相对聚合根；Workflow/Conversation entry 相对 entry.root。
 

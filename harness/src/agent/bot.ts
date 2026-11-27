@@ -1,10 +1,11 @@
 import { readRuntimeLocaleSafe } from "./plan";
-import { agentSessionLease } from "./session-control";
+import { agentSessionLease, agentSessionResuming } from "./session-control";
 import { currentBotRequestId, withBotRequest } from "./bot-lifecycle";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import path from 'node:path';
-import { localProjectDirectory, localRuntimeAccountDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
+import { localProjectDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
+import { resolveExecutionAccountDirectory } from '../local-storage-account';
 import type { NodeContext } from "../types/index";
 import type { BotExecutorDefinition, ConversationDefinition, BotParamDeclaration, ExecutorContext, ParamResolveResult, ParamResolverContext } from "../executor/types";
 import type { AgentInput, AgentOutputPayload, AgentProjectOptions, AgentToolSet } from "./types";
@@ -33,17 +34,15 @@ import { BOT_JSON_SUMMARY_DEFINITION } from "./bot-json-summary";
 import { createLLMBot } from "./llm-bot";
 import { applyFolderAgentInput } from "../executor/folder-context";
 
-/** A library caller's cwd is not a Bot workspace. */
-function withBotWorkdir<T extends AgentInput>(input: T, context: NodeContext, fallback?: string): T {
-  const selected = context.folderContext?.directory || input.workdir?.trim() || fallback?.trim();
-  if (selected && path.isAbsolute(selected)) {
-    const workdir = path.resolve(selected);
-    return input.workdir === workdir ? input : { ...input, workdir };
-  }
+/** Resolve from right to left so an explicit absolute path needs no default directory. */
+async function initialBotWorkdir(context: NodeContext, base?: string, selected?: string): Promise<string> {
+  if (context.folderContext) return context.folderContext.directory;
+  const paths = [base?.trim(), selected?.trim()].filter((value): value is string => !!value);
+  if (paths.some(value => path.isAbsolute(value))) return path.resolve(...paths);
   const host = context.metadata?.executionWorkdir;
-  const base = typeof host === 'string' && path.isAbsolute(host) ? host
-    : prepareLocalDirectory(localProjectDirectory(localRuntimeAccountDirectory(), context.projectId));
-  return { ...input, workdir: path.resolve(base, selected || '.') };
+  const root = typeof host === 'string' && path.isAbsolute(host) ? host
+    : prepareLocalDirectory(localProjectDirectory(await resolveExecutionAccountDirectory(), context.projectId));
+  return path.resolve(root, ...paths);
 }
 
 export interface BotInputContext extends NodeContext {
@@ -174,77 +173,89 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
   const memoryDefaultEnabled = botMemoryDefault(options.memory);
   const conversation = botConversationDefaults("agent", options.conversation);
   assertBotPresentation(conversation, params);
-  const current = new AsyncLocalStorage<Input>();
+  const current = new AsyncLocalStorage<{ input: Input; workdir: string; allowedDirectories?: string[]; executor?: ExecutorContext }>();
   const inputContexts = new WeakMap<object, ExecutorContext>();
-  const ownerContexts = new Map<string, ExecutorContext>();
-  const attemptedCompletions = new Set<string>();
-  const pendingCompletions = new Map<string, Promise<void>>();
-  const completionStates = new Map<string, CompletionState>();
-  const ownerKey = (context: NodeContext) => JSON.stringify([context.projectId, context.entryId, context.actor?.userId, context.conversation.conversationId]);
+  // Two accounts can load this module and use identical conversation and request IDs.
+  const trackers = new WeakMap<NodeContext['conversation'], CompletionTracker>();
+  function completions(context: NodeContext): CompletionTracker {
+    let tracker = trackers.get(context.conversation);
+    if (!tracker) {
+      tracker = { attempted: new Set(), pending: new Map(), states: new Map() };
+      trackers.set(context.conversation, tracker);
+    }
+    return tracker;
+  }
   const completionKey = (requestId: string, context: NodeContext) => `steamharness.bot.completion:${JSON.stringify([context.projectId, context.entryId, context.actor?.userId, context.conversation.conversationId, requestId])}`;
-  async function prepare(input: AgentInput, context: NodeContext, reuse = false): Promise<Input> {
+  async function readPreparedInput(requestId: string, context: NodeContext): Promise<Input | undefined> {
+    const saved = (await context.conversation.getValue()).values[`steamharness.bot.input:${requestId}`] as Input | undefined;
+    return saved && applyFolderAgentInput(applyAgentProjectFixedValues(saved, params) as Input, context, lockedModel);
+  }
+  async function prepare(input: AgentInput, context: NodeContext, workdir: string, executor: ExecutorContext | undefined, reuse: boolean): Promise<Input> {
     const requestId = input.requestId ?? String(context.metadata?.runId ?? randomUUID());
     const key = `steamharness.bot.input:${requestId}`;
     const persist = !!options.prepareInput && input.hostInput === undefined;
-    const saved = persist ? (await context.conversation.getValue()).values[key] as Input | undefined : undefined;
-    if (saved && reuse) return applyFolderAgentInput(withBotWorkdir(applyAgentProjectFixedValues(saved, params) as Input, context, input.workdir ?? agent.workdir), context, lockedModel);
-    const executor = inputContexts.get(input) ?? ownerContexts.get(ownerKey(context));
-    const scoped = withBotWorkdir(input, context, agent.workdir);
-    const parsed = await resolveAgentImageFiles(context.folderContext ? { ...scoped, allowedDirectories: undefined } : scoped, context, `${options.name ?? "bot"}-input`);
+    const saved = persist && reuse ? await readPreparedInput(requestId, context) : undefined;
+    if (saved) return { ...saved, workdir: path.resolve(workdir, saved.workdir?.trim() || '.') };
+    const scoped = { ...input, workdir, allowedDirectories: context.folderContext ? undefined : input.allowedDirectories?.slice() };
+    const parsed = await resolveAgentImageFiles(scoped, context, `${options.name ?? "bot"}-input`);
     const prepared = options.prepareInput ? await withBotRequest(requestId, () => options.prepareInput!(parsed, {
       ...context, args: executor?.args ?? [], paramValues: executor?.paramValues ?? {} }), context) : parsed;
     if (!prepared || typeof prepared.prompt !== "string") invalid("Bot prepareInput must return an AgentInput with a prompt.");
     context.abortSignal?.throwIfAborted();
-    const result = applyFolderAgentInput(withBotWorkdir({ ...applyAgentProjectFixedValues(prepared, params), requestId } as Input, context, parsed.workdir), context, lockedModel);
+    const result = applyFolderAgentInput({ ...applyAgentProjectFixedValues(prepared, params), requestId,
+      workdir: path.resolve(workdir, prepared.workdir?.trim() || '.') } as Input, context, lockedModel);
     if (persist) await context.conversation.setValue(key, result);
     return result;
   }
   async function complete(requestId: string, output: AgentOutputPayload, context: NodeContext, retry = false): Promise<void> {
     if (!options.onCompleted || output.errCode !== 0) return;
+    const { pending, attempted, states } = completions(context);
     const key = completionKey(requestId, context);
-    const active = pendingCompletions.get(key);
+    const active = pending.get(key);
     if (active) return active;
-    if (!retry && attemptedCompletions.has(key)) return;
-    const pending = (async () => {
-      const saved = completionStates.get(key) ?? (await context.conversation.getValue()).values[key] as CompletionState | undefined;
-      if (saved) completionStates.set(key, saved);
+    if (!retry && attempted.has(key)) return;
+    const notification = (async () => {
+      const saved = states.get(key) ?? (await context.conversation.getValue()).values[key] as CompletionState | undefined;
+      if (saved) states.set(key, saved);
       if (saved?.notified) return;
-      attemptedCompletions.add(key);
+      attempted.add(key);
       const original = saved?.output ?? output;
       await context.conversation.setValue(key, { output: original, notified: false } satisfies CompletionState);
       try {
         const returned = await withBotRequest(requestId, () => options.onCompleted!(deepFreezeBotOutput(structuredClone({ requestId, output: original })), context), context);
         if (returned !== undefined) invalid("Bot onCompleted must return void; output replacement is forbidden.");
         const done = { notified: true } satisfies CompletionState;
-        await context.conversation.setValue(key, done); completionStates.set(key, done);
+        await context.conversation.setValue(key, done); states.set(key, done);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const failure = { output: original, notified: false, error: message } satisfies CompletionState;
-        await context.conversation.setValue(key, failure); completionStates.set(key, failure);
+        await context.conversation.setValue(key, failure); states.set(key, failure);
         throw new HarnessError({ type: "execution", message: `${readRuntimeLocaleSafe() === "zh-CN" ? "Bot 答复已完成，但完成通知失败" : "Bot answer completed; completion notification failed"}: ${message}`,
           metadata: { phase: "bot_completion", requestId, agentCompleted: true } });
       }
     })();
-    pendingCompletions.set(key, pending);
-    try { await pending; } finally { pendingCompletions.delete(key); }
+    pending.set(key, notification);
+    try { await notification; } finally { pending.delete(key); }
   }
   async function completed(snapshot: AgentSessionSnapshot, input: AgentInput, context: NodeContext): Promise<void> {
     if (!options.onCompleted) return;
+    const { states } = completions(context);
     for (const turn of snapshot.turns) {
       if (turn.conversationId !== snapshot.conversationId || turn.status !== "done" || turn.mode === "report" || turn.mode === "steer" || turn.hiddenInput) continue;
       const requestId = input.requestId && turn.requestId.startsWith(`${input.requestId}:plan:`) ? input.requestId : turn.requestId;
-      if (completionStates.get(completionKey(requestId, context))?.notified) continue;
+      if (states.get(completionKey(requestId, context))?.notified) continue;
       const items = turn.items.map((item, index) => ({ ...item, id: item.id ?? `bot-part-${index}` }));
       const last = [...items].reverse().find(item => (item.contentType === "text" || item.contentType === "markdown") &&
         (!item.metadata || item.metadata.kind === "agent-answer" || item.metadata.kind === "agent-part" && item.metadata.partType === "text" || item.metadata.plan === true));
       if (last) last.id = AGENT_ANSWER_ITEM_ID;
-      const output: AgentOutputPayload = { ...createOutputPayload({ items }), prompt: turn.prompt, workdir: input.workdir ?? "",
+      const prepared = options.prepareInput && requestId !== input.requestId ? await readPreparedInput(requestId, context) : undefined;
+      const output: AgentOutputPayload = { ...createOutputPayload({ items }), prompt: turn.prompt, workdir: prepared?.workdir ?? input.workdir ?? "",
         provider: snapshot.configuration.provider, model: snapshot.configuration.model,
         effort: snapshot.configuration.effort as AgentOutputPayload["effort"], agent: input.agent ?? "build",
         toolCallCount: items.filter(item => item.metadata?.partType === "tool").length };
       try { await complete(requestId, output, context); }
       catch { /* The persisted notification error is projected alongside this successful turn. */ }
-      const notification = completionStates.get(completionKey(requestId, context));
+      const notification = states.get(completionKey(requestId, context));
       if (notification?.error && !notification.notified) turn.items.push({
         id: `bot-completion:${requestId}`, title: readRuntimeLocaleSafe() === "zh-CN" ? "Bot 完成通知" : "Bot completion notification", contentType: "text",
         content: notification.error, collapsed: false, metadata: { kind: "agent-notice", status: "failed", phase: "bot_completion" },
@@ -255,13 +266,13 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
   const coreOptions: AgentProjectOptions = { ...agentOptions, params, executorName: options.name ?? "bot", outputItemId: AGENT_ANSWER_ITEM_ID,
     session: agent.session ?? {},
     ...(agent.createTools ? { async createTools(context: NodeContext) {
-      const initial = current.getStore()!;
+      const initial = current.getStore()!.input;
       const created = await agent.createTools!(context, initial);
       const set = Array.isArray(created) ? { tools: created } : created;
       return { ...set, tools: set.tools.map(tool => ({ ...tool, async execute(...args: Parameters<typeof tool.execute>) {
         const requestId = currentBotRequestId();
         if (!requestId || requestId === initial.requestId) return tool.execute(...args);
-        const prepared = (await context.conversation.getValue()).values[`steamharness.bot.input:${requestId}`] as Input | undefined;
+        const prepared = await readPreparedInput(requestId, context);
         if (!prepared) return tool.execute(...args);
         const refreshed = await agent.createTools!(context, prepared);
         const next = Array.isArray(refreshed) ? { tools: refreshed } : refreshed;
@@ -272,21 +283,27 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
         } finally { await next.close?.(); }
       } })) };
     } } : {}),
-    ...(agent.createSession ? { createSession: context => agent.createSession!(context, current.getStore()!) } : {}) };
-  const core = createCoreBotProject(coreOptions, { memoryDefaultEnabled, prepare: (input, context) => prepare(input, context, true), completed });
+    ...(agent.createSession ? { createSession: context => agent.createSession!(context, current.getStore()!.input) } : {}) };
+  const core = createCoreBotProject(coreOptions, { memoryDefaultEnabled, completed,
+    ...(options.prepareInput && { readPreparedInput }),
+    prepare(input, context) {
+      const owner = current.getStore()!;
+      return prepare({ ...input, allowedDirectories: owner.allowedDirectories }, context, owner.workdir, owner.executor, true);
+    },
+  });
   const workflow = registerAgentProject(defineProject<Input, AgentOutputPayload>({
     name: options.name ?? "bot",
     async run(input, context) {
       const requestId = input.requestId ?? String(context.metadata?.runId ?? randomUUID());
       const executor = inputContexts.get(input);
-      if (executor) ownerContexts.set(ownerKey(context), executor);
       const previous = options.onCompleted ? (await context.conversation.getValue()).values[completionKey(requestId, context)] as CompletionState | undefined : undefined;
       let output: AgentOutputPayload;
       if (previous?.output && !agentSessionLease(context.conversation.conversationId ?? "")) {
         output = await replayBotOutput(previous.output, input, context);
       } else {
-        const finalInput = await prepare({ ...input, requestId }, context);
-        output = await withBotRequest(requestId, () => current.run(finalInput, () => core.run(finalInput, context)), context);
+        const workdir = await initialBotWorkdir(context, agent.workdir, input.workdir);
+        const finalInput = await prepare({ ...input, requestId }, context, workdir, executor, agentSessionResuming(context.conversation.conversationId ?? ''));
+        output = await withBotRequest(requestId, () => current.run({ input: finalInput, workdir, allowedDirectories: input.allowedDirectories, executor }, () => core.run(finalInput, context)), context);
       }
       await complete(requestId, output, context, true);
       return output;
@@ -297,7 +314,8 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
     tokenUsage: { enabled: true, display: true }, tools: botTools(agent, options.tools),
     ...(options.resolveParams ? { resolveParams: options.resolveParams } : {}),
     createInput(context) {
-      const input = createAgentProjectInput(context, coreOptions);
+      // The configured cwd is the base of a relative flag, not the flag itself.
+      const input = createAgentProjectInput(context, { ...coreOptions, workdir: undefined });
       const host = readOpenAIConversationHostInput(context);
       if (host) {
         const message = [...host.messages].reverse().find(message => message.role === "user");
@@ -328,6 +346,7 @@ function assertBotPresentation(conversation: ConversationDefinition, params: Bot
 }
 
 interface CompletionState { output?: AgentOutputPayload; notified: boolean; error?: string }
+interface CompletionTracker { attempted: Set<string>; pending: Map<string, Promise<void>>; states: Map<string, CompletionState> }
 export async function replayBotOutput(output: AgentOutputPayload, input: AgentInput, context: NodeContext): Promise<AgentOutputPayload> {
   const node = createOutputNode<AgentInput, AgentOutputPayload>({ name: "bot-completed-output",
     async *stream() { for (const item of output.items) yield { type: "output_item_start" as const, item }; },

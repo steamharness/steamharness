@@ -130,7 +130,9 @@ The model decides what to retain from the conversation; it does not copy every m
 
 A service's deploy location, status, or configuration can change. Core's guidance tells the Bot to use memory as a lead, check the intended environment with authorized read-only tools, and base current-state answers on what it finds. If it lacks permission or cannot confirm the answer, it must label remembered information as last known and unverified. The guidance does not grant any additional permissions.
 
-Memories persist in SQLite on the execution host. Older databases upgrade on first access, keeping their entries and the existing `category` and `key` calls. Memories persist across conversations and restarts on that host, with no account-level memory or synchronization between machines. Separate runtime data directories, source runs and release runs keep separate memories. Exporting, copying or deleting a conversation does not copy or delete project memories, and project release archives exclude memory content.
+Memories persist in SQLite on the execution host. Development and release clients share memories when the same OS user and SteamHarness account open the same project entry. Accounts, projects, entries, and Bot instances have separate memories. Memories do not sync between machines, and the new layout does not import records from old storage directories.
+
+Restarting or deleting a conversation does not erase project memories. Conversation exports, copies, and project releases do not include memory content.
 
 ### Use memory by project directory
 
@@ -236,6 +238,8 @@ Agent Bots provide the following tools by default, independently of the memory s
 Except when listing the root or browsing dates, paths look like `temp/YYYY-MM-DD/draft.md`. The file tools reject absolute paths, parent traversal and links to other files. Plan and read-only modes offer listing and reading only, and all tools respect host permissions and approval settings.
 
 A local Agent Bot starts in `~/.steamharness/accounts/<account-key>/projects/<project-id>/`, not in its source directory. Without a project account, the key is `local`. For example, a `bash` command that creates `plan.md` writes it to the project ID directory unless you select a different working directory. An explicit working directory or folder binding takes precedence. Both `input.workdir` in `prepareInput` and `workdir` in the run result are absolute paths.
+
+If `prepareInput` returns a relative directory such as `drafts`, Core resolves it against the `input.workdir` passed to the hook. Each follow-up in a durable session starts from the original selection rather than the previous turn's subdirectory. A folder Bot always uses its bound directory.
 
 Set `directory` to `"temp"` or `"artifacts"` to run a single `bash` command in today's corresponding directory. Child processes receive `TMPDIR`, `TMP`, and `TEMP` pointing to today's temporary directory, plus both absolute paths as `STEAMHARNESS_BOT_TEMP_DIR` and `STEAMHARNESS_BOT_ARTIFACT_DIR`. Programs that ignore those variables need an explicit output path.
 

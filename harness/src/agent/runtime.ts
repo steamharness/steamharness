@@ -9,6 +9,7 @@ import type { ProjectRuntimeInfo } from "../runtime-info";
 import { HarnessError } from "../workflow/errors";
 import { parseAgentWebSearch, type AgentSearchMessage } from "./web-search";
 import { DurableAgent } from "./durable-agent";
+import { currentBotRequestId } from "./bot-lifecycle";
 import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
 import { withStreamingMessage } from "./durable-context";
 import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
@@ -84,6 +85,8 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   instanceGuidance?: string;
   builtinSkills?: boolean;
   botFiles?: BotFileWorkspace;
+  /** A live owner can have several queued inputs with different local tool roots. */
+  botTurnInput?(requestId: string): Promise<AgentInput | undefined> | undefined;
   botMemoryRecall?: import("./memory").BotMemoryRecall;
   /** Host lease; pending work outlives the foreground answer. */
   sessionLease?: Promise<void>;
@@ -902,10 +905,37 @@ function applyRunConfiguration(
   // Caller-supplied tools are appended unfiltered: the host declared them, and
   // the approval gate already knows whether each one may run.
   agent.state.tools = [
-    ...allTools.filter((tool) => active.has(tool.name)),
+    ...forBotTurn(allTools.filter(tool => active.has(tool.name))),
     ...askTool,
     ...externalTools,
   ].filter(tool => options.isToolEnabled?.(tool.name) !== false);
+
+  function forBotTurn(initial: PiAgentTool[]): PiAgentTool[] {
+    const readInput = options.botTurnInput;
+    if (!readInput) return initial;
+    // Look up the executing request, not the most recently submitted one. Cache only
+    // the last lookup; a queued input must not change an in-flight call's scope.
+    let last: { id: string; tools: Promise<PiAgentTool[]> } | undefined;
+    async function load(id: string) {
+      const input = await readInput!(id);
+      if (!input) return initial;
+      const workdir = resolveAgentWorkdir(input, options);
+      const requested = resolveAgentPermissionPolicySetting(input.permissionPolicy ?? parsed.permissionPolicy);
+      const policy = requested === 'read-only' || parsed.permissionPolicy === 'read-only' ? 'read-only'
+        : requested === 'auto' && parsed.permissionPolicy === 'auto' ? 'auto' : 'workspace';
+      const allowed = listEnabledAgentToolNames(policy, definitions);
+      return createAgentTools(pi, { workdir, allowedDirectories: resolveAllowedDirectories(input.allowedDirectories ?? options.allowedDirectories, workdir) },
+        policy, options.runtimeInfo, options.botFiles).filter(tool => allowed.includes(tool.name));
+    }
+    return initial.map(tool => ({ ...tool, async execute(...args: Parameters<typeof tool.execute>) {
+      const id = currentBotRequestId();
+      if (!id) return tool.execute(...args);
+      if (last?.id !== id) last = { id, tools: load(id) };
+      const selected = (await last.tools).find(candidate => candidate.name === tool.name);
+      if (!selected) throw new HarnessError({ type: 'tool_permission_denied', message: `Tool "${tool.name}" is unavailable for this Bot input.` });
+      return selected.execute(...args);
+    } }));
+  }
 }
 
 function clampThinkingLevel(pi: PiRuntime, effort: AgentParsedInput["effort"]): AgentThinkingLevel {

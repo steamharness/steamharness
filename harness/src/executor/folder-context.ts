@@ -64,5 +64,7 @@ export function applyFolderAgentInput<T extends AgentInput>(input: T, context: F
   }
   const model = profile?.modelId;
   if (model && fixedModel !== undefined && fixedModel !== model) throw new HarnessError({ type: 'input_validation', message: 'The folder Bot model override conflicts with the source project’s fixed model.' });
-  return { ...input, ...(model && { model }), permissionPolicy, workdir: context.folderContext.directory };
+  const workdir = context.folderContext.directory;
+  // Pin file-tool roots too: undefined would re-enable agent.allowedDirectories.
+  return { ...input, ...(model && { model }), permissionPolicy, workdir, allowedDirectories: [workdir] };
 }
