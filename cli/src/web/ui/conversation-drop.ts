@@ -48,9 +48,20 @@ export function capturePickedFiles(files: File[], directories = false): FileImpo
 }
 
 export function capturePastedFiles(transfer: DataTransfer): FileImport | undefined {
-  const paths = transferredFileUrls(transfer);
+  const paths = [...new Set(transferredFileUrls(transfer))];
   const files = Array.from(transfer.files ?? []);
-  if (paths.length) return captureEntries([...new Set(paths)], files, []);
+  if (paths.length) {
+    // A file paste can contain a rendered icon alongside its URI. Only matching file bytes are usable in a browser.
+    const remaining = [...files];
+    const matched = paths.map(uri => {
+      try {
+        const name = decodeURIComponent(new URL(uri).pathname.split('/').filter(Boolean).at(-1) ?? '').normalize('NFC');
+        const index = remaining.findIndex(file => file.name.normalize('NFC') === name);
+        return index < 0 ? undefined : remaining.splice(index, 1)[0];
+      } catch { return undefined; }
+    });
+    return captureEntries(paths, matched.every(file => file !== undefined) ? matched : [], []);
+  }
   return files.length ? capturePickedFiles(files) : undefined;
 }
 

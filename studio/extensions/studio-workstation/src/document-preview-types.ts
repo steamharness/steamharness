@@ -12,7 +12,8 @@ const formats: Record<string, DocumentPreviewKind> = {
 };
 
 export function documentPreviewKind(path: string): DocumentPreviewKind | undefined {
-  return formats[/\.([^.\\/]+)$/.exec(path)?.[1].toLowerCase() ?? ''];
+  const extension = /\.([^.\\/]+)$/.exec(path)?.[1].toLowerCase() ?? '';
+  return Object.hasOwn(formats, extension) ? formats[extension] : undefined;
 }
 
 export function documentPreviewView(path: string): string {

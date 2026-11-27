@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { t } from './localization';
 import { DOCUMENT_PREVIEW_LIMIT, LATEX_PREVIEW_LIMIT, documentPreviewKind, documentPreviewView } from './document-preview-types';
 
-export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Uri) {
+export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Uri, nativeFileManager = true) {
   let disposed = false;
   const pending = new Set<string>();
   return {
@@ -13,7 +13,7 @@ export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Ur
       if (pending.has(requestId)) return true;
       pending.add(requestId);
       void (async () => {
-        let error: string | undefined;
+        let error: string | undefined, previewUnavailable = false;
         try {
           if (typeof path !== 'string' || !path || path.length > 4096 || /[\0-\x1f\x7f]/.test(path)
             || !/^[a-z]:[\\/]/i.test(path) && /^[a-z][a-z\d+.-]*:/i.test(path)) {
@@ -29,7 +29,8 @@ export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Ur
           const stat = await vscode.workspace.fs.stat(uri);
           if (disposed) return;
           if (stat.type & vscode.FileType.Directory) {
-            if (!await vscode.env.openExternal(uri)) throw new Error(t('Unable to open the folder in the file manager.'));
+            if (attachment === true && !nativeFileManager) previewUnavailable = true;
+            else if (!await vscode.env.openExternal(uri)) throw new Error(t('Unable to open the folder in the file manager.'));
           } else if (stat.type & vscode.FileType.File) {
             if (typeof line === 'number') {
               const position = new vscode.Position(line - 1, (typeof column === 'number' ? column : 1) - 1);
@@ -41,13 +42,17 @@ export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Ur
                 try { await vscode.commands.executeCommand('vscode.openWith', uri, documentPreviewView(uri.path)); previewed = true; }
                 catch { /* If the editor cannot open the attachment, reveal the original instead. */ }
               }
-              if (!previewed && !disposed) await vscode.commands.executeCommand('revealFileInOS', uri);
+              if (!previewed && !disposed) {
+                if (nativeFileManager) await vscode.commands.executeCommand('revealFileInOS', uri);
+                else previewUnavailable = true;
+              }
             } else if (documentPreviewKind(uri.path)) await vscode.commands.executeCommand('vscode.openWith', uri, documentPreviewView(uri.path));
             else await vscode.commands.executeCommand('vscode.open', uri);
           } else throw new Error(t('Only files and folders can be opened.'));
         } catch (failure) { error = t('Unable to open the file or folder: {0}', failure instanceof Error ? failure.message : String(failure)); }
         finally { pending.delete(requestId); }
-        if (!disposed) await webview.postMessage({ type: 'workflow-host', pathOpened: { version: 1, requestId, ...(error ? { error } : {}) } });
+        if (!disposed) await webview.postMessage({ type: 'workflow-host', pathOpened: { version: 1, requestId,
+          ...(error ? { error } : previewUnavailable ? { previewUnavailable: true } : {}) } });
       })().catch(() => undefined);
       return true;
     },

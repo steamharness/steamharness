@@ -97,11 +97,15 @@ export class ConversationTools {
     this.body.querySelector<HTMLElement>('.image-preview-viewport')!.focus({ preventScroll: true });
   }
 
-  attachmentDetails(name: string, details: string, download?: () => void): void {
+  attachmentDetails(name: string, details: string, download?: () => void, path?: string): void {
     this.show(t('File details')); this.dialog.classList.add('attachment-details-dialog');
     const heading = document.createElement('strong'); heading.textContent = name;
     const metadata = document.createElement('p'); metadata.textContent = details;
     this.body.append(heading, metadata);
+    if (path) {
+      const location = document.createElement('p');
+      const code = document.createElement('code'); code.textContent = path; location.append(code); this.body.append(location);
+    }
     if (download) this.body.append(iconButton('cloud-download', t('Download file'), download));
   }
 

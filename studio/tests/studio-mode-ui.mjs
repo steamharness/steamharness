@@ -110,19 +110,6 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       globalThis._VSCODE_NLS_LANGUAGE = language;
       if (messages) { globalThis._VSCODE_NLS_MESSAGES = messages; }
     }, { language, messages: sourceMessages });
-    if (attachmentPreviewOnly) {
-      // Exercise the desktop attachment-open path without desktop clipboard or dialogs.
-      await context.addInitScript(() => {
-        if (parent === window || !location.pathname.startsWith('/entries/')) return;
-        // Drive the directory input fallback through Playwright's browser file chooser.
-        Object.defineProperty(window, 'showDirectoryPicker', { value: undefined });
-        addEventListener('message', event => {
-          if (event.source === parent && event.data?.type === 'workflow-host' && event.data.attachmentOpenVersion !== undefined) {
-            event.data.attachmentOpenVersion = 1;
-          }
-        });
-      });
-    }
     if (titlebarOnly) {
       // Detect fullscreen during bootstrap, before the workbench registers its listeners.
       await context.addInitScript(() => Object.defineProperty(screen, 'height', { get: () => window.innerHeight }));
@@ -346,16 +333,20 @@ export default executor;`);
       await writeFile(file, original);
       const assistant = () => until(async () => {
         for (const candidate of page.frames()) {
-          if (await candidate.locator('body[data-surface=assistant] #attach:enabled').isVisible().catch(() => false)) { return candidate; }
+          if (!await candidate.locator('body[data-surface=assistant] #attach:enabled').isVisible().catch(() => false)) continue;
+          let visible = true;
+          for (let current = candidate; current.parentFrame(); current = current.parentFrame()) {
+            if (!await (await current.frameElement()).isVisible()) { visible = false; break; }
+          }
+          if (visible) return candidate;
         }
       }, Boolean, 'Assistant composer did not open', 90_000);
       const attach = async (frame, kind, source) => {
         const cards = frame.locator('#draft-attachments .path-reference-open').filter({ hasText: path.basename(source) });
         const previous = await cards.count();
         await frame.locator('#attach').click();
-        const choosing = page.waitForEvent('filechooser');
-        await frame.locator(`#conversation-file-menu [data-kind=${kind}]`).click();
-        await (await choosing).setFiles(source);
+        const [chooser] = await Promise.all([page.waitForEvent('filechooser'), frame.locator(`#conversation-file-menu [data-kind=${kind}]`).click()]);
+        await chooser.setFiles(source);
         const card = cards.nth(previous); await card.waitFor();
         assert.match(await card.innerText(), /Uploaded copy|已上传副本/);
         const copied = await card.locator('..').getAttribute('data-path');
@@ -391,7 +382,13 @@ export default executor;`);
       const ideAssistant = await assistant();
       const uploadedFolder = await attach(ideAssistant, 'folders', clientFolder);
       assert.equal(await readFile(path.join(uploadedFolder.copied, 'nested/note.txt'), 'utf8'), 'Browser folder contents');
-      check(`${language}: the browser folder keeps its hierarchy under the Assistant workspace`);
+      assert.match(await uploadedFolder.card.getAttribute('title'), /^(File details|文件信息)/);
+      await uploadedFolder.card.click();
+      const details = ideAssistant.locator('.attachment-details-dialog[open]');
+      await details.locator('code').waitFor();
+      assert.equal(await details.locator('code').innerText(), uploadedFolder.copied);
+      await details.press('Escape');
+      check(`${language}: the browser folder keeps its hierarchy and shows its execution-host path`);
       const ide = await attach(ideAssistant, 'files', file);
       await ide.card.click();
       await assertPreview('ide', page.locator('.part.editor:not(.studio-steam-editors):visible'), ide.copied);

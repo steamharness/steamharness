@@ -83,7 +83,8 @@ function fixture(t, language = 'en') {
 test('preview formats are case insensitive and LaTeX routes to its formula editor', () => {
   assert.equal(documentPreviewKind('/files/IMG_0895.HEIC'), 'image');
   for (const extension of ['pdf', 'docx', 'pptx', 'xlsx', 'tex', 'latex', 'svg', 'heif']) { assert.ok(documentPreviewKind(`file.${extension}`)); }
-  assert.equal(documentPreviewKind('file.exe'), undefined); assert.equal(documentPreviewView('file.tex'), 'studio.formulaPreview');
+  for (const extension of ['exe', 'constructor', '__proto__']) { assert.equal(documentPreviewKind(`file.${extension}`), undefined); }
+  assert.equal(documentPreviewView('file.tex'), 'studio.formulaPreview');
   assert.equal(samePreviewBytes(new Uint8Array([1]), new Uint8Array([1])), true);
   assert.equal(samePreviewBytes(new Uint8Array([1]), new Uint8Array([2])), false);
 });

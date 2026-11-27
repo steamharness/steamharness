@@ -64,7 +64,7 @@ test('only the same-host desktop frame can use the native picker, drop and path 
     const posted = [], received = [];
     const origin = 'http://127.0.0.1:3000';
     const html = module.exports.projectFrameHtml(`${origin}/entries/main/`, 'Project', 'file:///project', 'light', 'nonce', 'en',
-      undefined, undefined, false, false, true, undefined, { localFilePaths: local });
+      undefined, undefined, false, false, true, undefined, { localFilePaths: local, attachmentPreview: true });
     const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://studio.test/', beforeParse(window) {
       window.acquireVsCodeApi = () => ({ postMessage: message => posted.push(message), getState: () => undefined, setState() {} });
     } });
@@ -74,7 +74,8 @@ test('only the same-host desktop frame can use the native picker, drop and path 
       frame.contentWindow.postMessage = message => received.push(message);
       frame.dispatchEvent(new window.Event('load'));
       const paths = local && native ? 1 : 0;
-      for (const capability of ['localFilePathsVersion', 'pathPickerVersion', 'dropVersion']) assert.equal(received.at(-1)[capability], paths);
+      for (const capability of ['localFilePathsVersion', 'pathPickerVersion', 'dropVersion', 'attachmentOpenVersion']) assert.equal(received.at(-1)[capability], paths);
+      assert.equal(received.at(-1).attachmentPreviewVersion, 1);
       const file = new window.File(['sample'], 'sample.zip'), request = { type: 'workflow-resolve-local-files', version: 1, requestId: 'drop', target: 'assistant:one', files: [file] };
       const send = (origin, data) => window.dispatchEvent(new window.MessageEvent('message', { source: frame.contentWindow, origin, data }));
       send('https://foreign.test', request); send(origin, { ...request, files: [{ name: 'sample.zip' }] }); send(origin, request);

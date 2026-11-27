@@ -132,6 +132,19 @@ it('routes browser selection through the local chooser without posting files to 
   expect(f.sent.some(message => message.type === 'workflow-path-picker')).toBe(false);
 });
 
+it('opens the directory input synchronously in an embedded browser instead of trying the directory API', async () => {
+  const f = hostFixture(); await f.host.postMessage({ type: 'drop-target', target: f.request.target });
+  const picker = vi.fn(async () => folder('unused'));
+  vi.stubGlobal('showDirectoryPicker', picker);
+  const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+    expect(this.webkitdirectory).toBe(true);
+    this.dispatchEvent(new Event('cancel'));
+  });
+  const chosen = f.host.postMessage(f.request);
+  expect(click).toHaveBeenCalledOnce(); expect(picker).not.toHaveBeenCalled();
+  await chosen; f.close();
+});
+
 it('authenticates native picker replies, correlates requests, and drops obsolete targets and page results', async () => {
   const f = hostFixture(); await f.host.postMessage({ type: 'drop-target', target: f.request.target });
   f.receive({ pathPickerVersion: 1 }); await f.host.postMessage(f.request);
@@ -205,6 +218,22 @@ it('only uses the attachment open mode with a parent that supports it', async ()
   expect(f.host.canOpenAttachments).toBe(true);
   expect(f.sent.at(-1)).toMatchObject({ type: 'workflow-path-open', attachment: true, path: request.path });
   f.receive({ attachmentOpenVersion: 0 }); expect(f.host.canOpenAttachments).toBe(false); f.close();
+});
+
+it('uses Studio Web preview without native file manager capability and falls back to the clicked attachment details', async () => {
+  const f = hostFixture(), request = { type: 'open-path', path: '/project/archive.zip', attachment: true, projectUri: 'file:///project', sessionId: 'one',
+    attachmentDetails: { name: 'archive.zip', details: 'ZIP', path: '/project/archive.zip' } };
+  f.receive({ pathOpenVersion: 1, attachmentOpenVersion: 0, attachmentPreviewVersion: 1 });
+  expect(f.host.canOpenAttachments).toBe(true);
+  await f.host.postMessage(request);
+  const sent = f.sent.at(-1);
+  expect(sent).toMatchObject({ type: 'workflow-path-open', attachment: true, path: request.path });
+  expect(sent).not.toHaveProperty('attachmentDetails');
+  const reply = { pathOpened: { version: 1, requestId: sent.requestId, previewUnavailable: true } };
+  f.receive(reply, {}); expect(f.messages()).toHaveLength(0);
+  f.receive(reply); f.receive(reply);
+  expect(f.messages()).toEqual([{ type: 'attachment-details', projectUri: request.projectUri, sessionId: request.sessionId, attachment: request.attachmentDetails }]);
+  f.close();
 });
 
 it('correlates original-path lookups with the desktop parent and the active conversation', async () => {

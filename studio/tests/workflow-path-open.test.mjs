@@ -12,7 +12,7 @@ const chinese = JSON.parse(await readFile('extensions/studio-workstation/l10n/bu
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const request = (name = 'preview-sample.docx', requestId = 'open-1') => ({ type: 'workflow-path-open', version: 1, requestId, path: resolve('fixtures', name) });
 
-function fixture({ stat = async () => ({ type: 1, size: 128 }), openExternal = async () => true, executeCommand = async () => {}, language = 'en', basePath } = {}) {
+function fixture({ stat = async () => ({ type: 1, size: 128 }), openExternal = async () => true, executeCommand = async () => {}, language = 'en', basePath, nativeFileManager = true } = {}) {
   const module = { exports: {} }, replies = [], commands = [], external = [], stats = [], editors = [];
   const uriFor = path => ({ scheme: 'file', fsPath: path, path: path.replaceAll('\\', '/') });
   runInNewContext(compiled.outputFiles[0].text, {
@@ -28,7 +28,7 @@ function fixture({ stat = async () => ({ type: 1, size: 128 }), openExternal = a
       commands: { executeCommand: async (...args) => { commands.push(args); return executeCommand(...args); } },
     } : name === '@vscode/l10n' ? { t: (text, ...args) => (language === 'en' ? text : chinese[text] ?? text).replace(/\{(\d+)\}/g, (_, index) => String(args[Number(index)])) } : require(name),
   });
-  const binding = module.exports.bindProjectPathOpen({ postMessage: async message => { replies.push(JSON.parse(JSON.stringify(message))); } }, basePath ? uriFor(basePath) : undefined);
+  const binding = module.exports.bindProjectPathOpen({ postMessage: async message => { replies.push(JSON.parse(JSON.stringify(message))); } }, basePath ? uriFor(basePath) : undefined, nativeFileManager);
   return { binding, replies, commands, external, stats, editors };
 }
 
@@ -102,6 +102,16 @@ test('opens the folder itself in the system file manager and uses its actual fil
   assert.equal(f.replies[0].pathOpened.error, undefined);
   const file = fixture(); file.binding.receive({ ...request('main.ts'), kind: 'directory' }); await tick();
   assert.equal(file.commands[0][0], 'vscode.open'); assert.equal(file.external.length, 0);
+});
+
+test('Studio Web can preview an attachment but never sends unpreviewable files or directories to the file manager', async () => {
+  const f = fixture({ nativeFileManager: false, stat: async uri => ({ type: uri.path.endsWith('directory') ? 2 : 1,
+    size: uri.path.endsWith('large.xlsx') ? 51 * 1024 * 1024 : 128 }) });
+  const names = ['table.xlsx', 'archive.zip', 'large.xlsx', 'directory'];
+  for (const name of names) { f.binding.receive({ ...request(name, name), attachment: true }); await tick(); }
+  assert.deepEqual(f.commands.map(([command, uri, view]) => [command, uri.path, view]), [['vscode.openWith', request('table.xlsx').path, 'studio.documentPreview']]);
+  assert.deepEqual(f.external, []);
+  assert.deepEqual(f.replies.map(reply => reply.pathOpened), names.map((requestId, index) => ({ version: 1, requestId, ...(index ? { previewUnavailable: true } : {}) })));
 });
 
 for (const language of ['en', 'zh-cn']) {

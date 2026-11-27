@@ -2,7 +2,8 @@ import { capturePickedDirectory, capturePickedFiles, type FileImport, type Picke
 
 export async function chooseConversationFiles(kind: 'files' | 'folders'): Promise<FileImport | undefined> {
   const directoryPicker = (window as unknown as { showDirectoryPicker?: (options: { mode: 'read' }) => Promise<PickedDirectory> }).showDirectoryPicker;
-  if (kind === 'folders' && directoryPicker) {
+  // Studio's embedded page must open the directory input while the click is still active.
+  if (kind === 'folders' && window.parent === window && directoryPicker) {
     try { return capturePickedDirectory(await directoryPicker.call(window, { mode: 'read' })); }
     catch (error) {
       if ((error as Error).name === 'AbortError') return;

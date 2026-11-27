@@ -61,6 +61,8 @@ import {
 
 import { acquireProjectHost } from './host';
 
+interface AttachmentDetails { name: string; details: string; path?: string; downloadId?: string }
+
 function initialize(): void {
   const app = document.querySelector<HTMLDivElement>('#app')!;
   if (app.dataset.initialized === 'true') { return; }
@@ -1038,11 +1040,21 @@ function initialize(): void {
   }
 
   function renderDraftAttachments(): void {
-    const signature = JSON.stringify([dropScope(), vscode.canOpenAttachments, draftFiles, draftReferences]);
+    const signature = JSON.stringify([dropScope(), vscode.canOpenAttachments, vscode.canRevealAttachments, draftFiles, draftReferences]);
     // Keep pointer gestures and focus on the same card across unrelated state updates.
     if (signature === draftAttachmentSignature) return;
     draftAttachmentSignature = signature;
     attachmentList(draftAttachments, draftFiles, true, draftReferences);
+  }
+
+  function showAttachmentDetails(attachment: AttachmentDetails): void {
+    const { name, details, path, downloadId } = attachment;
+    dialogs.attachmentDetails(name, details, downloadId ? () => post({ type: 'open-file', id: downloadId }) : undefined, path);
+  }
+
+  function openAttachment(attachment: AttachmentDetails): void {
+    if (attachment.path && vscode.canOpenAttachments) post({ type: 'open-path', path: attachment.path, attachment: true, attachmentDetails: attachment });
+    else showAttachmentDetails(attachment);
   }
 
   function attachmentList(container: HTMLElement, attachments: Attachment[], removable: boolean, references: PathReference[] = []): void {
@@ -1055,10 +1067,8 @@ function initialize(): void {
         const image = document.createElement('img'); image.src = imageUrl; image.alt = preview.title; preview.append(image);
         preview.addEventListener('click', () => dialogs.image(imageUrl, preview.title)); item.append(preview);
       } else {
-        item.append(fileCard(file.name, file.name, 'file', attachmentDetails(file), details => {
-          if (vscode.canOpenAttachments && file.storage === 'local' && file.path) post({ type: 'open-path', path: file.path, attachment: true });
-          else dialogs.attachmentDetails(file.name, details, () => post({ type: 'open-file', id: file.id }));
-        }));
+        const path = file.storage === 'local' ? file.path : undefined;
+        item.append(fileCard(file.name, path ?? file.name, 'file', attachmentDetails(file), details => openAttachment({ name: file.name, details, path, downloadId: file.id })));
       }
       if (removable) { item.append(iconButton('close', t("Remove attachment"), () => { draftFiles = draftFiles.filter((entry) => entry.id !== file.id); renderDraftAttachments(); saveDraft(); updateControls(); })); }
       container.append(item);
@@ -1066,10 +1076,8 @@ function initialize(): void {
     for (const reference of references) {
       const item = document.createElement('div'); item.className = 'attachment attachment-file path-reference'; item.dataset.path = reference.path;
       const details = [reference.kind === 'file' ? attachmentDetails(reference) : '', reference.source === 'workspace-upload' ? t('Uploaded copy') : ''].filter(Boolean).join(' · ');
-      item.append(fileCard(reference.name, reference.path, reference.kind, details, () => {
-        if (vscode.canOpenAttachments) post({ type: 'open-path', path: reference.path, ...(reference.kind === 'file' ? { attachment: true } : {}) });
-        else dialogs.attachmentDetails(reference.name, details || t('Folder'));
-      }));
+      item.append(fileCard(reference.name, reference.path, reference.kind, details,
+        () => openAttachment({ name: reference.name, details: details || t('Folder'), path: reference.path })));
       if (removable) item.append(iconButton('close', t("Remove path reference"), () => {
         draftReferences = draftReferences.filter(entry => entry.path !== reference.path); renderDraftAttachments(); saveDraft(); updateControls();
       }));
@@ -1088,7 +1096,8 @@ function initialize(): void {
 
   function fileCard(name: string, path: string, kind: PathReference['kind'], details: string, open: (details: string) => void): HTMLButtonElement {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'path-reference-open';
-    const action = !vscode.canOpenAttachments ? t('File details') : kind === 'directory' ? t('Open folder in file manager') : t('Open file');
+    const action = kind === 'directory' ? (vscode.canRevealAttachments ? t('Open folder in file manager') : t('File details'))
+      : vscode.canOpenAttachments ? t('Open file') : t('File details');
     button.title = `${action}\n${path}${details ? `\n${details}` : ''}`; button.ariaLabel = `${action}: ${path}${details ? `, ${details}` : ''}`;
     const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; fileIcons.bind(symbol, path, kind);
     symbol.title = kind === 'directory' ? t('Folder') : t('File');
@@ -1835,6 +1844,11 @@ function initialize(): void {
       dialogs.skillsResult(event.data.requestId, event.data.value, event.data.type === 'error' ? event.data.message : undefined); return;
     }
     const message = event.data;
+    if (message?.type === 'attachment-details') {
+      if (event.source === null && state && message.projectUri === state.project.uri && message.sessionId === state.activeId
+        && typeof message.attachment?.name === 'string' && typeof message.attachment.details === 'string') showAttachmentDetails(message.attachment);
+      return;
+    }
     if (message?.type === 'workflow-host' && message.workflowDraftVersion === 1 && !workflowDraftHost && event.source && event.source === window.parent && window.parent !== window) {
       workflowDraftHost = true;
       if (state) render(state, false);

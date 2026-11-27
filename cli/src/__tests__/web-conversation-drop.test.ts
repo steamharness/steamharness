@@ -320,7 +320,7 @@ it.each(['drop', 'paste'])('uploads browser %s bytes even when the payload inclu
   const card = document.querySelector<HTMLButtonElement>('#draft-attachments .path-reference-open')!;
   expect(card.title).toContain(uploaded.path);
   expect(card.textContent).toContain('已上传副本');
-  card.click(); expect(dialogs.attachmentDetails).toHaveBeenCalledWith(uploaded.name, expect.stringContaining('已上传副本'));
+  card.click(); expect(dialogs.attachmentDetails).toHaveBeenCalledWith(uploaded.name, expect.stringContaining('已上传副本'), undefined, uploaded.path);
   document.querySelector<HTMLButtonElement>('#send')!.click();
   expect(f.requests('send').at(-1)).toMatchObject({ references: [uploaded] });
 });
@@ -330,6 +330,18 @@ it('asks for the file or folder contents instead of treating a browser-only URI 
   f.drop(transfer({ 'text/uri-list': 'file:///Desktop/folder' })); await vi.advanceTimersByTimeAsync(0);
   expect(f.requests('resolve-paths')).toEqual([]); expect(f.requests('import-drop')).toEqual([]);
   expect(document.querySelector('#error')!.textContent).toContain('浏览器没有提供文件内容');
+});
+
+it('does not upload a browser clipboard icon when the actual file bytes are missing', async () => {
+  const f = await fixture('en', { ...project, conversation: { attachments: { images: true } } }, false);
+  const icon = new File(['placeholder'], 'clipboard.png', { type: 'image/png' });
+  const read = vi.spyOn(FileReader.prototype, 'readAsDataURL');
+  const clipboardData = transfer({ 'text/uri-list': 'file:///Desktop/book.xlsx' }, { files: [icon] });
+  document.querySelector('#message')!.dispatchEvent(Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(read).not.toHaveBeenCalled();
+  expect(f.requests('resolve-paths')).toEqual([]); expect(f.requests('import-drop')).toEqual([]); expect(f.requests('upload')).toEqual([]);
+  expect(document.querySelector('#error')!.textContent).toContain('The browser did not provide its contents');
 });
 
 it.each([true, false])('never reads or imports a desktop drop while resolving the original path (%s)', async found => {
@@ -375,7 +387,7 @@ it.each([true, false])('shows managed attachment metadata, keeps genuine image p
   if (native) { expect(f.requests('open-path').at(-1)).toMatchObject({ attachment: true, path: file.path }); expect(dialogs.attachmentDetails).not.toHaveBeenCalled(); }
   else {
     expect(f.requests('open-path')).toEqual([]);
-    expect(dialogs.attachmentDetails).toHaveBeenCalledWith('table.xlsx', 'XLSX · 4 KiB', expect.any(Function));
+    expect(dialogs.attachmentDetails).toHaveBeenCalledWith('table.xlsx', 'XLSX · 4 KiB', expect.any(Function), file.path);
     dialogs.attachmentDetails.mock.calls[0][2](); expect(f.requests('open-file').at(-1).id).toBe(file.id);
   }
   document.querySelector<HTMLButtonElement>('#draft-attachments .attachment-image .attachment-preview')!.click();

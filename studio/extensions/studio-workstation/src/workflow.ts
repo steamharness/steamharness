@@ -264,7 +264,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         identity: [project.id, project.distribution].join(':'), managed: !!project.folderBot,
       }, () => !closed && projectAvailable(project), launcher.readProjectUsage);
       const pickerBinding = bindProjectPathPicker(panel.webview, workingDirectory);
-      const pathOpenBinding = bindProjectPathOpen(panel.webview, workingDirectory);
+      const localFilePaths = !vscode.env.remoteName && !launcher.previewWeb;
+      const pathOpenBinding = bindProjectPathOpen(panel.webview, workingDirectory, localFilePaths && vscode.env.uiKind === vscode.UIKind.Desktop);
       const browserOpenBinding = bindProjectBrowserOpen(panel.webview);
       const downloadBinding = bindProjectDownload(launcher.downloadDirectory ? vscode.Uri.file(launcher.downloadDirectory) : undefined);
       const fileIconsBinding = fileIcons.bind(panel.webview);
@@ -378,7 +379,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       };
       const renderFrame = () => {
         frameLoaded = false;
-        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection, { workflowDraft: !!draft, projectDetails: usageBinding.frame(), localFilePaths: !vscode.env.remoteName && !launcher.previewWeb });
+        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection, { workflowDraft: !!draft, projectDetails: usageBinding.frame(), localFilePaths, attachmentPreview: true });
       };
       const openConversation = (id: string) => {
         if (closed || project.projectType !== 'bot' || !projectConversationId(id)) return;
@@ -698,14 +699,15 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           const panel = vscode.window.createWebviewPanel('studio.workflowScheduledRun', title, vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
           const pick = bindProjectPathPicker(panel.webview, vscode.Uri.file(selected.folderPath));
           const clipboard = bindProjectClipboard(panel.webview);
-          const openPath = bindProjectPathOpen(panel.webview, vscode.Uri.file(selected.folderPath));
+          const localFilePaths = !vscode.env.remoteName && !launcher.previewWeb;
+          const openPath = bindProjectPathOpen(panel.webview, vscode.Uri.file(selected.folderPath), localFilePaths && vscode.env.uiKind === vscode.UIKind.Desktop);
           const browser = bindProjectBrowserOpen(panel.webview);
           const download = bindProjectDownload(launcher.downloadDirectory ? vscode.Uri.file(launcher.downloadDirectory) : undefined);
           const receive = panel.webview.onDidReceiveMessage(message => { pick.receive(message) || clipboard.receive(message) || openPath.receive(message) || browser.receive(message) || download.receive(message); });
           const styling = vscode.window.onDidChangeActiveColorTheme(() => void panel.webview.postMessage({ type: 'workflow-host', theme: theme() }));
           panel.onDidDispose(() => { receive.dispose(); clipboard.dispose(); pick.dispose(); openPath.dispose(); browser.dispose(); download.dispose(); styling.dispose(); });
           panel.webview.html = projectFrameHtml(liveUrl, title, selected.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language,
-            undefined, undefined, false, false, true, undefined, { showScheduledRun: id, localFilePaths: !vscode.env.remoteName && !launcher.previewWeb });
+            undefined, undefined, false, false, true, undefined, { showScheduledRun: id, localFilePaths, attachmentPreview: true });
           return;
         }
         await openProject(selected, undefined, undefined, true);

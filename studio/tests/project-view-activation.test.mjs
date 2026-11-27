@@ -161,8 +161,8 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
     panels.push(panel); return panel;
   };
   const asUri = value => ({ fsPath: value, toString: () => value });
-  const vscode = { ViewColumn: { Active: -1 }, ProgressLocation: { Window: 10 }, Uri: { parse: asUri, file: asUri },
-    env: { language, asExternalUri: async uri => uri }, commands: { executeCommand: async () => undefined },
+  const vscode = { ViewColumn: { Active: -1 }, ProgressLocation: { Window: 10 }, Uri: { parse: asUri, file: asUri }, UIKind: { Desktop: 1, Web: 2 },
+    env: { language, uiKind: 1, asExternalUri: async uri => uri }, commands: { executeCommand: async () => undefined },
     workspace: { isTrusted: true }, window: { withProgress: (_options, task) => task(), createWebviewPanel: makePanel,
       onDidChangeActiveColorTheme: () => disposable, showErrorMessage: async message => { errors.push(message); } } };
   const adapter = () => ({ receive: () => false, dispose() {} });

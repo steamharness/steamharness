@@ -17,7 +17,7 @@ import { acquireHostKeyboard } from './host-keyboard';
 import { prepareImageFiles } from './image-cropper';
 
 type Message = Record<string, any>;
-export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; readonly canOpenAttachments?: boolean; readonly resolveLocalFiles?: (files: File[]) => Promise<string[] | undefined>; copyText?(text: string): Promise<boolean>; reloadProject?(draft?: Message): Promise<void> }
+export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; readonly canOpenAttachments?: boolean; readonly canRevealAttachments?: boolean; readonly resolveLocalFiles?: (files: File[]) => Promise<string[] | undefined>; copyText?(text: string): Promise<boolean>; reloadProject?(draft?: Message): Promise<void> }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -70,7 +70,8 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     serverProjectRequests.clear();
   });
   let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, browserOpenHost = false, fileIconsHost = false, downloadHost = false;
-  let attachmentOpenHost = false, localFilePathsHost = false;
+  let attachmentOpenHost = false, attachmentPreviewHost = false, localFilePathsHost = false;
+  const canOpenAttachments = () => pathOpenHost && (attachmentOpenHost || attachmentPreviewHost);
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
   const pathOpens = new Map<string, Message>();
@@ -228,6 +229,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
     if (event.data.pathOpenVersion !== undefined) pathOpenHost = event.data.pathOpenVersion === 1;
     if (event.data.attachmentOpenVersion !== undefined) attachmentOpenHost = event.data.attachmentOpenVersion === 1;
+    if (event.data.attachmentPreviewVersion !== undefined) attachmentPreviewHost = event.data.attachmentPreviewVersion === 1;
     if (event.data.localFilePathsVersion !== undefined) {
       localFilePathsHost = event.data.localFilePathsVersion === 1;
       if (!localFilePathsHost) for (const pending of localFileRequests.values()) pending.finish();
@@ -257,6 +259,9 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (pending) {
         pathOpens.delete(pathOpened.requestId);
         if (typeof pathOpened.error === 'string') emit({ type: 'error', requestType: 'open-path', projectUri: pending.projectUri, sessionId: pending.sessionId, message: pathOpened.error });
+        else if (pathOpened.previewUnavailable === true && pending.attachment === true && pending.attachmentDetails) {
+          emit({ type: 'attachment-details', projectUri: pending.projectUri, sessionId: pending.sessionId, attachment: pending.attachmentDetails });
+        }
       }
     }
     const browserOpened = event.data.browserOpened;
@@ -510,13 +515,14 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'open-path') {
         if (!pathOpenHost) { emit({ type: 'error', requestType: 'open-path', projectUri: message.projectUri, sessionId: message.sessionId, message: t('Open this conversation in Studio to open referenced files and folders.') }); return; }
         const requestId = crypto.randomUUID(); pathOpens.set(requestId, message);
-        window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path, ...(message.line === undefined ? {} : { line: message.line }), ...(message.column === undefined ? {} : { column: message.column }), ...(message.attachment === true && attachmentOpenHost ? { attachment: true } : {}) }, '*'); return;
+        window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path, ...(message.line === undefined ? {} : { line: message.line }), ...(message.column === undefined ? {} : { column: message.column }), ...(message.attachment === true && canOpenAttachments() ? { attachment: true } : {}) }, '*'); return;
       }
       if (message.type === 'login') { accountPanel?.open(); return; }
       void request(message).catch(error => emit({ type: 'error', errorSource: 'request', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, projectUri: message.projectUri, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
     },
     fileUrl: id => connection.fileUrl(`/api/file/${encodeURIComponent(id)}`),
-    get canOpenAttachments() { return pathOpenHost && attachmentOpenHost; },
+    get canOpenAttachments() { return canOpenAttachments(); },
+    get canRevealAttachments() { return pathOpenHost && attachmentOpenHost; },
     get resolveLocalFiles() { return localFilePathsHost ? resolveLocalFiles : undefined; },
     getState: () => { try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null'); } catch { return undefined; } },
     setState: (state) => {
