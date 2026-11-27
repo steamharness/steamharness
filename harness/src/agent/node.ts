@@ -975,7 +975,7 @@ function createContextUsageItem(usage: AgentContextUsage, sessionKey: string): R
     : `context:${Buffer.from(sessionKey, "utf16le").toString("base64url")}`;
   return {
     id: createAgentOutputItemId(contextId),
-    title: readRuntimeLocaleSafe() === "en" ? "Context window" : "上下文窗口",
+    title: readRuntimeLocaleSafe() === "en" ? "Context window (estimate)" : "上下文窗口（估算）",
     content: { value: usage.used, total: usage.total, unit: "tokens" } satisfies RingContent,
     contentType: "json", display: { type: "ring", placement: "composer-right" },
   };

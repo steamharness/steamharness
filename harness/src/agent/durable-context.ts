@@ -17,5 +17,6 @@ export function withStreamingMessage(messages: readonly AgentMessage[], streamin
   const content = JSON.stringify(streaming.content);
   const committed = messages.some(message => message.role === "assistant" && message.timestamp === streaming.timestamp &&
     message.provider === streaming.provider && message.model === streaming.model && JSON.stringify(message.content) === content);
-  return committed ? messages : [...messages, { ...streaming, stopReason: "pending" }];
+  const stopReason = streaming.stopReason === "error" || streaming.stopReason === "aborted" ? streaming.stopReason : "pending";
+  return committed ? messages : [...messages, { ...streaming, stopReason }];
 }

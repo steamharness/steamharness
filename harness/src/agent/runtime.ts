@@ -15,7 +15,7 @@ import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
 import {
   compactAgentMessages,
   DEFAULT_AGENT_COMPACTION_SETTINGS,
-  estimateAgentContextTokens,
+  estimateAgentContextOccupancy,
   findCompactionSplitIndex,
   readAgentContextUsage,
   type AgentCompactionResult,
@@ -288,7 +288,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   private readContextTokens(): number {
     const messages = this.agent?.state.contextMessages ?? this.readTranscript();
     const streaming = this.agent?.state.streamingMessage;
-    return estimateAgentContextTokens(withStreamingMessage(messages, streaming));
+    return estimateAgentContextOccupancy(withStreamingMessage(messages, streaming));
   }
 
   async *run(input: AgentInput, host?: AgentHost): AsyncIterable<AgentStreamEvent> {
@@ -433,7 +433,8 @@ class ProjectAgentRuntime implements AgentRuntime {
         botMemoryRecall: this.options.botMemoryRecall,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
-        contextUsage: () => this.getContextUsage(),
+        // Only an explicit host measurement overrides the conservative compaction estimate.
+        contextUsage: () => this.contextMeasurement === undefined ? undefined : this.getContextUsage(),
         isToolEnabled: this.options.isToolEnabled,
       });
       this.catalogsChanged = false;

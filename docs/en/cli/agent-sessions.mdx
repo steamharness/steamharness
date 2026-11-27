@@ -45,7 +45,9 @@ The entry updates from task snapshots, remains after the parent reply, and prese
 
 Each subagent row shows elapsed time and token usage on the right, with status in its icon and expanded details. Timing excludes time spent in the queue and stops when the task ends. When disconnected or interrupted, the row shows the last snapshot. Older records without timing show “—”.
 
-**Turn total** adds up token usage from model calls for one reply, including cache reads. When the model is called again after a tool finishes, the same context may be counted again. To see how much room is left, check the ring next to the composer. It estimates how much of the current context window is occupied.
+**Turn total** adds up token usage from model calls for one reply, including cache reads. When the model is called again after a tool finishes, the same context may be counted again.
+
+To see how much room is left, hover over the ring next to the composer for **Context window (estimate)**. The ring updates when the model reports the current request's input count. Until then it estimates from the existing context without automatically carrying over the previous response's reasoning usage.
 
 **Conversation total** appears beside the latest reply. It includes recorded usage from the conversation and its owned subagents, including failures, retries, and usage before a stop, and continues updating during background work. Hiding or reopening a child conversation does not change the total. Independent forks have separate totals. Turning off token usage display in the project hides the reply totals and subagent usage.
 

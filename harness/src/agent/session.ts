@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-durable";
 import type { RunOutputItemInput } from "../node/output/index";
 import type { TokenUsageAggregate } from "../token-usage/index";
-import { estimateAgentContextTokens, readAgentContextUsage } from "./compaction";
+import { estimateAgentContextOccupancy, readAgentContextUsage } from "./compaction";
 import { durableContextMessages } from "./durable-context";
 import { botArtifactItem, BOT_ARTIFACT_TOOL } from "./bot-artifact";
 import { createAgentRetryChunks, formatAgentSearchSources } from "./output-items";
@@ -1070,7 +1070,7 @@ export class DurableAgentSession {
       usage.push({ conversationId: record.id, ...(record.owner ? { parentId: record.owner.conversationId } : {}), models: plain(spend?.models ?? {}), tools: plain(spend?.tools ?? {}) });
       const view = await conversation.context(context);
       const contextUsage = readAgentContextUsage({
-        used: estimateAgentContextTokens(durableContextMessages(view, live.generation?.message as AssistantMessage | undefined)),
+        used: estimateAgentContextOccupancy(durableContextMessages(view, live.generation?.message as AssistantMessage | undefined)),
         contextWindow: agent.model && this.contextWindow(agent.model.provider, agent.model.modelId),
       });
       contexts.push({ conversationId: record.id, foreground: !!live.run, backgroundCount: 0, epoch: entries.filter(entry => entry.kind === "pi.reset").length,

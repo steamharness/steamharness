@@ -7,7 +7,8 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createAgentRuntime, type AgentRuntimeInternalOptions } from "../agent/runtime";
 import { parseAgentInput } from "../agent/runtime";
 import { withUserSettings } from "../user-settings";
-import { compactAgentMessages, estimateAgentContextTokens, estimateAgentTokens, findCompactionSplitIndex } from "../agent/compaction";
+import { compactAgentMessages, estimateAgentContextOccupancy, estimateAgentContextTokens, estimateAgentTokens, findCompactionSplitIndex } from "../agent/compaction";
+import { withStreamingMessage } from "../agent/durable-context";
 import { HarnessError } from "../workflow/errors";
 import type { PiRuntime } from "../agent/pi";
 import { resolveAgentBridgeBaseUrl } from "../agent/system-llm";
@@ -255,10 +256,15 @@ for (const durable of [false, true]) test(`context is visible before the model s
   };
   t.after(async () => { release(); stream.push({ type: "error", reason: "aborted", error: { ...partial, stopReason: "aborted" } }); stream.end(); await running.catch(() => undefined); await runtime.close(); });
   await until(() => called);
-  partial = { ...partial, content: [ai.fauxText("x".repeat(200))] };
+  partial = { ...partial, content: [ai.fauxText("x".repeat(200))],
+    usage: { ...partial.usage, input: 310, cacheRead: 30, cacheWrite: 10, output: 60, reasoning: 40, totalTokens: 410 } };
   stream.push({ type: "text_delta", contentIndex: 0, delta: "x".repeat(200), partial });
-  await until(() => received.some(event => event.type === "text_delta" && event.delta.length >= 200));
-  assert.ok(runtime.getContextUsage()!.used > 0);
+  await until(() => received.some(event => event.type === "context_usage" && event.usage.used === 410));
+  assert.equal(runtime.getContextUsage()?.used, 410, "live input includes cached tokens; live output still includes reasoning");
+  if (durable) {
+    await runtime.control!({ type: "snapshot", requestId: "provider-measurement" });
+    await until(() => received.some(event => event.type === "session" && event.snapshot.contexts[0]?.contextUsage?.used === 410));
+  }
 
   runtime.updateContextUsage({ used: 500, total: 2_000 });
   assert.deepEqual(runtime.getContextUsage(), { used: 500, total: 2_000 });
@@ -269,12 +275,12 @@ for (const durable of [false, true]) test(`context is visible before the model s
   }
 
   t.mock.timers.tick(100);
-  partial = { ...partial, content: [ai.fauxText("x".repeat(400))] };
+  partial = { ...partial, content: [ai.fauxText("x".repeat(400))], usage: { ...partial.usage, output: 110, totalTokens: 460 } };
   stream.push({ type: "text_delta", contentIndex: 0, delta: "x".repeat(200), partial });
   await until(() => received.some(event => event.type === "context_usage" && event.usage.used === 550));
   assert.deepEqual(runtime.getContextUsage(), { used: 550, total: 2_000 }, "estimates continue growing from the external measurement");
 
-  partial.usage = { ...partial.usage, input: 200, output: 30, cacheRead: 40, cacheWrite: 10, totalTokens: 280 };
+  partial.usage = { ...partial.usage, input: 200, output: 30, cacheRead: 40, cacheWrite: 10, reasoning: 0, totalTokens: 280 };
   partial.stopReason = "stop";
   stream.push({ type: "done", reason: "stop", message: partial });
   stream.end();
@@ -370,6 +376,27 @@ test("context uses the latest valid provider usage plus trailing messages, never
   const image = { role: "user" as const, content: [{ type: "image" as const, mimeType: "image/png", data: "a".repeat(50_000) }], timestamp: 1 };
   const imageEstimate = estimateAgentContextTokens([image]);
   assert.ok(imageEstimate >= 1_200 && imageEstimate < 1_210, "image estimates must not count base64 as prompt text");
+});
+
+test("composer estimates carried-forward output without billing the previous reasoning as context", async () => {
+  const { ai } = await createFauxRuntime([]);
+  const previous = ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" });
+  previous.usage = { ...previous.usage, input: 380, cacheRead: 30_720, output: 513, reasoning: 319, totalTokens: 31_613 };
+  const trailing = { role: "toolResult" as const, toolCallId: "call", toolName: "inspect", content: [ai.fauxText("x".repeat(117))], isError: false, timestamp: 1 };
+  const history = [previous, trailing];
+
+  assert.equal(estimateAgentContextTokens(history), 31_646, "the automatic compaction guard remains conservative");
+  assert.equal(estimateAgentContextOccupancy(history), 31_327);
+  assert.equal(previous.usage.totalTokens, 31_613, "the accounting record is unchanged");
+
+  const current = ai.fauxAssistantMessage([], { stopReason: "pending" });
+  current.usage = { ...current.usage, input: 369, cacheRead: 30_976, output: 0, totalTokens: 31_345 };
+  assert.equal(estimateAgentContextOccupancy([...history, current]), 31_345, "the current request's measured input replaces the projection");
+  current.usage.output = 1;
+  current.content = [ai.fauxText("a".repeat(80))];
+  assert.ok(estimateAgentContextOccupancy([...history, current]) > 31_346, "a stale output counter does not freeze streaming growth");
+  const failed = { ...current, stopReason: "error" as const, content: [], usage: { ...current.usage, input: 80_000 } };
+  assert.ok(estimateAgentContextOccupancy(withStreamingMessage(history, failed)) < 32_000, "a failed attempt cannot calibrate the context");
 });
 
 test("uncalibrated context includes durable system sections and tool declarations", () => {

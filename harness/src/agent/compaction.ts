@@ -78,6 +78,15 @@ export function estimateAgentTokens(value: string): number {
 
 /** Pi's usage-plus-trailing-messages approach, retaining Core's CJK estimate. */
 export function estimateAgentContextTokens(messages: readonly AgentMessage[]): number {
+  return estimateContextTokens(messages, false);
+}
+
+/** Presentation estimate: a completed response's reasoning spend is not a measure of replayed input. */
+export function estimateAgentContextOccupancy(messages: readonly AgentMessage[]): number {
+  return estimateContextTokens(messages, true);
+}
+
+function estimateContextTokens(messages: readonly AgentMessage[], forDisplay: boolean): number {
   let usageStart = 0;
   for (let index = 0; index < messages.length; index += 1) {
     const reset = (messages[index] as AgentMessage & { projectContextUsageReset?: number }).projectContextUsageReset;
@@ -87,10 +96,21 @@ export function estimateAgentContextTokens(messages: readonly AgentMessage[]): n
   }
   for (let index = messages.length - 1; index >= usageStart; index -= 1) {
     const message = messages[index] as Message;
-    if (message.role !== "assistant" || message.stopReason === "error" ||
-        message.stopReason === "aborted" || message.stopReason === "pending" ||
+    if (message.role !== "assistant" || message.stopReason === "error" || message.stopReason === "aborted" ||
         (message as AgentMessage & { projectContextUsageInvalid?: boolean }).projectContextUsageInvalid === true) continue;
-    const tokens = readAgentUsageTokens(message.usage);
+    const usage = message.usage;
+    const input = usage === undefined ? 0 : usage.input + usage.cacheRead + usage.cacheWrite;
+    const measuredInput = forDisplay && Number.isFinite(input) && input > 0;
+    if (message.stopReason === "pending") {
+      if (!measuredInput) continue;
+      // Some providers leave the opening output count unchanged until the final frame.
+      const output = Math.max(readTokenCount(usage?.output), message.content.length ? estimateContextMessages([message]) : 0);
+      return Math.round(input) + output + estimateContextMessages(messages.slice(index + 1));
+    }
+    const output = readTokenCount(usage?.output);
+    // Until the next request reports its real input, estimate only the output other than reasoning.
+    const tokens = measuredInput ? Math.round(input) + output - Math.min(output, readTokenCount(usage?.reasoning))
+      : readAgentUsageTokens(usage);
     if (tokens > 0) {
       return tokens + estimateContextMessages(messages.slice(index + 1));
     }
@@ -113,8 +133,11 @@ function estimateContextMessages(messages: readonly AgentMessage[]): number {
 
 function readAgentUsageTokens(usage: Usage | undefined): number {
   if (usage === undefined) return 0;
-  const tokens = usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-  return Number.isFinite(tokens) && tokens > 0 ? Math.round(tokens) : 0;
+  return readTokenCount(usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite);
+}
+
+function readTokenCount(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
 }
 
 /** CJK, kana, hangul and the full-width forms that tokenize near one-for-one. */
