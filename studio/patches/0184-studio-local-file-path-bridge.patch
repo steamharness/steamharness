@@ -1,0 +1,55 @@
+diff --git a/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts b/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts
+index 33012843e31..79f781f9563 100644
+--- a/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts
++++ b/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts
+@@ -5,8 +5,9 @@
+ 
+ import { addDisposableListener, EventType } from '../../../../base/browser/dom.js';
+ import { Disposable } from '../../../../base/common/lifecycle.js';
++import { isAbsolute } from '../../../../base/common/path.js';
+ import { URI } from '../../../../base/common/uri.js';
+-import { containsDragType, extractEditorsDropData } from '../../../../platform/dnd/browser/dnd.js';
++import { containsDragType, extractEditorsDropData, getPathForFile } from '../../../../platform/dnd/browser/dnd.js';
+ 
+ /** Native paths are resolved before a drop crosses the sandboxed project frame. */
+ export class StudioWebviewDrop extends Disposable {
+@@ -18,6 +19,22 @@ export class StudioWebviewDrop extends Disposable {
+ 		this.target = typeof target === 'string' && target.length > 0 && target.length <= 512 ? target : undefined;
+ 	}
+ 
++	resolveLocalFiles({ target, requestId, files }: { target?: unknown; requestId?: unknown; files?: unknown }): void {
++		if (!this.target || target !== this.target || typeof requestId !== 'string' || !requestId || requestId.length > 128
++			|| !Array.isArray(files) || !files.length || files.length > 32) {
++			return;
++		}
++		// A File cloned from the project frame still lets the native renderer resolve its backing file.
++		let paths: string[] = [];
++		try {
++			const nativePaths = files.map(file => getPathForFile(file));
++			if (nativePaths.every((file): file is string => !!file && isAbsolute(file))) {
++				paths = nativePaths.map(file => URI.file(file).toString());
++			}
++		} catch { /* Not a native File. Do not forward partial results or read bytes. */ }
++		this.send({ type: 'workflow-host', localFilePaths: { version: 1, target, requestId, paths } });
++	}
++
+ 	mount(container: HTMLElement, targetWindow: Window): void {
+ 		for (const type of [EventType.DRAG_OVER, EventType.DROP]) {
+ 			this._register(addDisposableListener(targetWindow, type, (event: DragEvent) => {
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewElement.ts b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+index c2ffe3b9951..e5e7c53c780 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+@@ -222,6 +222,12 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 				this._studioFileDrop.update(message.target);
+ 				return;
+ 			}
++			if (message?.type === 'workflow-resolve-local-files') {
++				if (this.platform === 'electron' && message.version === 1 && this.extension?.id.value === 'studio.studio-workstation') {
++					this._studioFileDrop.resolveLocalFiles(message);
++				}
++				return;
++			}
+ 			if (message?.type === 'studio-window-drag-regions' && this.providedViewType === 'studio.project'
+ 				&& this.extension?.id.value === 'studio.studio-workstation' && this.element?.parentElement) {
+ 				const drag = this._studioWindowDrag.value ?? (this._studioWindowDrag.value = new StudioWindowDragRegions(this.element));
