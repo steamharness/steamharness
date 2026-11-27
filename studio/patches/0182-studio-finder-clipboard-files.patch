@@ -1,0 +1,120 @@
+diff --git a/src/vs/platform/native/common/native.ts b/src/vs/platform/native/common/native.ts
+index 3428cbc510f..674db9b22fc 100644
+--- a/src/vs/platform/native/common/native.ts
++++ b/src/vs/platform/native/common/native.ts
+@@ -390,6 +390,7 @@ export interface ICommonNativeHostService {
+ 	writeClipboardBuffer(format: string, buffer: VSBuffer, type?: 'selection' | 'clipboard'): Promise<void>;
+ 	readClipboardBuffer(format: string): Promise<VSBuffer>;
+ 	hasClipboard(format: string, type?: 'selection' | 'clipboard'): Promise<boolean>;
++	readClipboardFileUrls(): Promise<string[] | undefined>;
+ 	readImage(): Promise<Uint8Array>;
+ 
+ 	// macOS Touchbar
+diff --git a/src/vs/platform/native/electron-main/nativeHostMainService.ts b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+index 8e1e700df2f..5cd67df5efa 100644
+--- a/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -4,7 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import * as fs from 'fs';
+-import { exec } from 'child_process';
++import { exec, execFile } from 'child_process';
+ import { app, BrowserWindow, clipboard, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, systemPreferences, webContents } from 'electron';
+ import { createRequire } from 'node:module';
+ import { arch, cpus, freemem, loadavg, platform, release, totalmem, type } from 'os';
+@@ -1054,6 +1054,48 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 		return clipboard.readImage().toPNG();
+ 	}
+ 
++	async readClipboardFileUrls(): Promise<string[] | undefined> {
++		if (!isMacintosh || !(clipboard.has('public.file-url') || clipboard.has('NSFilenamesPboardType'))) {
++			return undefined;
++		}
++		try {
++			// Electron's raw format read only returns the first pasteboard item.
++			const { stdout } = await promisify(execFile)('/usr/bin/osascript', ['-l', 'JavaScript', '-e', `
++				ObjC.import('AppKit');
++				const board = $.NSPasteboard.generalPasteboard;
++				const revision = board.changeCount;
++				const urls = [];
++				const items = board.pasteboardItems;
++				for (let i = 0; i < items.count && urls.length < 33; i++) {
++					const value = items.objectAtIndex(i).stringForType('public.file-url');
++					if (value.isNil()) continue;
++					const url = $.NSURL.URLWithString(value);
++					if (!url.isNil() && url.isFileURL) {
++						const path = url.filePathURL;
++						if (!path.isNil()) urls.push(ObjC.unwrap(path.absoluteString));
++					}
++				}
++				if (!urls.length) {
++					const paths = board.propertyListForType('NSFilenamesPboardType');
++					if (!paths.isNil()) {
++						for (const path of ObjC.deepUnwrap(paths).slice(0, 33)) {
++							if (typeof path === 'string' && path.startsWith('/')) urls.push(ObjC.unwrap($.NSURL.fileURLWithPath(path).absoluteString));
++						}
++					}
++				}
++				JSON.stringify(board.changeCount === revision ? urls : []);
++			`], { timeout: 2_000, maxBuffer: 256 * 1024 });
++			const urls: unknown = JSON.parse(stdout);
++			if (Array.isArray(urls) && urls.length <= 33 && urls.every(url => typeof url === 'string' && url.startsWith('file://') && url.length <= 4096)) {
++				return urls;
++			}
++		} catch {
++			this.logService.trace('Unable to read file URLs from the native pasteboard.');
++		}
++		// A Finder selection may also advertise a PNG icon; don't fall back to it.
++		return [];
++	}
++
+ 	async writeClipboardText(windowId: number | undefined, text: string, type?: 'selection' | 'clipboard'): Promise<void> {
+ 		return clipboard.writeText(text, type);
+ 	}
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+index 80bafe2ccd2..8dd64de4535 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+@@ -63,7 +63,7 @@ interface UpdateContentEvent {
+ export type ToWebviewMessage = {
+ 	'focus': void;
+ 	'message': { message: any; transfer?: ArrayBuffer[] };
+-	'execCommand': string | { command: 'copy' } | { command: 'paste'; clipboard: { text: string; image: Uint8Array }; requestId?: string };
++	'execCommand': string | { command: 'copy' } | { command: 'paste'; clipboard: { text: string; image: Uint8Array; fileUrls?: string[] }; requestId?: string };
+ 	'did-load-resource':
+ 	| { id: number; status: 401 | 404; path: string }
+ 	| { id: number; status: 304; path: string; mime: string; mtime: number | undefined }
+diff --git a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+index c54ef83bdc6..6b49db8c884 100644
+--- a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+@@ -130,12 +130,14 @@ export class ElectronWebviewElement extends WebviewElement {
+ 		}
+ 		try {
+ 			// Loopback frames cannot use their parent webview's clipboard permission.
++			const fileUrls = this.extension?.id.value === 'studio.studio-workstation' && (this.providedViewType === 'studio.project' || this.providedViewType === 'studio.projectTool')
++				? await this._nativeHostService.readClipboardFileUrls() : undefined;
+ 			const [text, image] = await Promise.all([
+ 				this._nativeHostService.readClipboardText(),
+-				this._nativeHostService.readImage()
++				fileUrls === undefined ? this._nativeHostService.readImage() : new Uint8Array()
+ 			]);
+ 			if (this.element === element && this.isFocused && (!requestId || element.ownerDocument.hasFocus())) {
+-				this.execCommand({ command: 'paste', clipboard: { text, image }, requestId });
++				this.execCommand({ command: 'paste', clipboard: { text, image, fileUrls }, requestId });
+ 			}
+ 		} catch {
+ 			if (!requestId && this.element === element && this.isFocused) {
+diff --git a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+index 7f3417b3854..0944395dc72 100644
+--- a/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+@@ -201,6 +201,7 @@ export class TestNativeHostService implements INativeHostService {
+ 	async readImage(): Promise<Uint8Array> { return Uint8Array.from([]); }
+ 	async readClipboardBuffer(format: string): Promise<VSBuffer> { return VSBuffer.wrap(Uint8Array.from([])); }
+ 	async hasClipboard(format: string, type?: 'selection' | 'clipboard' | undefined): Promise<boolean> { return false; }
++	async readClipboardFileUrls(): Promise<string[] | undefined> { return undefined; }
+ 	async windowsGetStringRegKey(hive: 'HKEY_CURRENT_USER' | 'HKEY_LOCAL_MACHINE' | 'HKEY_CLASSES_ROOT' | 'HKEY_USERS' | 'HKEY_CURRENT_CONFIG', path: string, name: string): Promise<string | undefined> { return undefined; }
+ 	async createZipFile(zipPath: URI, files: INativeZipFile[]): Promise<void> { }
+ 	async profileRenderer(): Promise<any> { throw new Error(); }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "c77656c41d304145af6be746c5e4e6715e277aa1",
+  "commit": "0639c47c8333153b402407ac32fe0f71a8e707c9",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -175,6 +175,7 @@
     "0178-studio-shared-account-workspace.patch": "82647e10165b2781ab2125117f6339566fe961d1c90f96aa964891636438381c",
     "0179-studio-launchpad-account-loading.patch": "31fef493347c3ac84fbf08a00e7b2bd66ae72822926c1410fd242e9791760582",
     "0180-studio-project-detail-actions.patch": "251d2a11499b71cec545644417a280679f4b938cf8c15c81e1c3f92c6ea65663",
-    "0181-studio-web-run-tab-reconnect.patch": "7cf812fc6971ab822abf04066aac1eac97bdd3174b0d1f8fbae739a04da329b2"
+    "0181-studio-web-run-tab-reconnect.patch": "7cf812fc6971ab822abf04066aac1eac97bdd3174b0d1f8fbae739a04da329b2",
+    "0182-studio-finder-clipboard-files.patch": "928be2a5131ca9e630edb667a9a6196710e840120c020c1182bef56f76fef407"
   }
 }
