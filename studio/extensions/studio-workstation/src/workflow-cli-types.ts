@@ -43,6 +43,8 @@ export interface BackgroundBotCredentialAccess {
 export interface WebSession {
   ready: WebReady;
   closed: Promise<void>;
+  retired?: Promise<void>;
+  workflowScheduleKey?: string;
   close(): Promise<void>;
   updateAuth(connection?: Connection, ai?: Connection): void;
   connectPlatform?(purpose: 'project' | 'ai' | 'web-app', entryId: string, interactive?: boolean): Promise<void>;
@@ -97,6 +99,7 @@ export interface Launcher {
   isBuiltinProjectDirectory?(directory: string): boolean;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;
+  holdProjectReplacement?(directory: string, signal: AbortSignal): Promise<{ dispose(): void }>;
   start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, options?: { resourceProjects?: string[]; embedded?: boolean; backgroundBotCredentials?: BackgroundBotCredentialAccess }): Promise<WebSession>;
   startLegacyLocalFrame?(origin: URL): Promise<{ port: number; dispose(): void }>;
   cliEntry(projectDir: string): Promise<string>;

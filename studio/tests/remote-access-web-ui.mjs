@@ -10,12 +10,16 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { register } from 'tsx/esm/api';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { ROOT, assertUpstream } from '../scripts/distribution.mjs';
 import { webConfig } from '../scripts/web/config.mjs';
 import { listen } from '../scripts/web/gateway.mjs';
 import { runManagedWeb, webBuiltins } from '../scripts/web/launcher.mjs';
 import { serveLocalWebviewAssets } from './local-webview-assets.mjs';
+
+register();
+const { ProjectProcessManager } = await import('../extensions/studio-workstation/src/workflow-process-client.ts');
 
 const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'sh-web-ui-')));
 const upstream = await assertUpstream(), publicRoot = path.dirname(ROOT), data = path.join(directory, 'server');
@@ -416,8 +420,60 @@ const browserEnvironment = { ...process.env };
 const examples = ['workflow', 'bot', 'kanban'];
 const workflowReady = '#app[data-connection=connected]';
 const subject = 'Browser pairing regression';
-let modelRequests = 0;
-try {
+let modelRequests = 0, pendingModel;
+const reconnectOnly = process.argv.includes('--bot-reconnect-only');
+async function checkBotReconnect(origin, previewOrigin) {
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'en-US' });
+  const gate = Promise.withResolvers();
+  const before = modelRequests;
+  pendingModel = gate.promise;
+  try {
+    if (!liveWebviews) await serveLocalWebviewAssets(context, upstream);
+    const { pair } = await (await post(local, 'manage', { action: 'generate', origin })).json();
+    const home = await context.newPage();
+    await home.goto(origin, { waitUntil: 'domcontentloaded' });
+    await home.getByLabel('Pairing code').fill(pair.code);
+    await home.getByRole('button', { name: 'Confirm pairing' }).click();
+    const library = home.locator('.studio-launchpad');
+    await library.getByRole('tab', { name: 'Library', exact: true }).click({ timeout: 60_000 });
+    await library.locator('.lp-library-loading').waitFor({ state: 'hidden' });
+    await importFolder(home, path.join(directory, 'bot'));
+    const tab = await openTab(home, () => library.locator('.lp-project-details').getByRole('button', { name: 'Run project', exact: true }).click());
+    const failures = [];
+    tab.on('requestfailed', request => { if (request.resourceType() === 'document') failures.push(`${new URL(request.url()).origin}: ${request.failure()?.errorText}`); });
+    const botFrame = (except = '') => until(async () => {
+      for (const frame of tab.frames()) {
+        if (frame.url() !== except && frame.url().startsWith(`${previewOrigin}/p/`) &&
+          await frame.locator('#message').isVisible().catch(() => false)) return frame;
+      }
+    }, 'The paired Bot preview did not connect.', 25_000).catch(async error => {
+      const frames = await Promise.all(tab.frames().map(async frame => ({ origin: new URL(frame.url()).origin,
+        content: (await frame.locator('body').innerText({ timeout: 1000 }).catch(() => '')).slice(-1200) })));
+      throw new Error(`${error.message}\n${JSON.stringify({ frames, failures }, null, 2)}`, { cause: error });
+    });
+    const first = await botFrame();
+    await first.getByText('Paired fixture', { exact: true }).first().waitFor();
+    await first.locator('#new').click();
+    await first.locator('#message').fill('Continue after workbench reload');
+    await first.locator('#message').press('Enter');
+    await first.getByText('Paired Bot response', { exact: true }).waitFor();
+    await first.locator('#app[data-run-state=running]').waitFor();
+    const originalPreview = first.url();
+    await tab.reload({ waitUntil: 'domcontentloaded' });
+    const reattached = await botFrame(originalPreview);
+    await reattached.locator('#app[data-run-state=running]').waitFor();
+    await reattached.locator('.message.user').getByText('Continue after workbench reload', { exact: true }).waitFor();
+    gate.resolve();
+    await reattached.locator('#app[data-run-state=idle]').waitFor();
+    await reattached.getByText('Paired Bot response', { exact: true }).waitFor();
+    assert.equal(modelRequests - before, 1, 'Reload must not submit a second model request.');
+    console.log('[OK] Paired HTTPS reloaded a running Bot, mounted a fresh preview and completed its original stream once.');
+  } finally {
+    gate.resolve(); pendingModel = undefined;
+    await context.close();
+  }
+}
+regression: try {
   // Core persists configurations by project ID under the OS user's home directory.
   const home = path.join(directory, 'home');
   await mkdir(home);
@@ -464,9 +520,10 @@ try {
     for await (const _ of req) { /* Wait for the completed model request. */ }
     modelRequests++;
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    for (const [delta, finish_reason] of [[{ role: 'assistant', content: 'Paired Bot response' }, null], [{}, 'stop']]) {
-      res.write(`data: ${JSON.stringify({ id: 'remote-fixture', choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
-    }
+    const chunk = (delta, finish_reason) => res.write(`data: ${JSON.stringify({ id: 'remote-fixture', choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
+    chunk({ role: 'assistant', content: 'Paired Bot response' }, null);
+    if (pendingModel) await pendingModel;
+    chunk({}, 'stop');
     res.end('data: [DONE]\n\n');
   });
   const modelPort = await listen(model, '127.0.0.1');
@@ -524,11 +581,12 @@ try {
       '--builtin-extensions-dir', await webBuiltins(data, upstream.directory, path.join(ROOT, 'extensions/studio-workstation'))],
   }) }).catch(error => { startupError = error; });
   await until(async () => { if (startupError) throw startupError; return readJson(registryFile).catch(() => undefined); }, 'Studio Web did not start.');
-  browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true,
+  browser = await chromium.launch({ ...(process.env.STUDIO_START_TEST_BROWSER_PATH ? { executablePath: process.env.STUDIO_START_TEST_BROWSER_PATH } : { channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome' }), headless: true,
     env: browserEnvironment,
     proxy: browserProxy ? { server: browserProxy, bypass: '.example.test,localhost,127.0.0.1' } : undefined,
     // The fixture maps the HTTPS workbench and preview origins onto loopback.
     args: [...(liveWebviews ? [] : ['--no-proxy-server', '--disable-features=LocalNetworkAccessChecks']), '--host-resolver-rules=MAP *.example.test 127.0.0.1'] });
+  if (reconnectOnly) { await checkBotReconnect(remote[1], previews[1]); break regression; }
   const localContext = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 900 } });
   await checkPairedBundleCache(browser, local, remote[0]);
   // Local shells and real webview workers must load even if the CDN is unreachable.
@@ -818,6 +876,7 @@ try {
     } finally { await context.close(); }
   }
   if (botFailure) throw botFailure;
+  await checkBotReconnect(remote[1], previews[1]);
 } catch (error) {
   const fixtureError = await readFile(path.join(directory, 'fixture-error.txt'), 'utf8').catch(() => '');
   if (fixtureError) console.error(fixtureError);
@@ -826,6 +885,7 @@ try {
   await browser?.close();
   if (runner && await readJson(registryFile).catch(() => undefined)) await post(local, 'manage', { action: 'stop' }).catch(() => undefined);
   if (runner) await runner;
+  await new ProjectProcessManager(path.join(directory, 'runs'), '').stop(AbortSignal.timeout(12_000));
   await proxy?.close();
   if (model) await close(model);
   await rm(directory, { recursive: true, force: true, maxRetries: 3 });

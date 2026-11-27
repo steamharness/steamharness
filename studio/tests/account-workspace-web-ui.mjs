@@ -11,11 +11,15 @@ import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { register } from 'tsx/esm/api';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { ROOT, assertUpstream } from '../scripts/distribution.mjs';
 import { webConfig } from '../scripts/web/config.mjs';
 import { listen } from '../scripts/web/gateway.mjs';
 import { runManagedWeb, webBuiltins } from '../scripts/web/launcher.mjs';
+
+register();
+const { ProjectProcessManager } = await import('../extensions/studio-workstation/src/workflow-process-client.ts');
 
 const temp = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-account-workspace-ui-')));
 const home = path.join(temp, 'home'), state = path.join(temp, 'web'), project = path.join(temp, 'workflow');
@@ -30,6 +34,7 @@ const until = async (read, message) => {
 };
 const popup = async (page, click) => (await Promise.all([page.waitForEvent('popup'), click()]))[0];
 let origin, browser, desktop, runner, startupError, selectedUser = 'A';
+let managedRuns;
 const logins = new Map(), credentials = new Map();
 const profile = userId => ({ userId, displayName: `Fixture ${userId}`, email: null });
 let serverOrigin;
@@ -81,10 +86,26 @@ try {
   await build({ entryPoints: [path.join(studioExtension, 'src/account-workspace-data-node.ts')], bundle: true, platform: 'node', format: 'esm', outfile: storeFile });
   const { NodeAccountWorkspace } = await import(pathToFileURL(storeFile).href);
   const store = new NodeAccountWorkspace(createHash('sha256').update(JSON.stringify([serverOrigin, 'A'])).digest('hex'));
+  managedRuns = store.runs;
   await cp(path.join(ROOT, 'examples/workflow'), project, { recursive: true, filter: file => !['node_modules', '.data', 'dist'].includes(path.basename(file)) });
   const manifestFile = path.join(project, 'steamharness.json'), manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
   Object.assign(manifest, { id: randomUUID(), name: 'Shared Workflow', projectInfo: { ...manifest.projectInfo, localizedNames: { en: 'Shared Workflow', 'zh-CN': '共享工作流' } } });
   await writeFile(manifestFile, JSON.stringify(manifest));
+  const source = path.join(project, 'index.ts');
+  const started = path.join(temp, 'refresh-started'), released = path.join(temp, 'refresh-released');
+  const originalSource = await readFile(source, 'utf8');
+  const echoBody = 'async run(input, context) { return (await steamharness.runStreamNode(previewNode, input, context)).output!; }';
+  assert.ok(originalSource.includes(echoBody));
+  await writeFile(source, `import { existsSync, appendFileSync } from 'node:fs';\n${originalSource.replace(echoBody, `async run(input, context) {
+    if (input.subject === 'Survives refresh') {
+      appendFileSync(${JSON.stringify(started)}, process.pid + '\\n');
+      while (!existsSync(${JSON.stringify(released)})) {
+        context.abortSignal.throwIfAborted();
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    return (await steamharness.runStreamNode(previewNode, input, context)).output!;
+  }`)}`);
   const dependencies = path.join(project, 'node_modules');
   await mkdir(path.join(dependencies, '@steamharness'), { recursive: true });
   const packageFile = path.join(project, 'package.json'), packageJson = JSON.parse(await readFile(packageFile, 'utf8'));
@@ -155,11 +176,12 @@ try {
   await card(page).click();
   const details = launchpad(page).locator('.lp-project-details');
   const tab = await popup(page, () => details.getByRole('button', { name: 'Run project', exact: true }).click());
-  const frame = await until(async () => {
+  const workflowFrame = () => until(async () => {
     for (const candidate of tab.frames()) {
       if (await candidate.locator('#app[data-connection="connected"] #run-list .session').first().isVisible().catch(() => false)) return candidate;
     }
-  }, 'The Web project did not display the existing desktop Workflow history.');
+  }, 'Studio did not open the Workflow history.');
+  const frame = await workflowFrame();
   await frame.getByRole('heading', { name: 'From desktop' }).waitFor();
   await frame.locator('#new').click();
   const echo = frame.locator('.workflow-entry[data-entrypoint="echo"]');
@@ -174,6 +196,20 @@ try {
   }, 'The desktop runner did not see the completed Web run.');
   assert.equal(runs[1].id, first.id);
   console.log('[OK] Both Studio CLI hosts stayed open and saw completed runs written from Web and desktop.');
+  await frame.locator('#new').click();
+  await echo.locator('input[type="text"]').fill('Survives refresh');
+  await frame.locator('#run').click();
+  await until(() => readFile(started, 'utf8').catch(() => ''), 'The refresh fixture did not start.');
+  const live = await until(async () => (await message('ready'))[0].runs.find(run => run.status === 'running'), 'The live run was not persisted.');
+  await tab.reload({ waitUntil: 'domcontentloaded' });
+  const reopened = await workflowFrame();
+  await reopened.locator('#app[data-run-state="running"]').waitFor({ timeout: 10_000 });
+  assert.equal((await message('ready'))[0].runs.find(run => run.id === live.id)?.status, 'running');
+  await writeFile(released, 'continue');
+  await reopened.getByRole('heading', { name: 'Survives refresh' }).waitFor();
+  await until(async () => (await message('ready'))[0].runs.find(run => run.id === live.id)?.status === 'success', 'The running task did not finish after refresh.');
+  assert.equal((await readFile(started, 'utf8')).trim().split('\n').length, 1, 'Refresh must not start the task a second time.');
+  console.log('[OK] Reloading the workbench reattaches to the same running Workflow; it finishes once.');
   store.inbox({ kind: 'add', notice: { ...notice, id: `${Date.now()}-${randomUUID()}` } });
   const other = await open(); const otherView = await login(other, 'B');
   await otherView.getByRole('tab', { name: 'Notifications', exact: true }).click();
@@ -191,6 +227,7 @@ try {
   }
   if (origin) await fetch(`${origin}/_studio/web/manage`, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'stop' }) }).catch(() => undefined);
   await runner;
+  if (managedRuns) await new ProjectProcessManager(managedRuns, '').stop(AbortSignal.timeout(12_000));
   await close(issuer);
   await rm(temp, { recursive: true, force: true });
 }

@@ -28,6 +28,7 @@ export class RecoverableWebSession implements WebSession {
     return this.exited || this.closing ? undefined : this.current.readModelRequest;
   }
   private watch(session: WebSession) {
+    void session.retired?.then(() => { if (session === this.current) void this.close(); });
     return session.onExit(exit => {
       if (this.closing || session !== this.current) return;
       this.exited = true;

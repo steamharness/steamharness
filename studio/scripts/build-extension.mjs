@@ -41,6 +41,7 @@ export async function buildExtension({ watch = false } = {}) {
   ];
   const worker = { absWorkingDir: directory, bundle: true, platform: 'node', target: 'node22' };
   for (const options of [
+    { ...worker, entryPoints: ['src/workflow-process-service.ts'], format: 'cjs', outfile: 'dist/workflow-process-service.cjs' },
     { ...worker, entryPoints: ['src/project-usage-worker.ts'], format: 'cjs', outfile: 'dist/project-usage-worker.cjs' },
     { ...worker, entryPoints: ['src/bot-management-worker.ts'], format: 'esm', outfile: 'dist/bot-management-worker.mjs',
       banner: { js: "import { createRequire as __workerCreateRequire } from 'node:module'; const require = __workerCreateRequire(import.meta.url);" } },

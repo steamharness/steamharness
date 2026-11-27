@@ -528,7 +528,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     assertNotUpgrading([vscode.Uri.parse(uri).fsPath]);
     upgrading.add(uri);
     ++scanEpoch;
-    const release = new vscode.Disposable(() => { upgrading.delete(uri); scheduleRefresh(); });
+    let processHold: { dispose(): void } | undefined;
+    const release = new vscode.Disposable(() => { processHold?.dispose(); upgrading.delete(uri); scheduleRefresh(); });
     try {
       const inside = (file: vscode.Uri): boolean => file.toString().startsWith(`${uri}/`);
       for (const document of vscode.workspace.notebookDocuments.filter(document => document.isDirty && inside(document.uri))) {
@@ -556,6 +557,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       }
       await Promise.all(pending);
       signal.throwIfAborted();
+      processHold = await launcher.holdProjectReplacement?.(vscode.Uri.parse(uri).fsPath, signal);
       await Promise.all([...settling].filter(([key]) => key.startsWith(`${uri}#entry=`)).map(([, pending]) => pending));
       if (vscode.workspace.textDocuments.some(document => document.isDirty && inside(document.uri))
         || vscode.workspace.notebookDocuments.some(document => document.isDirty && inside(document.uri))) {

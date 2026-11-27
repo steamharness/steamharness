@@ -2,6 +2,7 @@ import { openWebApp, type WebAppSession } from "./web-app-providers";
 import { webAppFailureReason, type WebAppFailureReason } from "./web-app-errors";
 import { t, locale as currentLocale } from './localization';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -16,6 +17,7 @@ import type { StudioUserSettings } from './user-settings';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 import { parseBotCredentialAction, type BotCredentialAction, type BotCredentialResult } from './bot-credential-vault';
 import { botCredentialScopedOperations, botCredentialUseOperations } from './bot-credential-operations';
+import type { ProjectProcessManager } from './workflow-process-client';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
@@ -127,12 +129,25 @@ export async function startProjectCli(options: {
   studioControl?: StudioControlConfiguration;
   userSettings?: StudioUserSettings;
   runtime?: NodeRuntime;
+  managed?: { manager: ProjectProcessManager; key: string; sources: string[]; release: boolean; entries: readonly { entryId: string }[] };
 }): Promise<WebSession> {
-  const { entry } = await resolveProjectCli(options.projectDir);
+  const { entry, version } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
   const authentication = hostAuthentication(undefined, undefined);
-  const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir, ...(options.folderBot ? ['--folder-context'] : [])],
-    { cwd: options.projectDir, env: { ...environment(options.studioControl, options.runtime, options.authRoot), STEAMHARNESS_WEB_HOST: 'studio' }, shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
+  const args = [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir, ...(options.folderBot ? ['--folder-context'] : [])];
+  const env = { ...environment(options.studioControl, options.runtime, options.authRoot), STEAMHARNESS_WEB_HOST: 'studio' };
+  const managed = options.managed;
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  const storage = options.folderBot ? path.join(options.dataDir, 'folder-bots', options.folderBot.id) : options.dataDir;
+  const activityRoots = !managed ? [] : options.assistant ? [path.join(storage, digest(options.assistant.storageScope === 'managed-project'
+    ? `managed-project:${options.expectedProjectId?.toLowerCase()}` : `assistant:${options.expectedProjectId}:${options.assistant.workdir}`).slice(0, 24), 'activity')]
+    : managed.entries.map(item => path.join(storage, ...(managed.release ? ['release'] : []), 'projects', options.expectedProjectId!.toLowerCase(), 'entries', item.entryId, 'activity'));
+  const transport = managed && await managed.manager.launch({ key: digest(JSON.stringify([managed.key, entry, version])), command: options.nodePath,
+    args, env, directory: options.projectDir, entryId: options.entryId, projectId: options.expectedProjectId, sources: managed.sources, activityRoots,
+    controlUnavailable: options.studioControl && t('Open the project in Studio to use Studio Control.') },
+    options.signal ?? new AbortController().signal);
+  const child: ChildProcess | NonNullable<typeof transport> = transport || spawn(options.nodePath, args,
+    { cwd: options.projectDir, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
   const secrets = new Set([options.studioControl?.token, options.workflowScheduleKey].filter((token): token is string => !!token));
   const rememberModels = (settings?: StudioUserSettings) => { for (const model of settings?.agent.models ?? []) if (model.source === 'third-party') secrets.add(model.apiKey); };
@@ -140,6 +155,9 @@ export async function startProjectCli(options: {
   const cleanError = (message: string): string => { for (const token of secrets) { message = message.replaceAll(token, '[redacted]'); } return message; };
   let finishClose!: () => void;
   const closed = new Promise<void>(resolve => { finishClose = resolve; });
+  let retire!: () => void;
+  const retired = transport ? new Promise<void>(resolve => { retire = resolve; }) : undefined;
+  transport?.once('retired', retire);
   let closing = false, finished = false, buffer = '', stderr = '';
   const credentialRequests = new Map<string, AbortController>();
   const cancelCredentials = () => { for (const request of credentialRequests.values()) request.abort(); credentialRequests.clear(); };
@@ -232,10 +250,11 @@ export async function startProjectCli(options: {
             if (options.assistant?.storageScope === 'managed-project' && message.managedProjectStorageVersion !== 1) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
-            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
+            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || (!transport && url.pathname !== `/entries/${options.entryId}/`) || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
-            settle(undefined, message); return;
+            url.pathname = `/entries/${options.entryId}/`;
+            settle(undefined, { ...message, url: url.href }); return;
           } catch (error) { failed(error instanceof Error ? error : new Error(String(error))); return; }
         }
       };
@@ -322,7 +341,7 @@ export async function startProjectCli(options: {
         for (const settle of pendingTrace.values()) settle();
       });
     }
-    return { ready, closed, close,
+    return { ready, closed, close, retired, workflowScheduleKey: transport?.getScheduleKey() ?? options.workflowScheduleKey,
       hostTurn: ready.hostConversationProtocolVersion !== 1 ? undefined : (entryId, input) => new Promise((resolve,reject) => {
         const id = globalThis.crypto.randomUUID(), line = JSON.stringify({ type:'host-turn', requestId:id, entryId, input });
         if (line.length > 256_000 || closing || finished || !child.stdin?.writable) { reject(new Error('Background conversation unavailable.')); return; }

@@ -21,6 +21,10 @@ export class AggregateWebHostPool {
       created.pending = start(undefined, abort.signal).then(async session => {
         if (abort.signal.aborted) { await session.close(); throw abort.signal.reason; }
         const shared = new RecoverableWebSession(session, (port, signal) => start(port, AbortSignal.any([signal, abort.signal])));
+        void shared.closed.then(() => {
+          if (this.hosts.get(key) === created) this.hosts.delete(key);
+          abort.abort();
+        });
         this.started(shared);
         return shared;
       }).catch(error => { if (this.hosts.get(key) === created) this.hosts.delete(key); throw error; });
@@ -52,6 +56,7 @@ export class AggregateWebHostPool {
       })]);
       signal?.throwIfAborted();
       const current = shared;
+      void current.closed.then(release);
       if (!current.ready.project.entries.some(entry => entry.entryId === project.entryId)) throw new Error('Project entry is no longer registered.');
       return {
         get ready() {
