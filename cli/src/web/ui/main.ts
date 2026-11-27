@@ -1257,9 +1257,11 @@ function initialize(): void {
     const conversationUsage = message.status !== 'interrupted' && (message === latest || !!message.id && message.id === latest?.id)
       && state?.project.tokenUsage?.enabled !== false && state?.project.tokenUsage?.display !== false
       ? snapshot?.contexts?.find(context => context.conversationId === (session?.agentConversationId ?? snapshot.conversationId))?.tokenUsage : undefined;
-    view.metadata.textContent = [status, duration, message.model, tokens ? t('Turn usage: {0} tokens', Number(tokens).toLocaleString(locale())) : '',
-      conversationUsage ? t('Conversation usage: {0} tokens', conversationUsage.totalTokens.toLocaleString(locale())) : ''].filter(Boolean).join(' \u00b7 ');
-    view.metadata.title = [view.metadata.textContent, ...(usage ? [
+    view.metadata.textContent = [status, duration, message.model, tokens ? t('Turn total: {0} tokens', Number(tokens).toLocaleString(locale())) : '',
+      conversationUsage ? t('Conversation total: {0} tokens', conversationUsage.totalTokens.toLocaleString(locale())) : ''].filter(Boolean).join(' \u00b7 ');
+    view.metadata.title = [view.metadata.textContent,
+      ...(tokens || conversationUsage ? [t('Totals add up token usage across model calls, including cached input. They do not show current context usage.')] : []),
+      ...(usage ? [
       t('Model calls: {0}', usage.calls ?? 0),
       t('Input: {0} tokens', Number(usage.inputTokens ?? 0).toLocaleString(locale())),
       t('Output: {0} tokens', Number(usage.outputTokens ?? 0).toLocaleString(locale())),

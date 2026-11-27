@@ -167,7 +167,7 @@ it('uses code defaults instead of saved UI preferences, replays folded history, 
   emit(); expect(document.querySelector('#collapse-intermediate')).toBeNull();
   expect(host.setState.mock.lastCall?.[0]).not.toHaveProperty('collapseIntermediate');
   const toggle = document.querySelector<HTMLButtonElement>('.message-header .conversation-process-toggle')!;
-  expect(toggle.previousElementSibling?.textContent).toContain('MiniMax-M3.1-Flash · Turn usage: 1,677,738 tokens');
+  expect(toggle.previousElementSibling?.textContent).toContain('MiniMax-M3.1-Flash · Turn total: 1,677,738 tokens');
   expect(toggle.parentElement?.className).toBe('message-heading');
   const process = document.querySelector<HTMLDetailsElement>('.conversation-process')!; process.open = true;
   emit(); expect(document.querySelector('.conversation-process')).toBe(process); expect(process.open).toBe(true);

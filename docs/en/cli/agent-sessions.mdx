@@ -43,11 +43,11 @@ Durable Agent conversations show a **Subagents** entry beside the spinner with r
 
 The entry updates from task snapshots, remains after the parent reply, and preserves expansion across subsequent replies. Offline snapshots are identified and child navigation stays disabled until reconnection. Studio and standalone CLI Web share this interface; Studio Tasks/Trace retains full task management.
 
-Each subagent row shows elapsed time and token usage on the right, with status in its icon and expanded details. Timing starts at execution, excludes the admission queue and freezes when settled.
+Each subagent row shows elapsed time and token usage on the right, with status in its icon and expanded details. Timing excludes time spent in the queue and stops when the task ends. When disconnected or interrupted, the row shows the last snapshot. Older records without timing show “—”.
 
-Disconnection or interruption freezes the last snapshot; legacy records without reliable timing show “—”. **Bot usage** below the latest response includes all committed usage of the main conversation and its owned subagents and keeps updating during background work, including failed retries and spend before cancellation. Hiding a child does not reduce the total, and reopening does not add it again. Independent forks have separate totals; the answer's own turn usage remains separate.
+**Turn total** adds up token usage from model calls for one reply, including cache reads. When the model is called again after a tool finishes, the same context may be counted again. To see how much room is left, check the ring next to the composer. It estimates how much of the current context window is occupied.
 
-Disabling token-usage display in the project also hides these token statistics.
+**Conversation total** appears beside the latest reply. It includes recorded usage from the conversation and its owned subagents, including failures, retries, and usage before a stop, and continues updating during background work. Hiding or reopening a child conversation does not change the total. Independent forks have separate totals. Turning off token usage display in the project hides the reply totals and subagent usage.
 
 Work in the `needs_review` phase, or with a `MEDIA_RESULT_UNKNOWN` or `BODY_RESULT_UNKNOWN` outcome, shows **Awaiting verification** in its icon and details in a warning color, retaining its reason and unfinished progress. The child conversation shows the same task status and progress above its messages. A finished reply or a saved draft does not establish business completion. Verified work shows as completed, cancellation stays stopped, and independent forks do not inherit the source task banner. Offline status represents the last known snapshot.
 
