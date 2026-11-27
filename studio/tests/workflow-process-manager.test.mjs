@@ -60,7 +60,7 @@ test('a detached project survives a host exit, shares compatible leases, and sto
     });
     const lines = require('node:readline').createInterface({ input: process.stdin });
     lines.once('line', () => server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1,
-      hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion: 1, url: 'http://127.0.0.1:' + server.address().port
+      hostProtocolVersion: 1, localStorageVersion: 2, accountProtocolVersion: 1, entriesProtocolVersion: 1, url: 'http://127.0.0.1:' + server.address().port
       + '/entries/main/#session=' + 'a'.repeat(64), project: { id: ${JSON.stringify(id)}, entries: ${JSON.stringify(entries)} } }))));
     lines.on('line', line => { const msg = JSON.parse(line); if (msg.type === 'auth') auth = msg.connection?.accessToken;
       if (msg.type === 'close') { clearInterval(work); server.close(); lines.close(); process.stdin.pause(); } });`);

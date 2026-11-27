@@ -1,5 +1,6 @@
 import { parseWebAppBindings, type WebAppBinding } from "./web-app-preview";
 import path from 'node:path';
+import { PROJECT_UUID_PATTERN } from '@steamharness/project-manifest';
 import { parseUserSettings, type UserSettings, type PlatformConnections, type BotCredentialUseOperation } from 'steamharness';
 import * as core from 'steamharness';
 import type { WebConnection } from './runtime';
@@ -105,7 +106,8 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
   if (assistant?.storageScope !== undefined && (assistant.storageScope !== 'managed-project'
-    || assistant.standalone !== true || assistant.workdir !== assistantProjectDir || assistant.roots.length !== 1)) {
+    || assistant.standalone !== true || assistant.roots.length !== 1 || !PROJECT_UUID_PATTERN.test(path.basename(assistant.workdir))
+    || !/^[a-f0-9]{24}(?:[\\/]project)?$/.test(path.relative(path.join(assistant.workdir, 'builds'), String(assistantProjectDir))))) {
     throw new Error('Invalid managed project storage scope.');
   }
   const folderBot = configuration.folderBot === undefined ? undefined : parseFolderBot(configuration.folderBot);

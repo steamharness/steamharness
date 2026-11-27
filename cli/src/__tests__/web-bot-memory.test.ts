@@ -59,8 +59,8 @@ it('an assistant resolves each opened root to that root’s original store, with
   const roots = [a, alias].map(folderPath => ({ folderPath, uri: pathToFileURL(folderPath).href, name: path.basename(folderPath) }));
   const host = (workdir: string): WebHostConfiguration => ({ surface: 'assistant', localBotArtifacts: true, assistantProjectDir: directory,
     assistant: { workdir, roots: workdir === a ? roots : roots.slice(1) } });
-  const legacyKey = createHash('sha256').update(`assistant:${id}:${a}`).digest('hex').slice(0, 24);
-  const legacy = createLocalRuntimePersistence({ directory: path.join(dataDir, legacyKey, 'runtime') });
+  const key = createHash('sha256').update(process.platform === 'win32' ? a.toLowerCase() : a).digest('hex');
+  const legacy = createLocalRuntimePersistence({ directory: path.join(dataDir, 'projects', id, 'workspaces', key, 'entries', entryId, 'runtime') });
   const { memory: previous } = await legacy.botMemory!({ projectId: id, entryId }).execute({ action: 'save', ...address, content: 'original A' });
   await legacy.close();
   const assistant = await open(host(a));

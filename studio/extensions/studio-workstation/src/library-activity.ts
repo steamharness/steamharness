@@ -33,7 +33,7 @@ function processAlive(pid: unknown): boolean {
 }
 
 async function entryRunning(root: string, project: string, entry: string, now: number): Promise<boolean> {
-  const directory = path.join(root, project, 'entries', entry, 'activity');
+  const directory = path.join(root, 'entries', entry, 'activity');
   const files = await readdir(directory, { withFileTypes: true }).catch(() => []);
   const runs = new Map<string, { changedAt: number; running: boolean }>();
   for (const file of files) {
@@ -65,7 +65,7 @@ export async function readRunningLibraryProjects(storageDir: string, value: unkn
   const projects: LibraryActivityProject[] = value.filter(row => typeof row?.uri === 'string' && row.uri.startsWith('file:')).slice(0, 500);
   const cache = new Map<string, Promise<boolean>>();
   const isRunning = (root: string, id: string): Promise<boolean> => {
-    const key = path.join(root, id);
+    const key = root;
     let result = cache.get(key);
     if (!result) {
       result = (async () => {
@@ -86,16 +86,16 @@ export async function readRunningLibraryProjects(storageDir: string, value: unkn
         // Managed workspace filenames carry the instance UUID. Its tasks must not light up the template or parent folder.
         const instance = managedInstance(row.uri);
         if (!instance) return;
-        const root = path.join(storageDir, 'folder-bots', instance);
-        for (const scope of [root, path.join(root, 'release')]) {
-          const projectRoot = path.join(scope, 'projects');
-          for (const project of id ? [id] : (await directories(projectRoot)).filter(name => uuid.test(name))) {
-            if (await isRunning(projectRoot, project)) return row.uri;
-          }
+        const projects = path.join(storageDir, 'projects');
+        for (const project of id ? [id] : (await directories(projects)).filter(name => uuid.test(name))) {
+          if (await isRunning(path.join(projects, project, 'instances', instance), project)) return row.uri;
         }
       } else if (id) {
-        const root = row.distribution === 'release' ? path.join(storageDir, 'release', 'projects') : path.join(storageDir, 'projects');
+        const root = path.join(storageDir, 'projects', id);
         if (await isRunning(root, id)) return row.uri;
+        for (const workspace of await directories(path.join(root, 'workspaces'))) {
+          if (/^[a-f0-9]{64}$/.test(workspace) && await isRunning(path.join(root, 'workspaces', workspace), id)) return row.uri;
+        }
       }
       return undefined;
     }));

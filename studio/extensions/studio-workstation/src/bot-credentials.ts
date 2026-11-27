@@ -49,7 +49,7 @@ function showCredentialInput(options: CredentialInputOptions, token: vscode.Canc
   });
 }
 
-export function createBotCredentialInteraction(context: vscode.ExtensionContext, transports = botCredentialTransports) {
+export function createBotCredentialInteraction(context: vscode.ExtensionContext, transports = botCredentialTransports, accountDirectory = () => context.globalStorageUri.fsPath) {
   let opening = false;
   // Memory only, fenced by the Studio CLI host lease and the current vault contents.
   const approvals = new WeakMap<AbortSignal, Map<string, string>>();
@@ -86,7 +86,7 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
           : t('System-protected credential storage is unavailable. No credential was saved.'));
         return 'unavailable';
       }
-      const profile = context.globalStorageUri.fsPath;
+      const profile = accountDirectory();
       const namespaces = await resolveBotCredentialNamespaces(profile, { projectId: project.id, entryId, projectDirectory: project.folderPath,
         instanceId: project.folderBot?.id, workdir: project.folderBot?.directory ?? project.assistant?.workdir });
       const vault = createBotCredentialVault(context.secrets, profile, namespaces, canPersist);

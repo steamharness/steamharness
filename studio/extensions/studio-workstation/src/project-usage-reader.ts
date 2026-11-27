@@ -361,10 +361,9 @@ async function measureRuntime(storage: string, projectId: string, entries: reado
       },
     });
   };
-  const namespace = async (base: string, folderBot: boolean) => {
-    // The CLI keeps source and release writes separate; the project view totals both.
-    for (const root of [base, path.join(base, 'release')]) {
-      const project = path.join(root, 'projects', projectId), parent = path.join(project, 'entries');
+  const unmarked: { directory: string; project: string; entryId: string }[] = [];
+  const namespace = async (project: string, folderBot: boolean) => {
+      const parent = path.join(project, 'entries');
       await visitChildren(storage, parent, deadline, missingScope, async child => {
         if (!isProjectEntryId(child.name)) return;
         const current = declaredEntries.get(child.name);
@@ -378,55 +377,28 @@ async function measureRuntime(storage: string, projectId: string, entries: reado
         if (folderBot && identity && identity.projectType !== 'bot') return;
         const owner = identity ? targetFor(identity.entryId, identity.projectType) : fallback;
         if (owner) await measure(directory, project, owner);
-        else {
-          // The conventional path proves project ownership even if an older writer
-          // left no entry type. Include the bytes without inventing a history count.
-          await scan(directory, deadline, {
-            file(_, info) { total.add(info); locations.add(project); unclassified = true; }, incomplete,
-          });
-        }
+        else unmarked.push({ directory, project, entryId: child.name });
       });
-    }
   };
-  const folderBots = path.join(storage, 'folder-bots');
+  const project = path.join(storage, 'projects', projectId), folderBots = path.join(project, 'instances');
   if (instanceId) await namespace(path.join(folderBots, instanceId.toLowerCase()), true);
   else {
-    await namespace(storage, false);
+    await namespace(project, false);
     await visitChildren(storage, folderBots, deadline, missingScope, async child => {
       if (child.name === child.name.toLowerCase() && PROJECT_UUID_PATTERN.test(child.name) && child.isDirectory()) {
         await namespace(path.join(folderBots, child.name), true);
       }
     });
-    const workdirs: { directory: string; owner?: EntryFiles }[] = [];
-    await visitChildren(storage, storage, deadline, missingScope, async child => {
-      if (!/^[a-f0-9]{24}$/.test(child.name) || !child.isDirectory()) return;
-      const directory = path.join(storage, child.name);
-      let identity: Awaited<ReturnType<typeof storageOwner>>;
-      try { identity = await storageOwner(storage, directory); } catch { incomplete(); return; }
-      if (identity && identity.projectId !== projectId) return;
-      workdirs.push({ directory, owner: identity && targetFor(identity.entryId, identity.projectType) });
+    const workdirs = path.join(project, 'workspaces');
+    await visitChildren(storage, workdirs, deadline, missingScope, async child => {
+      if (/^[a-f0-9]{64}$/.test(child.name) && child.isDirectory()) await namespace(path.join(workdirs, child.name), false);
     });
-    // Index the saved entry identities before reading memories so that a retired
-    // Bot's memory-only workdir can be read regardless of directory order.
-    for (const { directory, owner } of workdirs) {
-      if (performance.now() >= deadline) { missingScope(); break; }
-      if (owner) await measure(directory, directory, owner, true);
-      else if (botStores.size) {
-        // An assistant can write memory for another workspace root without opening a
-        // project there. Only the exact project/entry memory store belongs to this project.
-        const memoryDirectory = path.join(directory, memories);
-        await visitChildren(storage, memoryDirectory, deadline, missingMemory, async child => {
-          const target = botStores.get(baseName(child.name));
-          if (!target) return;
-          try {
-            const file = path.join(memoryDirectory, child.name), info = await beneath(storage, file);
-            if (!info) return;
-            if (!info.isFile()) throw new Error('Invalid memory file');
-            total.add(info); locations.add(directory); rememberMemory(target, file, info, 'scoped');
-          } catch { target.memory.partial = true; incomplete(); }
-        });
-      }
-    }
+  }
+  // Secondary memory-only workspaces can be discovered before a retired Bot's entry marker.
+  for (const { directory, project, entryId } of unmarked) {
+    const owner = targets.get(`${entryId}:bot`);
+    if (owner) await measure(directory, project, owner);
+    else await scan(directory, deadline, { file(_, info) { total.add(info); locations.add(project); unclassified = true; }, incomplete });
   }
   if (discoveryIncomplete) for (const target of targets.values()) unknown(target);
   return { targets, total, unclassified, location: locations.size === 1 ? locations.values().next().value : undefined };

@@ -87,14 +87,15 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
 });
 
 it('only accepts the project-stable assistant scope for a dedicated managed build', () => {
-  const folderPath = path.resolve('managed-build');
+  const home = path.resolve('projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  const folderPath = path.join(home, 'builds', 'a'.repeat(24), 'project');
   const workdir = path.resolve('a-real-workspace');
   const root = (folderPath: string) => ({ uri: `file:///${path.basename(folderPath)}`, folderPath, name: 'Workspace' });
   const host = { type: 'configure', surface: 'assistant', assistantProjectDir: folderPath,
-    assistant: { standalone: true, workdir: folderPath, roots: [root(folderPath)], storageScope: 'managed-project' } };
+    assistant: { standalone: true, workdir: home, roots: [root(home)], storageScope: 'managed-project' } };
   expect(parseHostConfiguration(host).assistant?.storageScope).toBe('managed-project');
   expect(() => parseHostConfiguration({ ...host, assistant: { ...host.assistant, workdir, roots: [root(workdir)] } })).toThrow('Invalid managed project storage scope');
-  expect(() => parseHostConfiguration({ ...host, assistant: { ...host.assistant, roots: [root(folderPath), root(workdir)] } })).toThrow('Invalid managed project storage scope');
+  expect(() => parseHostConfiguration({ ...host, assistant: { ...host.assistant, roots: [root(home), root(workdir)] } })).toThrow('Invalid managed project storage scope');
 });
 
 it('runs assistant skills locally, isolates workspaces and preserves independent AI authentication', async () => {

@@ -152,7 +152,7 @@ describe('steamharness web', () => {
     const imported = await (await post({ type: 'import-drop', entries: [{ name: 'browser/nested.txt', kind: 'file', data: Buffer.from('browser bytes').toString('base64') }, { name: 'browser/empty', kind: 'directory' }], requestId: 'import-drop' })).json();
     const reference = imported.messages.find((message: any) => message.type === 'path-references').references[0];
     expect(reference.source).toBe('workspace-upload');
-    expect(path.dirname(path.dirname(reference.path))).toBe(path.join(await realpath(directory), '.steamharness', 'conversation-uploads'));
+    expect(path.dirname(path.dirname(reference.path))).toBe(path.join(await realpath(testDataDirectory(directory)), 'projects', app.project.id, 'entries/main/files/uploads'));
     expect(await readFile(path.join(reference.path, 'nested.txt'), 'utf8')).toBe('browser bytes');
     const mixed = [...references, reference];
     await post({ type: 'draft', text: 'Compare the directories', attachments: [], references: mixed });
@@ -170,7 +170,7 @@ describe('steamharness web', () => {
     expect(await readFile(path.join(folder, 'source.txt'), 'utf8')).toBe('original bytes');
   });
 
-  it.each(['assistant', 'folder-bot'] as const)('imports into the bound %s workspace rather than its executor project', async surface => {
+  it.each(['assistant', 'folder-bot'] as const)('imports into the %s entry store without writing into the bound folder', async surface => {
     const workdir = await mkdtemp(path.join(os.tmpdir(), 'steamharness-workdir-')); folders.push(workdir);
     const host: WebHostConfiguration = surface === 'assistant' ? { surface: 'assistant', assistantProjectDir: workdir,
       assistant: { workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Workspace' }] } }
@@ -180,7 +180,8 @@ describe('steamharness web', () => {
     expect(response.ok, await response.clone().text()).toBe(true);
     const { messages } = await response.json();
     const reference = messages.find((message: { type: string }) => message.type === 'path-references').references[0];
-    expect(path.dirname(path.dirname(reference.path))).toBe(path.join(await realpath(workdir), '.steamharness', 'conversation-uploads'));
+    expect(reference.path.startsWith(await realpath(testDataDirectory(directory)) + path.sep)).toBe(true);
+    expect(path.dirname(path.dirname(reference.path))).toMatch(/entries[\\/]main[\\/]files[\\/]uploads$/);
     expect(await readFile(path.join(reference.path, 'remote.txt'), 'utf8')).toBe('a');
     await expect(realpath(path.join(directory, '.steamharness', 'conversation-uploads'))).rejects.toMatchObject({ code: 'ENOENT' });
   });

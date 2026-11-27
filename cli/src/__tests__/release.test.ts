@@ -235,7 +235,7 @@ it("rejects release assets that expose source or escape the project", async () =
   await expect(buildProjectRelease(directory)).rejects.toThrow(/Invalid release path/);
 });
 
-it("isolates configuration state between source and release and retains it across rebuilds", async () => {
+it("shares configuration state between source and release and retains it across rebuilds", async () => {
   const { directory, declaration } = await fixture();
   declaration.entries[0] = { ...declaration.entries[0], configuration: "configuration.json" } as any;
   await writeFile(path.join(directory, "steamharness.json"), JSON.stringify(declaration));
@@ -243,19 +243,19 @@ it("isolates configuration state between source and release and retains it acros
   const release = await buildProjectRelease(directory);
   const rootDir = path.join(os.homedir(), "configurations");
   const dataRoot = path.join(os.homedir(), "web");
-  expect(projectDataDirectorySync(dataRoot, release.directory, id, "main")).toBe(path.join(dataRoot, "release/projects", id, "entries/main"));
+  expect(projectDataDirectorySync(dataRoot, release.directory, id, "main")).toBe(path.join(dataRoot, "projects", id, "entries/main"));
   expect(projectDataDirectorySync(dataRoot, directory, id, "main")).toBe(path.join(dataRoot, "projects", id, "entries/main"));
   const source = await createLocalProjectConfigurationStore(directory, { rootDir });
   const compiled = await createLocalProjectConfigurationStore(release.directory, { rootDir });
   const state = await source.read();
   await source.dispatch({ action: "save", revision: state.revision, id: state.activeConfigurationId, values: { label: "development" } });
   const released = await compiled.read();
-  expect(released.configurations[0].values.label).toBeUndefined();
+  expect(released.configurations[0].values.label).toBe('development');
   await compiled.dispatch({ action: "save", revision: released.revision, id: released.activeConfigurationId, values: { label: "release" } });
   await writeFile(path.join(directory, "index.ts"), sourceFileWithComment());
   await buildProjectRelease(directory);
   expect((await compiled.snapshot()).values.label).toBe("release");
-  expect((await source.snapshot()).values.label).toBe("development");
+  expect((await source.snapshot()).values.label).toBe("release");
 });
 function sourceFileWithComment() { return source + "\n// next build\n"; }
 
@@ -326,7 +326,7 @@ it('refuses a missing release manifest instead of treating the distribution as s
 
 it('rejects source-local runtime storage before preparing a release run', async () => {
   const { directory } = await fixture();
-  await expect(runWebCommand([directory, '--release', '--no-open', '--data-dir', path.join(directory, 'runtime')])).rejects.toThrow(/outside the project/);
+  await expect(runWebCommand([directory, '--release', '--no-open', '--data-dir', path.join(directory, 'runtime')])).rejects.toThrow(/Unknown web argument: --data-dir/);
 });
 
 it.each([undefined, '', 'local-draft'])('runs authored ID %s locally and rejects it only when building a release', async id => {

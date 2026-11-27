@@ -2,8 +2,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isProjectEntryId, PROJECT_RELEASE_FILE, PROJECT_UUID_PATTERN } from '@steamharness/project-manifest';
-import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
-import { assistantDataDirectory, folderBotDataRoot, projectDataDirectorySync } from '../../../../cli/src/web/project-data-directory';
+import { localEntryDirectory, localProjectDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import type { BotStorageScope } from '../../../../cli/src/web/bot-management-storage';
 import type { ManagedUsageTarget } from './project-usage-types';
 
@@ -19,7 +18,6 @@ interface TargetOptions {
   assistantId: string;
   isBuiltinProjectDirectory(directory: string): boolean;
   localAssistantDirectory(): Promise<string>;
-  prepareManagedStorage?(options: { storage: string; projectId: string; entryId: string; projectType: 'bot'; signal?: AbortSignal }): Promise<string>;
   resolveManaged?(uri: string): PromiseLike<ManagedUsageTarget | undefined>;
   trusted(directory: string): PromiseLike<boolean>;
 }
@@ -65,12 +63,11 @@ export async function resolveBotStorageTarget(input: TargetInput, options: Targe
   const binding = await readBinding(input, options);
   if (!binding || binding === 'untrusted') return binding;
   const { canonical, directory, instanceId, bot, assistant, release, name } = binding;
-  const root = instanceId === undefined ? options.storage : folderBotDataRoot(options.storage, instanceId);
-  const location = assistant && release && options.prepareManagedStorage
-    ? await options.prepareManagedStorage({ storage: root, ...bot, projectType: 'bot', signal: options.signal })
-    : assistant ? assistantDataDirectory(root, bot.projectId, canonical) : projectDataDirectorySync(root, canonical, bot.projectId, bot.entryId);
+  const root = options.storage;
+  const location = localEntryDirectory(root, bot.projectId, bot.entryId, instanceId ? { instanceId } : undefined);
+  const workdir = localProjectDirectory(root, bot.projectId);
   const directories = directory ? { kind: 'folder-context' as const, primary: directory, roots: [directory] }
-    : assistant ? { kind: 'workspace-roots' as const, primary: canonical, roots: [canonical] } : undefined;
+    : assistant ? { kind: 'workspace-roots' as const, primary: workdir, roots: [workdir] } : undefined;
   return { storage: { root, runtimeDirectory: path.join(location, 'runtime'), bot, directories }, name, instance: instanceId !== undefined,
     async recheck() {
       const current = await readBinding(input, options).catch(() => undefined);

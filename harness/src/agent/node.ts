@@ -756,7 +756,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       interruptSession: !!context.conversation?.conversationId && agentSessionInterrupted(context.conversation.conversationId),
       storage: this.options.storage ?? (durable
         ? persistence?.agentStorage(context.conversation!.conversationId!, key) : undefined),
-      workdir: input.workdir ?? this.options.workdir,
+      workdir: input.workdir || this.options.workdir || (context.metadata?.executionWorkdir as string | undefined),
       provider: input.provider ?? this.options.provider,
       model: input.model ?? this.options.model,
       baseUrl: input.baseUrl ?? this.options.baseUrl,

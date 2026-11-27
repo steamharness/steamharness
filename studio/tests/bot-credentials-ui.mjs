@@ -46,7 +46,7 @@ async function waitFor(read, message) {
 
 async function launch(language, native, structured = native, useEnabled = structured, permissionPolicy = 'workspace', permissionSupport = useEnabled) {
   const data = path.join(root, `data-${language}-${native}-${permissionPolicy}-${permissionSupport}`);
-  const child = spawn(process.execPath, [path.join(workspace, 'cli/dist/index.js'), '--locale', language, 'web', directory, '--data-dir', data, '--entry', entryId, '--host-stdio', '--no-open', '--json'], {
+  const child = spawn(process.execPath, [path.join(workspace, 'cli/dist/index.js'), '--locale', language, 'web', directory, '--entry', entryId, '--host-stdio', '--no-open', '--json'], {
     cwd: directory, env: { ...process.env, HOME: root, USERPROFILE: root, STEAMHARNESS_CLI_AUTH_DIR: path.join(root, 'auth'), STEAMHARNESS_WEB_HOST: 'studio',
       STEAMHARNESS_SERVER_ADMIN_KEY: '', STEAMHARNESS_SERVER_URL: '' }, stdio: ['pipe', 'pipe', 'pipe'],
   });

@@ -9,6 +9,8 @@ Run the installed CLI from the aggregate root using Node.js 24. Install project 
 
 Local runs may omit `steamharness.json.id` and do not require Server registration. Release builds require a valid project UUID in the authored manifest; local execution does not write an ID into source.
 
+The project path selects the code to load. `run`, `json`, `web`, and `mcp` default to the account's project ID directory. Pass `--workdir <directory>` to resolve relative file paths elsewhere. `--data-dir` is no longer supported; the working directory does not change [where history and memory are stored](/en/concepts/data-storage).
+
 ```sh
 pnpm exec steamharness check .
 pnpm exec steamharness check . --entry workflow

@@ -44,7 +44,7 @@ async function fixture(t, { restricted, platform = true, connection = first, ai,
     input.on('line',line=>{const message=JSON.parse(line);messages.push(message);
       if(message.type==='close'){server.close();input.close();process.stdin.pause();}
       if(message.type==='configure')server.listen(Number(args[args.indexOf('--port')+1]||0),'127.0.0.1',()=>console.log(JSON.stringify({
-        type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,userSettingsProtocolVersion:1,
+        type:'ready',protocolVersion:1,localStorageVersion:2,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,userSettingsProtocolVersion:1,
         systemAiConnectionProtocolVersion:${aiProtocol},
         restrictedConfigurationEntries:${JSON.stringify(restricted) ?? 'undefined'},
         url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),

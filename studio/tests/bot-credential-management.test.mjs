@@ -77,7 +77,7 @@ test('the browser vault receives only an authorized prefix and rejects stale acc
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-web-credential-')));
   const subscriptions = [], commands = new Map(), shown = [], dismissed = [];
   t.after(async () => { subscriptions.forEach(value => value.dispose()); delete globalThis.credentialManagementFixture; await rm(root, { recursive: true, force: true }); });
-  let owner = 'owner-a', trusted = true;
+  let owner = 'a'.repeat(64), trusted = true;
   globalThis.credentialManagementFixture = { trusted: true, register: (name, handler) => {
     commands.set(name, handler); return { dispose() { commands.delete(name); } };
   }, command: async (name, ...args) => {
@@ -100,11 +100,11 @@ test('the browser vault receives only an authorized prefix and rejects stale acc
   trusted = false;
   assert.equal(await authorize(), undefined);
   trusted = true;
-  owner = 'owner-b';
+  owner = 'b'.repeat(64);
   assert.equal(await authorize(), undefined);
   await open(target, owner, new AbortController().signal);
   assert.notEqual(await authorize(shown.at(-1)[0]), first);
-  owner = 'owner-a';
+  owner = 'a'.repeat(64);
   await open(target, owner, controller.signal);
   const current = shown.at(-1)[0];
   assert.equal(await authorize(current), first);

@@ -16,8 +16,8 @@ export async function resolveDroppedPaths(value: unknown): Promise<PathReference
   }));
 }
 
-/** Import browser files as project-local copies, outside source publishing and release builds. */
-export async function importDroppedEntries(workdir: string, value: unknown): Promise<PathReference[]> {
+/** Browser copies belong to this entry, not the source tree or a user-selected workdir. */
+export async function importDroppedEntries(entryDirectory: string, value: unknown): Promise<PathReference[]> {
   if (!Array.isArray(value) || !value.length || value.length > 1000) throw new Error(t("Invalid dropped files."));
   let size = 0;
   const keyFor = (name: string) => name.normalize('NFC').toLowerCase();
@@ -55,8 +55,8 @@ export async function importDroppedEntries(workdir: string, value: unknown): Pro
   }
   if (top.size > 32) throw new Error(t("Too many path references."));
   // Neither a project-supplied symlink nor a browser filename can redirect the write.
-  let root = await realpath(workdir);
-  for (const segment of ['.steamharness', 'conversation-uploads']) {
+  let root = await realpath(entryDirectory);
+  for (const segment of ['files', 'uploads']) {
     root = path.join(root, segment);
     try { await mkdir(root, { mode: 0o700 }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }

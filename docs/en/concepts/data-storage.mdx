@@ -5,14 +5,18 @@ description: "Where runtime history, build artifacts, and project files are stor
 
 # Runtime and file storage
 
-CLI Web and Studio save conversations, runs, queues, usage, and Agent state locally by default. These records do not live in project source or `dist/`. Local runs do not require a Server login.
+Local projects store their data in `~/.steamharness/accounts/<account-key>/projects/<project-id>/`. Studio, Studio Web, the CLI, and the SDK use the same layout under the same OS user. The Server address and user ID identify the account. Without a project account, runs use `local`; connecting only to system AI does not select an account. Studio Web reads files on its host, not on the computer running the browser.
+
+The project ID directory is also the default working directory. Scripts and plans written there survive a rebuild or a switch between development and release clients. An explicit working directory or folder Bot binding changes where code runs, not where its history and memory live. Existing source trees stay in place. The new layout does not import old records.
 
 When source has no valid UUID, the host derives a stable local storage key from its canonical project directory without changing the manifest. Different directories keep separate records, and reopening the same directory reuses its history. Release builds still validate the authored project UUID.
 
 | Content | Location |
 | --- | --- |
-| Standalone SDK history | `~/.steamharness/runtime/<projectId>/<entryId>/` by default |
-| CLI Web history | An external directory selected with `--data-dir` |
+| Runs, conversations, memory, and attachments | `entries/<entry-id>/` under the project directory |
+| Folder Bot instances and workspace-bound assistants | Per entry under `instances/<instance-id>/` and `workspaces/<directory-key>/`, respectively |
+| Built-in program copies managed by Studio | `builds/` under the project directory; not a working directory |
+| Editor settings and extensions; host-specific data | `~/.steamharness/studio/` and `~/.steamharness/hosts/`, respectively |
 | Server runtime storage | Stored by Server after an explicit choice, subject to account and project access |
 | Managed project files | Uploaded to Server and read under project membership |
 | Configuration attachments | Read under the project, entry, and configuration version |

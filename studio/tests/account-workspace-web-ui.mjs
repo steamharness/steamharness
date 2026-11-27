@@ -118,7 +118,7 @@ try {
   store.updateHistory(history => ({ ...history, recent: [{ uri: pathToFileURL(project).href, label: 'Shared Workflow', kind: 'folder', lastOpened: Date.now() }] }));
   const notice = { id: `${Date.now()}-${randomUUID()}`, title: 'Desktop run receipt', read: false };
   store.inbox({ kind: 'add', notice });
-  desktop = spawn(process.execPath, [path.join(root, 'cli/dist/index.js'), 'web', project, '--entry', 'main', '--data-dir', store.runs, '--no-open', '--host-stdio', '--json'],
+  desktop = spawn(process.execPath, [path.join(root, 'cli/dist/index.js'), 'web', project, '--entry', 'main', '--host-account', store.owner, '--no-open', '--host-stdio', '--json'],
     { env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(temp, 'cli-auth'), STEAMHARNESS_WEB_HOST: 'studio' }, stdio: ['pipe', 'pipe', 'inherit'] });
   desktop.stdin.write(`${JSON.stringify({ type: 'configure', surface: 'editor', platform: true })}\n`);
   const cli = createInterface({ input: desktop.stdout });
@@ -138,7 +138,7 @@ try {
   const first = await until(async () => (await message('ready'))[0].runs.find(run => run.status === 'success'), 'Desktop Workflow did not persist its output.');
   const listener = http.createServer(), port = await listen(listener, '127.0.0.1'); await close(listener);
   origin = `http://127.0.0.1:${port}`;
-  runner = runManagedWeb({ directory: state, storage: path.join(temp, 'signed-out-runs'), config: await webConfig({}, port),
+  runner = runManagedWeb({ directory: state, config: await webConfig({}, port),
     prepare: async () => ({ upstream: kernel, bundleClient: true, args: ['--server-data-dir', state, '--extensions-dir', path.join(temp, 'extensions'),
       '--disable-workspace-trust', '--telemetry-level', 'off', '--builtin-extensions-dir', await webBuiltins(state, kernel, studioExtension)] }) })
     .catch(error => { startupError = error; });

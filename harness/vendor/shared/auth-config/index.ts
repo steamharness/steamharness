@@ -22,6 +22,7 @@ export interface AuthEnvLike {
   XDG_CONFIG_HOME?: string;
   APPDATA?: string;
   HOME?: string;
+  USERPROFILE?: string;
   platform?: string;
 }
 
@@ -103,21 +104,7 @@ export function resolveProjectCliAuthDir(
     return normalizePath(env.STEAMHARNESS_CLI_AUTH_DIR!);
   }
 
-  if (readPlatform(env) === DEFAULT_WINDOWS_PLATFORM) {
-    return joinPath(
-      env.APPDATA ?? joinPath(resolveHomeDir(env), "AppData", "Roaming"),
-      "steamharness",
-    );
-  }
-
-  if (readPlatform(env) === DEFAULT_MAC_PLATFORM) {
-    return joinPath(resolveHomeDir(env), "Library", "Application Support", "steamharness");
-  }
-
-  return joinPath(
-    env.XDG_CONFIG_HOME ?? joinPath(resolveHomeDir(env), ".config"),
-    "steamharness",
-  );
+  return joinPath(resolveHomeDir(env), '.steamharness', 'studio', 'cli-auth');
 }
 
 export function resolveProjectCliAuthFilePath(
@@ -133,21 +120,7 @@ export function resolveProjectDesktopConfigDir(
     return normalizePath(env.STEAMHARNESS_DESKTOP_CONFIG_DIR!);
   }
 
-  if (readPlatform(env) === DEFAULT_WINDOWS_PLATFORM) {
-    return joinPath(
-      env.APPDATA ?? joinPath(resolveHomeDir(env), "AppData", "Roaming"),
-      "steamharness",
-    );
-  }
-
-  if (readPlatform(env) === DEFAULT_MAC_PLATFORM) {
-    return joinPath(resolveHomeDir(env), "Library", "Application Support", "steamharness");
-  }
-
-  return joinPath(
-    env.XDG_CONFIG_HOME ?? joinPath(resolveHomeDir(env), ".config"),
-    "steamharness",
-  );
+  return joinPath(resolveHomeDir(env), '.steamharness', 'studio');
 }
 
 export function resolveProjectDesktopConfigFilePath(
@@ -157,7 +130,9 @@ export function resolveProjectDesktopConfigFilePath(
 }
 
 function resolveHomeDir(env: AuthEnvLike): string {
-  return env.HOME ?? "";
+  const home = readPlatform(env) === 'win32' ? env.USERPROFILE ?? env.HOME : env.HOME;
+  if (!home) throw new Error('The user home directory is unavailable.');
+  return home;
 }
 
 function readPlatform(env: AuthEnvLike): string {

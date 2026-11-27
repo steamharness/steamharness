@@ -1,17 +1,17 @@
 import { isDefinedBot } from "../agent/bot";
 import { readBotCredentialUsePolicy } from "../agent/bot-credential";
 import { folderPermissionCeiling, folderProfile, validateFolderBotProfile, validateLocalFolderContext, type LocalFolderHostContext } from "./folder-context";
-import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-manifest/node";
+import { localEntryDirectory, localProjectDirectory, localRuntimeAccountDirectory, prepareLocalDirectory, readProjectDeclarationFromDirectorySync } from "@steamharness/project-manifest/node";
 import { readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { randomUUID } from "node:crypto";
 import { createRuntimeStateStorage } from "../runtime-storage/state";
+import { isolatedLocalRun } from './local-run-process';
 import { LEGACY_BOT_CREDENTIAL_KINDS, parseBotCredentialCaptureReceipt, parseBotCredentialSlot, type BotCredentialKind } from "../types/bot-credential";
 import { parseBotCredentialUse, parseBotCredentialUseResult } from "../types/bot-credential-use";
 import { getUserSettings } from "../user-settings";
 import type { RuntimePersistence } from "../runtime-storage/history";
 import type { RuntimeWorkspaceInput } from "../runtime-storage/contract";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -172,6 +172,10 @@ export interface RunWorkspaceProjectOptions {
 }
 
 export interface RunLocalProjectOptions {
+  /** Host-owned read scope for browser attachment copies; never sourced from model input. */
+  uploadDirectory?: string;
+  /** Working directory for a standalone run; does not select the source or storage directory. */
+  workdir?: string;
   /** Trusted host input for one opted-in Bot entry. Never supplied by conversation parameters. */
   folderContext?: LocalFolderHostContext;
   /** Optional diagnostic identity supplied by the trusted launcher. */
@@ -407,6 +411,7 @@ async function runWorkspaceProjectWithReportInternal(
       }),
       timers: runtime.timers,
       files: createExecutorFileStore({
+        projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
         projectName: options.projectName,
         conversationId: conversation.conversationId,
         fileStore: options.fileStore,
@@ -421,6 +426,7 @@ async function runWorkspaceProjectWithReportInternal(
         projectId: projectStorageDeclaration.projectId,
         entryId: projectStorageDeclaration.entryId,
         entryRootDir: projectStorageDeclaration.rootDir,
+        executionWorkdir: process.env.STEAMHARNESS_PROJECT_WORKDIR ?? prepareLocalDirectory(localProjectDirectory(localRuntimeAccountDirectory(), projectStorageDeclaration.projectId)),
         runtimePersistence: runtimeState.persistence,
         ...(selected.entrypointId === undefined
           ? {}
@@ -619,6 +625,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       }),
       timers: runtime.timers,
       files: createExecutorFileStore({
+        projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
         projectName: options.projectName,
         conversationId: conversation.conversationId,
         fileStore: options.fileStore,
@@ -634,6 +641,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
         projectId: projectStorageDeclaration.projectId,
         entryId: projectStorageDeclaration.entryId,
         entryRootDir: projectStorageDeclaration.rootDir,
+        executionWorkdir: process.env.STEAMHARNESS_PROJECT_WORKDIR ?? prepareLocalDirectory(localProjectDirectory(localRuntimeAccountDirectory(), projectStorageDeclaration.projectId)),
         runtimePersistence: runtimeState.persistence,
         ...(selected.entrypointId === undefined
           ? {}
@@ -1023,6 +1031,7 @@ async function runLocalProjectWithReportInternal(
       }),
       timers,
       files: createExecutorFileStore({
+        projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
         projectName,
         conversationId: conversation.conversationId,
         fileStore: options.fileStore,
@@ -1038,6 +1047,7 @@ async function runLocalProjectWithReportInternal(
         projectId: projectStorageDeclaration.projectId,
         entryId: projectStorageDeclaration.entryId,
         entryRootDir: projectStorageDeclaration.rootDir,
+        executionWorkdir: options.folderContext?.directory ?? options.workdir ?? process.env.STEAMHARNESS_PROJECT_WORKDIR ?? prepareLocalDirectory(localProjectDirectory(localRuntimeAccountDirectory(), projectStorageDeclaration.projectId)),
         runtimePersistence: runtimeState.persistence,
         ...(selected.entrypointId === undefined
           ? {}
@@ -2430,6 +2440,8 @@ function formatProjectStructureError(
 }
 
 function createExecutorFileStore(options: {
+  projectId: string;
+  entryId: string;
   projectName: string;
   conversationId?: string;
   fileStore?: FileStore;
@@ -2443,7 +2455,7 @@ function createExecutorFileStore(options: {
   }
 
   const createStore = createLocalProjectFileCreator({
-    rootDir: options.fileCreateStoreDir?.trim() || options.fileStoreDir?.trim() || path.join(os.homedir(), '.steamharness', 'workflow-created-files'),
+    rootDir: options.fileCreateStoreDir?.trim() || options.fileStoreDir?.trim() || path.join(localEntryDirectory(localRuntimeAccountDirectory(), options.projectId, options.entryId), 'files'),
     projectName: options.projectName,
     conversationId: options.conversationId,
   });
@@ -2533,6 +2545,8 @@ export async function debugWorkspaceProjectNodeWithReport(options: Parameters<ty
 
 export async function runLocalProjectWithReport(options: RunLocalProjectOptions = {}): ReturnType<typeof runLocalProjectWithReportInternal> {
   const declaration = readProjectStorageDeclaration(resolveLocalProjectDir(options.projectDir), options.entryId, options.env);
+  const isolated = isolatedLocalRun(options, declaration.projectDir, declaration.projectId);
+  if (isolated) return isolated;
   const identity = { projectId: declaration.projectId, entryId: declaration.entryId };
   const runId = options.runId ?? createProjectRunId();
   const snapshot = await (await createLocalProjectConfigurationStore(declaration.projectDir, { entryId: declaration.entryId })).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });

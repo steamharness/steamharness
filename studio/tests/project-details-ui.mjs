@@ -24,7 +24,7 @@ async function stopCli() {
 
 async function startCli(language) {
   cli = spawn(process.execPath, [process.env.STEAMHARNESS_UI_CLI_ENTRY ?? path.join(repo, 'cli/dist/index.js'), '--locale', language, 'web', project,
-    '--no-open', '--json', '--data-dir', path.join(workspace, language)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    '--no-open', '--json'], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: path.join(workspace, language), USERPROFILE: path.join(workspace, language) } });
   let stderr = '';
   cli.stderr.setEncoding('utf8').on('data', data => { stderr += data; });
   return new Promise((resolve, reject) => {

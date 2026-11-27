@@ -31,7 +31,8 @@ import {
 import { readBundledProjectRuntime } from "@steamharness/runtime-compatibility/node";
 import { prepareCliInvocation } from "./locale";
 import { CLI_VERSION } from "./version";
-import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from './online';
+import { formatOnlineHelp, parseOnlineOptions, resolveOnlineAccountKey, resolveOnlineConnections } from './online';
+import { localRuntimeAccountDirectory, localEntryDirectory, localProjectDirectory, prepareLocalDirectory, resolveProjectDeclarationEntrySync } from '@steamharness/project-manifest/node';
 
 type SteamHarnessCommand = "run" | "json" | "structure" | "check" | "resolve-params" | "help";
 
@@ -80,30 +81,45 @@ export async function main(
   if (parsed.release) parsed.projectDir = (await prepareReleaseRun(parsed.projectDir, { signal: abortController.signal, progress: message => process.stderr.write(message + "\n") })).directory;
   await assertLocalCliCoreCompatible(parsed.projectDir, undefined, { signal: abortController.signal });
   const platform = await resolveOnlineConnections(runtimeOptions.online);
-  const report = await withPlatformConnections(platform, () => runLocalProjectWithReport({
-    runtimeHost: { kind: "cli", cliVersion: CLI_VERSION },
-    projectDir: parsed.projectDir,
-    entryId: parsed.entryId,
-    entrypointId: parsed.entrypointId,
-    args: parsed.args,
-    runId: parsed.runId,
-    conversationId: parsed.conversationId,
-    fileStoreDir: parsed.fileStoreDir ?? process.env.STEAMHARNESS_FILE_STORE_DIR,
-    userInput: createCliUserInputContext(parsed.resolvedUserInputs),
-    toolPermissionPolicies: parsed.toolPermissionPolicies,
-    fileCreateStoreDir: process.env.STEAMHARNESS_FILE_CREATE_STORE_DIR,
-    nodeHooks: parsed.json ? undefined : createCliOutputStreamHooks(),
-    onRuntimeEvent: parsed.json ? createDesktopRuntimeEventEmitter() : undefined,
-    abortSignal: abortController.signal,
-  }));
+  const previous = process.cwd(), previousWorkdir = process.env.STEAMHARNESS_PROJECT_WORKDIR, previousAccount = process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY;
+  const target = resolveProjectDeclarationEntrySync(parsed.projectDir, parsed.entryId);
+  if (platform.project) process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY = await resolveOnlineAccountKey(platform.project);
+  try {
+    const account = localRuntimeAccountDirectory();
+    const home = prepareLocalDirectory(localProjectDirectory(account, target.manifest.projectId));
+    const files = path.join(localEntryDirectory(account, target.manifest.projectId, target.registration.entryId), 'files');
+    // This executable owns its process; project loading still uses parsed.projectDir.
+    process.chdir(parsed.workdir ?? home);
+    process.env.STEAMHARNESS_PROJECT_WORKDIR = process.cwd();
+    const report = await withPlatformConnections(platform, () => runLocalProjectWithReport({
+      runtimeHost: { kind: "cli", cliVersion: CLI_VERSION },
+      projectDir: parsed.projectDir,
+      entryId: parsed.entryId,
+      entrypointId: parsed.entrypointId,
+      args: parsed.args,
+      runId: parsed.runId,
+      conversationId: parsed.conversationId,
+      fileStoreDir: files,
+      userInput: createCliUserInputContext(parsed.resolvedUserInputs),
+      toolPermissionPolicies: parsed.toolPermissionPolicies,
+      fileCreateStoreDir: files,
+      nodeHooks: parsed.json ? undefined : createCliOutputStreamHooks(),
+      onRuntimeEvent: parsed.json ? createDesktopRuntimeEventEmitter() : undefined,
+      abortSignal: abortController.signal,
+    }));
 
-  if (parsed.json) {
-    console.log(formatProjectExecutionJson(report));
-  } else if (report.status === "failed") {
-    console.error(formatProjectExecutionJson(report));
+    if (parsed.json) {
+      console.log(formatProjectExecutionJson(report));
+    } else if (report.status === "failed") {
+      console.error(formatProjectExecutionJson(report));
+    }
+
+    return getReportExitCode(report);
+  } finally {
+    process.chdir(previous);
+    if (previousWorkdir === undefined) delete process.env.STEAMHARNESS_PROJECT_WORKDIR; else process.env.STEAMHARNESS_PROJECT_WORKDIR = previousWorkdir;
+    if (previousAccount === undefined) delete process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY; else process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY = previousAccount;
   }
-
-  return getReportExitCode(report);
 }
 
 function createProcessAbortController(): AbortController {
@@ -192,6 +208,7 @@ export function parseProjectArgs(
   entrypointId?: string;
   conversationId?: string;
   fileStoreDir?: string;
+  workdir?: string;
   resolvedUserInputs: UserInputResolved[];
   toolPermissionPolicies?: ToolPermissionPolicyMap;
 } {
@@ -202,6 +219,7 @@ export function parseProjectArgs(
   let entrypointId: string | undefined;
   let conversationId: string | undefined;
   let fileStoreDir: string | undefined;
+  let workdir: string | undefined;
   let resolvedUserInputs: UserInputResolved[] = [];
   let toolPermissionPolicies: ToolPermissionPolicyMap | undefined;
   const filteredArgv: string[] = [];
@@ -236,10 +254,8 @@ export function parseProjectArgs(
       continue;
     }
 
-    if (arg === "--file-store-dir") {
-      fileStoreDir = readProjectArgValue(argv, ++index, "--file-store-dir");
-      continue;
-    }
+    if (arg === '--workdir') { workdir = path.resolve(readProjectArgValue(argv, ++index, '--workdir')); continue; }
+    if (arg === '--data-dir' || arg === '--file-store-dir' || arg === '--file-create-store-dir') throw new Error('Local data is stored under ~/.steamharness/accounts.');
 
     if (arg === "--entry") { entryId = readProjectArgValue(argv, ++index, "--entry"); continue; }
     if (arg?.startsWith("--related")) throw new Error(`Unknown option: ${arg}`);
@@ -279,6 +295,7 @@ export function parseProjectArgs(
       entrypointId,
       conversationId,
       fileStoreDir,
+      workdir,
       resolvedUserInputs,
       toolPermissionPolicies,
       entryId,
@@ -294,6 +311,7 @@ export function parseProjectArgs(
     entrypointId,
     conversationId,
     fileStoreDir,
+    workdir,
     resolvedUserInputs,
     toolPermissionPolicies,
     entryId,

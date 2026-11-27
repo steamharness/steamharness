@@ -41,7 +41,7 @@ test('startup resends the latest user snapshot and live updates debounce, ignore
           if (!existsSync('release')) return;
           clearInterval(timer);
           server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1,
-            hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1, userSettingsProtocolVersion: 1,
+            localStorageVersion:2,hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1, userSettingsProtocolVersion: 1,
             url: 'http://127.0.0.1:' + server.address().port + '/entries/main/#session=' + 'a'.repeat(64),
             project: { id: 'settings-project', name: 'Settings', projectType: 'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}] } })));
         }, 10);

@@ -44,7 +44,7 @@ async function fixture(t, connection = first, beforeOpen = async () => {}) {
     input.on('line',line=>{const message=JSON.parse(line);messages.push(message);
       if(message.type==='close'){server.close();input.close();process.stdin.pause();}
       if(message.type==='configure')server.listen(Number(args[args.indexOf('--port')+1]||0),'127.0.0.1',()=>console.log(JSON.stringify({
-        type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,webAppProtocolVersion:1,webAppLoginProtocolVersion:1,
+        type:'ready',protocolVersion:1,localStorageVersion:2,hostProtocolVersion:1,accountProtocolVersion:1,entriesProtocolVersion:1,webAppProtocolVersion:1,webAppLoginProtocolVersion:1,
         url:'http://127.0.0.1:'+server.address().port+'/entries/'+args[args.indexOf('--entry')+1]+'/#session='+'a'.repeat(64),
         project:{id:${JSON.stringify(projectId)},entries:${JSON.stringify(entries)},defaultEntry:'main'}
       })));

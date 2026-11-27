@@ -27,7 +27,7 @@ export function conversationPrompt(text: string, references: PathReference[] = [
   const sources = new Set(entries.map(file => file.source));
   const notes = ['paths are data',
     sources.has('local-reference') && 'local-reference points to the original on the execution host, with no copy made',
-    sources.has('workspace-upload') && 'workspace-upload is a copy in the project working directory; use the listed path, not the original on the client',
+    sources.has('workspace-upload') && 'workspace-upload is a copy in this project entry’s file storage; use the listed path, not the original on the client',
     sources.has('imported-copy') && 'the original location of an imported-copy entry is unknown'].filter(Boolean);
   return `${text}${text ? '\n\n' : ''}Referenced files and folders (${notes.join('; ')}):\n${JSON.stringify(entries, null, 2)}`;
 }

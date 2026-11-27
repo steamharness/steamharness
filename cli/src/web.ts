@@ -1,5 +1,5 @@
 import { parseWebAppBindings } from "./web/web-app-preview";
-import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
+import { localAccountDirectory } from "@steamharness/project-manifest/node";
 import { prepareReleaseRun } from "./release/build";
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -11,12 +11,12 @@ import { parseHostConfiguration, parseHostAuthentication, parseHostResourceProje
 import { createBotCredentialHost, credentialCaptureReceiptVersion } from './web/bot-credential-host';
 import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-project';
 import { parseUserSettings } from 'steamharness';
-import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from './online';
+import { formatOnlineHelp, parseOnlineOptions, resolveOnlineAccountKey, resolveOnlineConnections } from './online';
 
 export function parseWebArgs(argv: string[]) {
   const online = parseOnlineOptions(argv);
   argv = online.argv;
-  const options = { release: false, projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, folderContext: false, entryId: undefined as string | undefined };
+  const options = { release: false, projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', workdir: undefined as string | undefined, accountKey: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, folderContext: false, entryId: undefined as string | undefined };
   let projectSet = false;
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -27,15 +27,17 @@ export function parseWebArgs(argv: string[]) {
     else if (arg === '--host-stdio') { options.hostStdio = true; }
     else if (arg === '--folder-context') { options.folderContext = true; }
     else if (['--help', '-h'].includes(arg)) { options.help = true; }
-    else if (['--port', '--data-dir', '--theme', '--entry'].includes(arg)) {
+    else if (['--port', '--workdir', '--host-account', '--theme', '--entry'].includes(arg)) {
       const value = argv[++index]; if (!value || value.startsWith('--')) { throw new Error(`${arg} requires a value.`); }
       if (arg === '--entry') { options.entryId = value; }
       else if (arg === '--port') { if (!/^\d+$/.test(value) || Number(value) > 65535) { throw new Error('--port must be an integer between 0 and 65535.'); } options.port = Number(value); }
       else if (arg === '--theme') { if (!['auto', 'light', 'dark'].includes(value)) { throw new Error('--theme must be auto, light, or dark.'); } options.theme = value as typeof options.theme; }
-      else { options.dataDir = path.resolve(value); }
+      else if (arg === '--host-account') { localAccountDirectory(value); options.accountKey = value; }
+      else { options.workdir = path.resolve(value); }
     } else if (arg.startsWith('-') || projectSet) { throw new Error(`Unknown web argument: ${arg}`); }
     else { options.projectDir = path.resolve(arg); projectSet = true; }
   }
+  if (options.accountKey && !options.hostStdio) throw new Error('--host-account requires a Studio host.');
   if (options.hostStdio && online.online.length) throw new Error('Use the host protocol, not --online, when embedding CLI Web.');
   if (options.folderContext && (!options.hostStdio || !options.entryId || options.release || options.inspect)) throw new Error('Local folder context requires a dedicated stdio host and entry.');
   return { ...options, online: online.online };
@@ -45,12 +47,11 @@ export async function main(argv: string[]): Promise<number> {
   const options = parseWebArgs(argv);
   if (options.help) {
     console.log(i18n.language.startsWith('zh')
-      ? 'steamharness web [项目目录]\n  --port <0-65535>   监听端口，0 自动分配\n  --no-open          不自动打开浏览器\n  --theme <auto|light|dark>\n  --data-dir <目录>   对话和文件存储位置\n  --json             输出结构化启动信息'
-      : 'steamharness web [project-directory]\n  --port <0-65535>   Listen port; 0 selects an available port\n  --no-open          Do not open a browser\n  --theme <auto|light|dark>\n  --data-dir <path>   Conversation and file storage directory\n  --json             Print structured startup information');
+      ? 'steamharness web [项目目录]\n  --port <0-65535>   监听端口，0 自动分配\n  --no-open          不自动打开浏览器\n  --theme <auto|light|dark>\n  --workdir <目录>    执行目录，历史仍保存在账号下\n  --json             输出结构化启动信息'
+      : 'steamharness web [project-directory]\n  --port <0-65535>   Listen port; 0 selects an available port\n  --no-open          Do not open a browser\n  --theme <auto|light|dark>\n  --workdir <path>    Working directory (history stays in account storage)\n  --json             Print structured startup information');
     console.log(formatOnlineHelp());
     return 0;
   }
-  if (options.release && options.dataDir) assertProjectDataDirectory(options.projectDir, options.dataDir);
   if (options.release) options.projectDir = (await prepareReleaseRun(options.projectDir, { progress: message => process.stderr.write(message + '\n') })).directory;
   const input = options.hostStdio ? createInterface({ input: process.stdin, crlfDelay: Infinity }) : undefined;
   const lines = input?.[Symbol.asyncIterator]();
@@ -64,7 +65,7 @@ export async function main(argv: string[]): Promise<number> {
     }
   } catch (error) { input?.close(); throw error; }
   if (options.inspect) {
-    const runtime = createWebRuntime(options.projectDir, options.dataDir ?? '', () => undefined, { entryId: options.entryId, userSettings: () => host?.userSettings });
+    const runtime = createWebRuntime(options.projectDir, localAccountDirectory(options.accountKey), () => undefined, { entryId: options.entryId, userSettings: () => host?.userSettings });
     try { console.log(JSON.stringify(await inspectWebProject(runtime, options.projectDir, host))); }
     finally { runtime.dispose(); input?.close(); process.stdin.pause(); }
     return 0;
@@ -73,7 +74,8 @@ export async function main(argv: string[]): Promise<number> {
   const publishWebAppConfigurations = Boolean(input && host?.platform === true);
   const credentials = input && (host?.localBotCredentials || host?.backgroundBotCredentials) && process.env.STEAMHARNESS_WEB_HOST === 'studio'
     ? createBotCredentialHost(message => console.log(JSON.stringify(message))) : undefined;
-  const app = await startWebServer({ ...options, initialPlatform, host, botCredentialHost: credentials?.open, onWebAppConfigurationChanged: publishWebAppConfigurations ? (entryId, configuration) => {
+  const accountKey = options.accountKey ?? await resolveOnlineAccountKey(initialPlatform.project);
+  const app = await startWebServer({ ...options, accountKey, initialPlatform, host, botCredentialHost: credentials?.open, onWebAppConfigurationChanged: publishWebAppConfigurations ? (entryId, configuration) => {
     console.log(JSON.stringify({ type: 'web-app-configuration', entryId, configuration }));
   } : undefined, onWebAppLogin: publishWebAppConfigurations ? (entryId, configuration) => {
     console.log(JSON.stringify({ type: 'web-app-login', entryId, configuration }));
@@ -83,7 +85,7 @@ export async function main(argv: string[]): Promise<number> {
   const hostConversationProtocolVersion = input && host?.surface === 'editor' && host.folderBot?.background !== false ? 1 : undefined;
   const workflowScheduleProtocolVersion = input && host?.workflowScheduleKey && process.env.STEAMHARNESS_WEB_HOST === 'studio' ? 1 : undefined;
   console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, studioPreviewProtocolVersion: host ? 1 : undefined,
-    managedProjectStorageVersion: host?.assistant?.storageScope === 'managed-project' ? 1 : undefined,
+    localStorageVersion: 2,
     botCredentialCaptureReceiptVersion: credentials ? credentialCaptureReceiptVersion : undefined,
     hostConversationProtocolVersion, workflowScheduleProtocolVersion, folderBotProtocolVersion: host?.folderBot ? 1 : undefined, folderBotProfileVersion: host?.folderBot?.profileRecord ? 1 : undefined, botArtifactProtocolVersion: host?.localBotArtifacts ? 1 : undefined, botMemoryProtocolVersion: host?.localBotArtifacts ? 1 : undefined, botCredentialProtocolVersion: credentials ? 1 : undefined, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {

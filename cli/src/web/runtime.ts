@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { localEntryDirectory, localProjectDirectory, localAccountDirectory, prepareLocalDirectory, resolveProjectDeclarationEntrySync } from '@steamharness/project-manifest/node';
 import path from 'node:path';
 import type { LLMBotModelRequestSnapshot, UserSettings } from 'steamharness';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +37,7 @@ export function cliRoot(): string {
 }
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => Partial<WebConnection> | undefined,
-  options: { entryId?: string; hostKind?: 'cli-web' | 'studio'; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown>; folderBot?: FolderBotHost } = {}): Runtime {
+  options: { entryId?: string; accountKey?: string; workdir?: string; hostKind?: 'cli-web' | 'studio'; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined; entryRuntime?(call: AggregateEntryCall): Promise<unknown>; folderBot?: FolderBotHost } = {}): Runtime {
   const runtimeHost = { kind: options.hostKind ?? 'cli-web', cliVersion: CLI_VERSION };
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
@@ -50,7 +51,8 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   const configurations = (entryId = options.entryId) => {
     const key = entryId ?? "default";
     let store = configurationStores.get(key);
-    if (!store) { store = createLocalProjectConfigurationStore(projectDir, { entryId, connection: () => {
+    if (!store) { const target = resolveProjectDeclarationEntrySync(projectDir, entryId);
+      store = createLocalProjectConfigurationStore(projectDir, { entryId, rootDir: path.join(localEntryDirectory(localAccountDirectory(options.accountKey), target.manifest.projectId, target.registration.entryId), 'configurations'), connection: () => {
       const auth = connection(); return auth?.serverUrl && auth.accessToken ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken } : null;
     }, userSettings: options.userSettings }); configurationStores.set(key, store); }
     return store;
@@ -79,7 +81,18 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     for (const key of ['TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_HARNESS_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE',
       'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST']) { delete env[key]; }
     if (env.NODE_OPTIONS) { env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/(?:--conditions=development|--conditions\s+development|-C=development|-C\s+development)/g, ''); }
-    const child = spawn(process.execPath, [worker], { cwd: projectDir, env, shell: false, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+    const project = request.project as Project | undefined;
+    const defaultCwd = project && localProjectDirectory(storageDir, project.id);
+    const explicit = options.folderBot?.directory ?? project?.assistant?.workdir ?? options.workdir;
+    let cwd = projectDir;
+    if (defaultCwd) {
+      if (storageDir === localAccountDirectory(options.accountKey)) prepareLocalDirectory(defaultCwd);
+      else mkdirSync(defaultCwd, { recursive: true, mode: 0o700 });
+      cwd = explicit ? realpathSync(explicit) : defaultCwd;
+    }
+    env.STEAMHARNESS_LOCAL_ACCOUNT_KEY = options.accountKey ?? 'local';
+    env.STEAMHARNESS_PROJECT_WORKDIR = cwd;
+    const child = spawn(process.execPath, [worker], { cwd, env, shell: false, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
     children.add(child);
     if (request.method === 'run') { active.set(String(request.runId), child); }
     const pending = new Map<string, { resolve(value: AgentSessionReceipt): void; reject(error: Error): void }>();

@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { localAccountsDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { isWorkspaceOwner, type AccountWorkspace, type ProjectHistory } from './account-workspace-data';
@@ -34,20 +34,23 @@ export class NodeAccountWorkspace implements AccountWorkspace {
   readonly schedules: string;
   private readonly directory: string;
 
-  constructor(readonly owner: string, private readonly root = path.join(homedir(), '.steamharness', 'studio', 'accounts')) {
-    if (!isWorkspaceOwner(owner)) throw new Error('Invalid Studio workspace owner.');
+  constructor(readonly owner: string, private readonly root = localAccountsDirectory()) {
+    if (owner !== 'local' && !isWorkspaceOwner(owner)) throw new Error('Invalid Studio workspace owner.');
     this.directory = path.join(root, owner);
-    this.runs = path.join(this.directory, 'runs');
+    this.runs = this.directory;
     this.schedules = path.join(this.directory, 'schedules');
   }
 
   prepare(): void {
     this.prepareDirectory();
-    privateDirectory(this.runs);
+    privateDirectory(path.join(this.directory, 'projects'));
     privateDirectory(this.schedules);
   }
 
-  private prepareDirectory(): void { privateDirectory(this.root); privateDirectory(this.directory); }
+  private prepareDirectory(): void {
+    if (this.root === localAccountsDirectory()) prepareLocalDirectory(this.directory);
+    privateDirectory(this.root); privateDirectory(this.directory);
+  }
 
   private use<T>(run: (db: DatabaseSync) => T): T {
     this.prepareDirectory();

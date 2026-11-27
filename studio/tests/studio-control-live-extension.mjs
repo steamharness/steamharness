@@ -50,9 +50,9 @@ async function run(context) {
   let launcher, projectSession;
   const connect = async policy => runtime.connectMcpServer({
     id: 'workflow-studio', command: [process.env.STUDIO_CONTROL_TEST_NODE, process.env.STUDIO_CONTROL_TEST_CLI, 'mcp',
-      application, '--entry', 'studio-control', '--data-dir', path.join(path.dirname(workdir), 'mcp', policy)],
+      application, '--entry', 'studio-control'],
     inheritEnvironment: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'],
-    environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: policy, STEAMHARNESS_CLI_AUTH_DIR: path.join(path.dirname(workdir), 'auth') },
+    environment: { HOME: path.dirname(workdir), USERPROFILE: path.dirname(workdir), STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: policy, STEAMHARNESS_CLI_AUTH_DIR: path.join(path.dirname(workdir), 'auth') },
   }, { allowedInheritedEnvKeys: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'],
     env: { STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: bridge.url, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: bridge.token } });
   const call = async (name, input = {}) => {

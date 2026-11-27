@@ -149,10 +149,10 @@ export function channelProductIdentity(channel, branding = {}) {
   const label = channel === "main" ? baseLabel : `${baseLabel} Dev`;
   const identity = {
     nameShort: label, nameLong: label, urlProtocol: studioProtocols[channel],
-    dataFolderName: `.steamharness-studio${suffix}`, sharedDataFolderName: `.steamharness-studio${suffix}-shared`,
+    dataFolderName: '.steamharness/studio', sharedDataFolderName: '.steamharness/studio/shared',
     darwinBundleIdentifier: `space.yuhe.studio${suffix}`, linuxDesktopName: `space.yuhe.SteamHarness${suffix}`,
     linuxIconName: `steamharness-studio${suffix}`, applicationName: `steamharness-studio${suffix}`,
-    serverApplicationName: `steamharness-studio-server${suffix}`, serverDataFolderName: `.steamharness-studio-server${suffix}`,
+    serverApplicationName: `steamharness-studio-server${suffix}`, serverDataFolderName: '.steamharness/hosts/web',
     tunnelApplicationName: `steamharness-studio-tunnel${suffix}`,
     win32MutexName: `steamharness-studio${suffix}`, win32AppUserModelId: `Yuhe.Studio${suffix}`,
     win32DirName: label, win32NameVersion: label, win32RegValueName: label, win32ShellNameShort: label,

@@ -38,7 +38,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
         input.on('line', line => {
           if (JSON.parse(line).type === 'configure') {
             server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1,
-              hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,
+              localStorageVersion:2,hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,
               url: 'http://127.0.0.1:' + server.address().port + '/entries/main/#session=' + 'a'.repeat(64), project,
               runtime: { harnessVersion: 'fixture', harnessPath: process.cwd() } })));
           }

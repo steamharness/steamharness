@@ -5,15 +5,15 @@ import path from 'node:path';
 import { expect, it } from 'vitest';
 import { createLocalRuntimePersistence } from 'steamharness/runtime-storage';
 import { manageBotStorage, type BotStorageScope } from '../web/bot-management-storage';
-import { folderBotDataRoot, webProjectDataDirectory } from '../web/project-data-directory';
+import { webProjectDataDirectory } from '../web/project-data-directory';
 
 it('uses persisted Bot deliveries and memory without a project server or executor', async () => {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-bot-storage-')));
   const bot = { projectId: randomUUID(), entryId: 'main' };
-  const scope = (storage: string): BotStorageScope => ({ bot, root: storage,
-    runtimeDirectory: path.join(webProjectDataDirectory(storage, bot.projectId, bot.entryId), 'runtime') });
+  const scope = (storage: string, instanceId?: string): BotStorageScope => ({ bot, root: storage,
+    runtimeDirectory: path.join(webProjectDataDirectory(storage, bot.projectId, bot.entryId, instanceId ? { instanceId } : undefined), 'runtime') });
   const original = scope(path.join(root, 'runs'));
-  const copy = scope(folderBotDataRoot(original.root, randomUUID()));
+  const copy = scope(original.root, randomUUID());
   const persistence = createLocalRuntimePersistence({ directory: copy.runtimeDirectory });
   try {
     const files = persistence.botFiles!(bot)!;

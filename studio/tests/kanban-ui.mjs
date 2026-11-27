@@ -18,7 +18,7 @@ if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.pars
 const server = await createKanbanTestServer(), proof = { cliVersion, checks: [], screenshots: [], errors: [] };
 let child, browser, context, page, launch;
 async function start(directory = projectDir, embedded = true) {
-  child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', directory, '--no-open', '--json', '--data-dir', data, ...(embedded ? ['--host-stdio'] : [])], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: server.connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: server.connection.accessToken } });
+  child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', directory, '--no-open', '--json', ...(embedded ? ['--host-stdio'] : [])], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HOME: data, USERPROFILE: data, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: server.connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: server.connection.accessToken } });
   if (embedded) { child.stdin.write(`${JSON.stringify({ type: 'configure', surface: 'editor', connection: server.connection })}\n`); }
   let output = '', errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });

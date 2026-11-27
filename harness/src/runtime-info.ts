@@ -7,6 +7,7 @@ export interface ProjectRuntimeHost {
 }
 
 export interface ProjectRuntimeInfo {
+  uploadDirectory?: string;
   host?: ProjectRuntimeHost;
   project: {
     name: string;

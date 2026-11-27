@@ -69,6 +69,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   await mkdir(path.dirname(linked), { recursive: true });
   await symlink(extension, linked, process.platform === 'win32' ? 'junction' : 'dir');
   const storage = path.join(directory, 'storage');
+  const holder = { owner: 'local', runs: storage, prepare() {} };
   const workdir = path.join(directory, 'opened'); await mkdir(workdir);
   const target = { uri: pathToFileURL(workdir).href, folderPath: workdir, name: 'Opened folder' };
   const disposable = { dispose() {} };
@@ -85,11 +86,11 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
     AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: linked }, globalStorageUri: { fsPath: storage }, subscriptions: [] },
-    { getConnection: () => undefined, onDidChange: () => disposable });
+    { workspace: () => holder, getConnection: () => undefined, onDidChange: () => disposable });
   t.after(() => runtime.dispose());
   const failed = await runtime.inspectAssistant(target, [target]);
   assert.equal(failed.projects.length, 0); assert.match(failed.errors[0], /script validation failed/);
-  const apps = path.join(storage, 'workflow/assistant/apps');
+  const apps = path.join(storage, 'projects', manifest.id, 'builds');
   const [failedApp] = await readdir(apps);
   await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionExit: true }));
   await assert.rejects(runtime.inspectAssistant(target, [target]), /Fixture inspection failed/);
@@ -121,7 +122,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   assert.deepEqual(command.slice(4, 6), ['--entry', 'studio-control']);
   assert.equal(JSON.parse(await readFile(path.join(command[3], 'steamharness.json'), 'utf8')).id, assistant.id);
   assert.equal(await readFile(path.join(command[3], 'studio-control/index.ts'), 'utf8'), await readFile(path.join(controlTemplate, 'index.ts'), 'utf8'));
-  assert.equal((await readdir(path.join(storage, 'workflow'))).includes('studio-control'), false);
+  assert.equal((await readdir(storage)).includes('workflow'), false);
   const control = inspection.projects.find(project => project.entryId === 'studio-control');
   const controlSession = await runtime.start(control, 'assistant');
   assert.equal(new URL(controlSession.ready.url).origin, new URL(session.ready.url).origin);

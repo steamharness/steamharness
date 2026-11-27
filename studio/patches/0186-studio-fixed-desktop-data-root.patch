@@ -1,0 +1,40 @@
+diff --git a/src/vs/platform/environment/node/userDataPath.ts b/src/vs/platform/environment/node/userDataPath.ts
+index 1453ecfce17425e3f5fb4cb7a0ac9eb4d69ea67b..15e4e41d65200d3f266f0bb294af7da220d9d336 100644
+--- a/src/vs/platform/environment/node/userDataPath.ts
++++ b/src/vs/platform/environment/node/userDataPath.ts
+@@ -43,10 +43,12 @@ export function getUserDataPath(cliArgs: NativeParsedArgs, productName: string):
+ }
+ 
+ function doGetUserDataPath(cliArgs: NativeParsedArgs, productName: string): string {
+-	if (/^SteamHarness(?: Dev)*$/.test(productName) && !cliArgs['user-data-dir']) {
++	if (/^SteamHarness(?: Dev)*$/.test(productName) && !cliArgs.extensionTestsPath) {
+ 		// Relaunches of one installation find its existing IPC socket. Distinct installations can run together.
+ 		const host = createHash('sha256').update(process.execPath).digest('hex').slice(0, 16);
+-		return join(homedir(), '.steamharness', 'hosts', `desktop-${host}`);
++		const directory = join(homedir(), '.steamharness', 'hosts', `desktop-${host}`);
++		if (cliArgs['user-data-dir'] && resolve(cliArgs['user-data-dir']) !== directory) { throw new Error('SteamHarness stores desktop data under ~/.steamharness/hosts.'); }
++		return directory;
+ 	}
+ 
+ 	// 0. Running out of sources has a fixed productName
+diff --git a/src/vs/platform/environment/test/node/userDataPath.test.ts b/src/vs/platform/environment/test/node/userDataPath.test.ts
+index b5b9b68c2dedfb3e7f82cf06f01854dc49b93dd9..2d1e907417e7dbbf666c441077f291449a6f13a9 100644
+--- a/src/vs/platform/environment/test/node/userDataPath.test.ts
++++ b/src/vs/platform/environment/test/node/userDataPath.test.ts
+@@ -21,6 +21,7 @@ suite('User data path', () => {
+ 		const path = getUserDataPath(args, 'SteamHarness');
+ 		assert.match(path, /[\\/]\.steamharness[\\/]hosts[\\/]desktop-[a-f0-9]{16}$/);
+ 		assert.strictEqual(getUserDataPath(args, 'SteamHarness Dev'), path);
++		assert.throws(() => getUserDataPath({ ...args, 'user-data-dir': '/other/profile' }, 'SteamHarness'), /stores desktop data/);
+ 	});
+ 
+ 	test('getUserDataPath - portable mode', () => {
+@@ -45,7 +46,7 @@ suite('User data path', () => {
+ 		const args = parseArgs(process.argv, OPTIONS);
+ 		args['user-data-dir'] = cliUserDataDir;
+ 
+-		const path = getUserDataPath(args, product.nameShort);
++		const path = getUserDataPath(args, 'code-oss');
+ 		assert.ok(path.includes(cliUserDataDir));
+ 	});
+ 

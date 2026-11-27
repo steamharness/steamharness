@@ -60,8 +60,8 @@ async function stop() {
   await exited; clearTimeout(timer);
 }
 async function start(language) {
-  child = spawn(process.execPath, [cliEntry, '--locale', language, 'web', projectDir, '--no-open', '--json', '--host-stdio', '--data-dir', path.join(data, language)], {
-    env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
+  child = spawn(process.execPath, [cliEntry, '--locale', language, 'web', projectDir, '--no-open', '--json', '--host-stdio'], {
+    env: { ...process.env, HOME: data, USERPROFILE: data, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   child.stdin.write(`${JSON.stringify({ type: 'configure', surface: 'editor', connection })}\n`);
   let output = '', error = '';

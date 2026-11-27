@@ -49,11 +49,11 @@ test('the native store isolates entries, projects, assistants, and folder Bot in
   await vault().remove(slot); assert.equal(values.size, 0);
 });
 
-test('managed Assistant release upgrades keep old aliases without merging workspace or instance scopes', async t => {
+test('managed Assistant rebuilds share only their verified project and workspace credential scope', async t => {
   const profile = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-assistant-credentials-')));
   t.after(() => rm(profile, { recursive: true, force: true }));
   const projectId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
-  const managed = path.join(profile, 'workflow', 'builtin-apps');
+  const managed = path.join(profile, 'projects', projectId, 'builds');
   const old = path.join(managed, '1'.repeat(24), 'project'), next = path.join(managed, '2'.repeat(24), 'project');
   const lookalike = path.join(managed, '3'.repeat(24), 'project'), external = path.join(profile, 'external-assistant');
   const workspaces = [path.join(profile, 'workspace-a'), path.join(profile, 'workspace-b')];
@@ -63,9 +63,10 @@ test('managed Assistant release upgrades keep old aliases without merging worksp
   const values = new Map(), store = memoryStore(values), allow = async () => true;
   const slot = { name: 'gitlab-fixture', kind: 'api-key' };
   const legacy = (directory, workdir) => botCredentialNamespace(profile, projectId, 'main', directory, undefined, workdir);
-  await createBotCredentialVault(store, profile, legacy(old, old), allow).write(slot, 'fixture-only-token');
+  const primary = (projectDirectory, workdir) => resolveBotCredentialNamespaces(profile, { projectId, entryId: 'main', projectDirectory, workdir });
+  await createBotCredentialVault(store, profile, await primary(old, old), allow).write(slot, 'fixture-only-token');
   await createBotCredentialVault(store, profile, legacy(lookalike, lookalike), allow).write({ ...slot, name: 'other-project' }, 'fixture-other');
-  await createBotCredentialVault(store, profile, legacy(old, workspaces[0]), allow).write({ ...slot, name: 'workspace-only' }, 'fixture-workspace');
+  await createBotCredentialVault(store, profile, await primary(old, workspaces[0]), allow).write({ ...slot, name: 'workspace-only' }, 'fixture-workspace');
   const scope = { projectId, entryId: 'main', projectDirectory: next, workdir: next };
   const namespaces = await resolveBotCredentialNamespaces(profile, scope);
   assert.equal(namespaces[0], (await resolveBotCredentialNamespaces(profile, { ...scope, projectDirectory: old, workdir: old }))[0]);

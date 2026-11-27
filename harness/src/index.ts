@@ -2,7 +2,7 @@ export * from "./agent/index";
 export * from "./executor/definition";
 export * from "./executor/default-input";
 export * from "./configuration";
-export { withPlatformConnections, type PlatformConnection, type PlatformConnections } from './platform-connections';
+export { withPlatformConnections, resolveLocalStorageAccountKey, type PlatformConnection, type PlatformConnections } from './platform-connections';
 export * from "./executor/format";
 export * from "./executor/params";
 export * from "./executor/param-definition";
@@ -33,3 +33,5 @@ export * from "./workflow/index";
 export * from "./entries/index";
 
 export { readProjectManifest, selectProjectEntry, projectManifestForDistribution } from "@steamharness/project-manifest";
+/** Fixed account/project layout and project-owned working directory. */
+export const LOCAL_STORAGE_PROTOCOL_VERSION = 2;

@@ -1,0 +1,228 @@
+diff --git a/src/mainImpl.ts b/src/mainImpl.ts
+index 3d34aea5933d6ed1a48f6e3428fbb74c324d2263..b3895bfa3880e0bd882ed37b382a4913ecc67b52 100644
+--- a/src/mainImpl.ts
++++ b/src/mainImpl.ts
+@@ -478,7 +478,7 @@ function getArgvConfigPath(): string {
+ 
+ 	let dataFolderName = product.dataFolderName;
+ 	if (process.env['VSCODE_DEV']) {
+-		dataFolderName = `${dataFolderName}-dev`;
++		if (dataFolderName !== '.steamharness/studio') { dataFolderName = `${dataFolderName}-dev`; }
+ 	}
+ 
+ 	return path.join(os.homedir(), dataFolderName!, 'argv.json');
+diff --git a/src/vs/platform/environment/node/userDataPath.ts b/src/vs/platform/environment/node/userDataPath.ts
+index 98b4411b4217fe32146550d7ac9f41b88bc3b39d..1453ecfce17425e3f5fb4cb7a0ac9eb4d69ea67b 100644
+--- a/src/vs/platform/environment/node/userDataPath.ts
++++ b/src/vs/platform/environment/node/userDataPath.ts
+@@ -4,6 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { homedir } from 'os';
++import { createHash } from 'node:crypto';
+ import { NativeParsedArgs } from '../common/argv.js';
+ // This file used to be a pure JS file and was always
+ // importing `path` from node.js even though we ship
+@@ -42,6 +43,11 @@ export function getUserDataPath(cliArgs: NativeParsedArgs, productName: string):
+ }
+ 
+ function doGetUserDataPath(cliArgs: NativeParsedArgs, productName: string): string {
++	if (/^SteamHarness(?: Dev)*$/.test(productName) && !cliArgs['user-data-dir']) {
++		// Relaunches of one installation find its existing IPC socket. Distinct installations can run together.
++		const host = createHash('sha256').update(process.execPath).digest('hex').slice(0, 16);
++		return join(homedir(), '.steamharness', 'hosts', `desktop-${host}`);
++	}
+ 
+ 	// 0. Running out of sources has a fixed productName
+ 	if (process.env['VSCODE_DEV']) {
+diff --git a/src/vs/platform/environment/test/node/userDataPath.test.ts b/src/vs/platform/environment/test/node/userDataPath.test.ts
+index 6430ac8f19e8e96249fd1d2ea31707f3c99ecf2f..b5b9b68c2dedfb3e7f82cf06f01854dc49b93dd9 100644
+--- a/src/vs/platform/environment/test/node/userDataPath.test.ts
++++ b/src/vs/platform/environment/test/node/userDataPath.test.ts
+@@ -16,13 +16,20 @@ suite('User data path', () => {
+ 		assert.ok(path.length > 0);
+ 	});
+ 
++	test('SteamHarness resolves the host profile by installation, not channel label', () => {
++		const args = parseArgs([], OPTIONS);
++		const path = getUserDataPath(args, 'SteamHarness');
++		assert.match(path, /[\\/]\.steamharness[\\/]hosts[\\/]desktop-[a-f0-9]{16}$/);
++		assert.strictEqual(getUserDataPath(args, 'SteamHarness Dev'), path);
++	});
++
+ 	test('getUserDataPath - portable mode', () => {
+ 		const origPortable = process.env['VSCODE_PORTABLE'];
+ 		try {
+ 			const portableDir = 'portable-dir';
+ 			process.env['VSCODE_PORTABLE'] = portableDir;
+ 
+-			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), product.nameShort);
++			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), 'code-oss');
+ 			assert.ok(path.includes(portableDir));
+ 		} finally {
+ 			if (typeof origPortable === 'string') {
+@@ -48,7 +55,7 @@ suite('User data path', () => {
+ 			const appDataDir = 'appdata-dir';
+ 			process.env['VSCODE_APPDATA'] = appDataDir;
+ 
+-			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), product.nameShort);
++			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), 'code-oss');
+ 			assert.ok(path.includes(appDataDir));
+ 		} finally {
+ 			if (typeof origAppData === 'string') {
+diff --git a/src/vs/platform/product/common/product.ts b/src/vs/platform/product/common/product.ts
+index fbc7e51c6eab73a4a4da90161a160c94e0931a5d..75b7fe968c272792cf62574701a8bfd659bc9251 100644
+--- a/src/vs/platform/product/common/product.ts
++++ b/src/vs/platform/product/common/product.ts
+@@ -45,8 +45,8 @@ else if (globalThis._VSCODE_PRODUCT_JSON && globalThis._VSCODE_PACKAGE_JSON) {
+ 		Object.assign(product, {
+ 			nameShort: `${product.nameShort} Dev`,
+ 			nameLong: `${product.nameLong} Dev`,
+-			dataFolderName: `${product.dataFolderName}-dev`,
+-			serverDataFolderName: product.serverDataFolderName ? `${product.serverDataFolderName}-dev` : undefined
++			dataFolderName: product.dataFolderName === '.steamharness/studio' ? product.dataFolderName : `${product.dataFolderName}-dev`,
++			serverDataFolderName: product.serverDataFolderName === '.steamharness/hosts/web' ? product.serverDataFolderName : product.serverDataFolderName ? `${product.serverDataFolderName}-dev` : undefined
+ 		});
+ 	}
+ 
+diff --git a/src/vs/platform/userDataProfile/browser/userDataProfile.ts b/src/vs/platform/userDataProfile/browser/userDataProfile.ts
+index 09d7963e21fafd9454ac44a4c1db44c14cdba0f6..b428866618320ae36370f25b7137261942453789 100644
+--- a/src/vs/platform/userDataProfile/browser/userDataProfile.ts
++++ b/src/vs/platform/userDataProfile/browser/userDataProfile.ts
+@@ -5,7 +5,7 @@
+ 
+ import { BroadcastDataChannel } from '../../../base/browser/broadcast.js';
+ import { revive } from '../../../base/common/marshalling.js';
+-import { UriDto } from '../../../base/common/uri.js';
++import { URI, UriDto } from '../../../base/common/uri.js';
+ import { IEnvironmentService } from '../../environment/common/environment.js';
+ import { IFileService } from '../../files/common/files.js';
+ import { ILogService } from '../../log/common/log.js';
+@@ -23,6 +23,7 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
+ 		@IFileService fileService: IFileService,
+ 		@IUriIdentityService uriIdentityService: IUriIdentityService,
+ 		@ILogService logService: ILogService,
++		private readonly studioSettings?: URI,
+ 	) {
+ 		super(environmentService, fileService, uriIdentityService, logService);
+ 		this.changesBroadcastChannel = this._register(new BroadcastDataChannel<BroadcastedProfileChanges>(`${UserDataProfilesService.PROFILES_KEY}.changes`));
+@@ -49,6 +50,13 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
+ 		}));
+ 	}
+ 
++	protected override createDefaultProfile() {
++		const profile = super.createDefaultProfile();
++		const shared = this.studioSettings;
++		return shared ? { ...profile, settingsResource: URI.joinPath(shared, 'settings.json'), keybindingsResource: URI.joinPath(shared, 'keybindings.json'),
++			tasksResource: URI.joinPath(shared, 'tasks.json'), snippetsHome: URI.joinPath(shared, 'snippets'), promptsHome: URI.joinPath(shared, 'prompts') } : profile;
++	}
++
+ 	private updateTransientProfiles(added: IUserDataProfile[], removed: IUserDataProfile[], updated: IUserDataProfile[]): void {
+ 		if (added.length) {
+ 			this.transientProfilesObject.profiles.push(...added);
+diff --git a/src/vs/platform/userDataProfile/node/userDataProfile.ts b/src/vs/platform/userDataProfile/node/userDataProfile.ts
+index a992766f60e34b3cb49b831d826db1ad990e5749..a01de6a758106ac09063ee397ec2db97cf8f8886 100644
+--- a/src/vs/platform/userDataProfile/node/userDataProfile.ts
++++ b/src/vs/platform/userDataProfile/node/userDataProfile.ts
+@@ -43,6 +43,16 @@ export class UserDataProfilesReadonlyService extends BaseUserDataProfilesService
+ 		return this.uriIdentityService.extUri.joinPath(URI.file(this.nativeEnvironmentService.extensionsPath).with({ scheme: this.profilesHome.scheme }), 'extensions.json');
+ 	}
+ 
++	protected override createDefaultProfile() {
++		const profile = super.createDefaultProfile();
++		const home = URI.joinPath(this.nativeEnvironmentService.userHome, '.steamharness');
++		if (!this.uriIdentityService.extUri.isEqualOrParent(URI.file(this.nativeEnvironmentService.userDataPath), URI.joinPath(home, 'hosts'))) { return profile; }
++		const shared = URI.joinPath(home, 'studio', 'User').with({ scheme: profile.location.scheme });
++		// Only share user-editable preferences. SecretStorage, authentication, and window state remain host-local.
++		return { ...profile, settingsResource: URI.joinPath(shared, 'settings.json'), keybindingsResource: URI.joinPath(shared, 'keybindings.json'),
++			tasksResource: URI.joinPath(shared, 'tasks.json'), snippetsHome: URI.joinPath(shared, 'snippets'), promptsHome: URI.joinPath(shared, 'prompts') };
++	}
++
+ }
+ 
+ export class UserDataProfilesService extends UserDataProfilesReadonlyService implements IUserDataProfilesService {
+diff --git a/src/vs/server/node/webClientServer.ts b/src/vs/server/node/webClientServer.ts
+index c8c4027c3c0cfed667e9139c877cd536512459d2..2951638259a1597485b5bfd3f2b41a7298b5cc94 100644
+--- a/src/vs/server/node/webClientServer.ts
++++ b/src/vs/server/node/webClientServer.ts
+@@ -425,6 +425,7 @@ export class WebClientServer {
+ 		const workbenchWebConfiguration = {
+ 			remoteAuthority,
+ 			studioWeb: studioWeb || undefined,
++			studioSettingsPath: studioWeb ? URI.joinPath(this._environmentService.userHome, '.steamharness', 'studio', 'User').path : undefined,
+ 			webviewEndpoint: webviewPort ? `http://{{uuid}}.localhost:${webviewPort}/_studio/webview/` : undefined,
+ 			serverBasePath: basePath,
+ 			_wrapWebWorkerExtHostInIframe,
+diff --git a/src/vs/workbench/browser/web.api.ts b/src/vs/workbench/browser/web.api.ts
+index d027c47cdd4e0a9d309eaa0868b0135ea366f06d..f4dcc928718bc2e611974faf04c324567553ced9 100644
+--- a/src/vs/workbench/browser/web.api.ts
++++ b/src/vs/workbench/browser/web.api.ts
+@@ -151,6 +151,7 @@ export interface IWorkbench {
+ export interface IWorkbenchConstructionOptions {
+ 	/** Set by the managed SteamHarness Studio Web host. */
+ 	readonly studioWeb?: boolean;
++	readonly studioSettingsPath?: string;
+ 	readonly studioLaunchpad?: boolean;
+ 	readonly studioIm?: StudioWebImTarget | 'invalid';
+ 	readonly studioProjectEntry?: IStudioProjectEntry;
+diff --git a/src/vs/workbench/browser/web.main.ts b/src/vs/workbench/browser/web.main.ts
+index 546c11755e57e067dd81ad67e84fc926935fcc0a..84e177bd3a0496b737ad57d4107c3833a914409e 100644
+--- a/src/vs/workbench/browser/web.main.ts
++++ b/src/vs/workbench/browser/web.main.ts
+@@ -378,7 +378,9 @@ export class BrowserMain extends Disposable {
+ 		serviceCollection.set(IUriIdentityService, uriIdentityService);
+ 
+ 		// User Data Profiles
+-		const userDataProfilesService = new BrowserUserDataProfilesService(environmentService, fileService, uriIdentityService, logService);
++		const studioSettings = this.configuration.studioWeb && this.configuration.studioSettingsPath && this.configuration.remoteAuthority
++			? URI.from({ scheme: Schemas.vscodeRemote, authority: this.configuration.remoteAuthority, path: this.configuration.studioSettingsPath }) : undefined;
++		const userDataProfilesService = new BrowserUserDataProfilesService(environmentService, fileService, uriIdentityService, logService, studioSettings);
+ 		serviceCollection.set(IUserDataProfilesService, userDataProfilesService);
+ 
+ 		const currentProfile = await this.getCurrentProfile(workspace, userDataProfilesService, environmentService);
+diff --git a/src/vs/workbench/electron-browser/studioLaunchpad.ts b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+index 16142a02545d4692b08dced34194f84a50e24dd8..fad02056bc67726aeb52e1cdff5b24f70797db2e 100644
+--- a/src/vs/workbench/electron-browser/studioLaunchpad.ts
++++ b/src/vs/workbench/electron-browser/studioLaunchpad.ts
+@@ -41,6 +41,7 @@ import { parseStudioReleaseProject } from '../../platform/window/common/studioRe
+ import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
+ import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+ import { IStudioStartService, isStudioProjectScopeReady } from '../browser/parts/editor/studioStart.js';
++import { INativeWorkbenchEnvironmentService } from '../services/environment/electron-browser/environmentService.js';
+ import { projectUsageBridge } from '../browser/studioProjectUsage.js';
+ import { IWebviewService } from '../contrib/webview/browser/webview.js';
+ import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+@@ -105,6 +106,7 @@ export class StudioLaunchpad extends Disposable {
+ 		private readonly notices: StudioNotificationInbox,
+ 		@IStudioStartService private readonly start: IStudioStartService,
+ 		@INativeHostService private readonly native: INativeHostService,
++		@INativeWorkbenchEnvironmentService private readonly environment: INativeWorkbenchEnvironmentService,
+ 		@IWorkspacesService private readonly workspaces: IWorkspacesService,
+ 		@IWorkbenchLayoutService layout: IWorkbenchLayoutService,
+ 		@ICommandService private readonly commands: ICommandService,
+@@ -665,6 +667,8 @@ export class StudioLaunchpad extends Disposable {
+ 
+ 	private async readManagedWorkspaceRoots(): Promise<URI[]> {
+ 		const roots = new ResourceSet(uri => extUriBiasedIgnorePathCase.getComparisonKey(uri));
++		const owner = this.account?.workspaceOwner ?? 'local';
++		if (owner === 'local' || /^[a-f0-9]{64}$/.test(owner)) { roots.add(URI.joinPath(this.environment.userHome, '.steamharness', 'accounts', owner, 'folder-bots')); }
+ 		for (const profile of this.profiles.profiles) {
+ 			roots.add(URI.joinPath(profile.globalStorageHome.with({ scheme: Schemas.file }), workstationExtensionId));
+ 		}
+@@ -687,14 +691,14 @@ export class StudioLaunchpad extends Disposable {
+ 		if (this.windowRevision !== revision) { return; }
+ 		const managedUris = new Set<string>();
+ 		const builtinUris = new Set<string>();
+-		const builtinRoots = managedRoots.map(root => URI.joinPath(root, 'workflow', 'builtin-apps'));
++		const accounts = URI.joinPath(this.environment.userHome, '.steamharness', 'accounts');
+ 		const project = (raw: URI, kind: LaunchpadProject['kind'], label?: string): LaunchpadProject => {
+ 			const uri = URI.revive(raw);
+ 			const key = uri.toString();
+ 			if (kind === 'workspace' && managedRoots.some(root => extUriBiasedIgnorePathCase.isEqualOrParent(uri, root))) {
+ 				managedUris.add(key);
+ 			}
+-			if (kind === 'folder' && builtinRoots.some(root => /^[a-f0-9]{24}(?:\/project)?$/.test(extUriBiasedIgnorePathCase.relativePath(root, uri) ?? ''))) {
++			if (kind === 'folder' && /^(?:local|[a-f0-9]{64})\/projects\/[a-f0-9-]{36}\/builds\/[a-f0-9]{24}(?:\/project)?$/.test(extUriBiasedIgnorePathCase.relativePath(accounts, uri) ?? '')) {
+ 				builtinUris.add(key);
+ 			}
+ 			return { kind, uri: key, name: label || basenameOrAuthority(uri), path: uri.scheme === Schemas.file ? uri.fsPath : uri.toString(true) };

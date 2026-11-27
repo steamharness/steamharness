@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { createHash, randomUUID } from 'node:crypto';
+import { localAccountDirectory } from '@steamharness/project-manifest/node';
 import { t } from './localization';
 import type { BotCredentialTarget } from './bot-credential-list';
 import { resolveBotCredentialNamespaces } from './bot-credential-vault';
@@ -29,7 +30,7 @@ export function registerWebBotCredentialManagement(context: vscode.ExtensionCont
     if (!await authorized() || !await vscode.commands.executeCommand<boolean>('studio.internalCanPersistWebBotCredentials')) {
       throw new Error(t('System-protected credential storage is unavailable. No credential was saved.'));
     }
-    const profile = context.globalStorageUri.fsPath;
+    const profile = localAccountDirectory(owner ?? 'local');
     const [primary] = await resolveBotCredentialNamespaces(profile, target.scope);
     const prefix = `web-bot-credentials:v1:${createHash('sha256').update(JSON.stringify([owner, primary])).digest('hex')}:`;
     const id = randomUUID();

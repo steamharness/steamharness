@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { lstatSync } from "node:fs";
+import { localAccountDirectory, localRuntimeAccountDirectory, localEntryDirectory, readProjectDeclarationFromDirectorySync, resolveProjectDeclarationEntrySync } from '@steamharness/project-manifest/node';
 import path from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -14,9 +14,8 @@ import {
   type McpStructureReport,
 } from "@steamharness/workflow-mcp";
 import { i18n } from "@steamharness/i18n";
-import { formatOnlineHelp, parseOnlinePurpose, withoutPlatformEnvironment } from './online';
+import { formatOnlineHelp, parseOnlinePurpose, resolveOnlineAccountKey, resolveOnlineConnections, withoutPlatformEnvironment } from './online';
 import type { AuthPurpose } from './auth-config';
-import { assertProjectUuid } from "@steamharness/workflow-ids";
 
 export const STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV = "STEAMHARNESS_MCP_CLI_ENTRYPOINT";
 export const STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC_ENV = "STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC";
@@ -30,6 +29,7 @@ export interface McpCliOptions {
   cliAuthDir?: string;
   entryId?: string;
   online?: AuthPurpose[];
+  workdir?: string;
   /** Absolute entrypoint used when this process spawns a JSON/structure worker. */
   workerEntrypoint?: string;
 }
@@ -53,7 +53,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 
   const options = parseProjectMcpCliOptions(argv);
-  const projectId = readProjectId(options.projectDir);
+  const projectId = readProjectDeclarationFromDirectorySync(options.projectDir).projectId;
+  if (options.online?.includes('project')) {
+    const platform = await resolveOnlineConnections(['project'], { ...process.env, ...(options.cliAuthDir && { STEAMHARNESS_CLI_AUTH_DIR: options.cliAuthDir }) });
+    options.dataDir = localAccountDirectory(await resolveOnlineAccountKey(platform.project));
+    const files = path.join(localEntryDirectory(options.dataDir, projectId, options.entryId ?? readProjectDeclarationFromDirectorySync(options.projectDir).defaultEntry), 'files');
+    options.fileStoreDir = options.fileCreateStoreDir = files;
+  }
   const runner = new McpCliRunner({
     ...options,
     workerEntrypoint: resolveProjectMcpWorkerEntrypoint(),
@@ -92,9 +98,8 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
   }
   const projectDir = path.resolve(process.cwd(), projectArg);
   assertProjectDirectory(projectDir);
-  let dataDir = path.join(os.homedir(), ".steamharness");
-  let fileStoreDir: string | undefined;
-  let fileCreateStoreDir: string | undefined;
+  const dataDir = localRuntimeAccountDirectory();
+  let workdir: string | undefined;
   let desktopConfigDir: string | undefined;
   let cliAuthDir: string | undefined;
   let entryId: string | undefined;
@@ -108,9 +113,8 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
     }
     index += 1;
     switch (option) {
-      case "--data-dir": dataDir = resolveAbsoluteOption(value, option); break;
-      case "--file-store-dir": fileStoreDir = resolveAbsoluteOption(value, option); break;
-      case "--file-create-store-dir": fileCreateStoreDir = resolveAbsoluteOption(value, option); break;
+      case "--data-dir": throw new Error('Local data is stored under ~/.steamharness/accounts.');
+      case '--workdir': workdir = resolveAbsoluteOption(value, option); break;
       case "--desktop-config-dir": desktopConfigDir = resolveAbsoluteOption(value, option); break;
       case "--auth-dir": cliAuthDir = resolveAbsoluteOption(value, option); break;
       case "--entry": entryId = value; break;
@@ -119,12 +123,14 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
     }
   }
 
-  dataDir = path.resolve(dataDir);
+  const target = resolveProjectDeclarationEntrySync(projectDir, entryId);
+  const files = path.join(localEntryDirectory(dataDir, target.manifest.projectId, target.registration.entryId), 'files');
   return {
     projectDir,
     dataDir,
-    fileStoreDir: fileStoreDir ?? path.join(dataDir, "workflow-files"),
-    fileCreateStoreDir: fileCreateStoreDir ?? path.join(dataDir, "workflow-created-files"),
+    fileStoreDir: files,
+    fileCreateStoreDir: files,
+    workdir,
     desktopConfigDir,
     cliAuthDir,
     entryId,
@@ -334,8 +340,7 @@ export class McpCliRunner implements McpRunner {
       ...(options.resolvedInputs.length > 0
         ? ["--resolved-user-inputs-json", JSON.stringify(options.resolvedInputs)]
         : []),
-      "--file-store-dir",
-      this.options.fileStoreDir,
+      ...(this.options.workdir ? ['--workdir', this.options.workdir] : []),
       "--entry", options.entryId,
       "--",
       ...options.args,
@@ -449,8 +454,7 @@ export class McpCliRunner implements McpRunner {
         ...isolated,
         ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE ?? "1",
         STEAMHARNESS_CLI_AUTH_DIR: online.length ? this.options.cliAuthDir ?? process.env.STEAMHARNESS_CLI_AUTH_DIR : path.join(this.options.dataDir, 'mcp-runtime-auth'),
-        STEAMHARNESS_FILE_STORE_DIR: this.options.fileStoreDir,
-        STEAMHARNESS_FILE_CREATE_STORE_DIR: this.options.fileCreateStoreDir,
+        STEAMHARNESS_LOCAL_ACCOUNT_KEY: path.basename(this.options.dataDir),
         STEAMHARNESS_DESKTOP_RUNTIME_EVENTS: "0",
       },
       stdio: ["pipe", "pipe", "pipe"],
@@ -764,15 +768,6 @@ function readWorkerViolationMessages(error: Record<string, unknown>): string[] {
 function compactWorkerErrorMessage(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length <= 500 ? compact : `${compact.slice(0, 497)}...`;
-}
-
-function readProjectId(projectDir: string): string {
-  const packagePath = path.join(projectDir, "steamharness.json");
-  const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as unknown;
-  if (!isRecord(packageJson) || typeof packageJson["id"] !== "string" || packageJson["id"].trim() === "") {
-    throw new Error("Workflow MCP requires steamharness.json to contain an immutable project id.");
-  }
-  return assertProjectUuid(packageJson["id"], "Workflow MCP project id");
 }
 
 function assertProjectDirectory(projectDir: string): void {

@@ -18,7 +18,7 @@ function launch(command, failure, args = [], product = {}) {
   const upstream = { directory: '/source/upstream/vscode', commit: 'same-kernel-commit' };
   let output = 'old workbench without the newly applied patch';
   const context = {
-    command, args, path, ROOT: '/source', npm: 'npm',
+    command, args, path, ROOT: '/source', productHome: '/home/test/.steamharness', npm: 'npm',
     process: { platform: 'linux', pid: 1, execPath: '/node', env: {} },
     console: { log() {} },
     prepare: async () => { events.push('prepare'); return { upstream, product: { nameShort: 'Studio', applicationName: 'studio', ...product } }; },
@@ -102,13 +102,10 @@ test('Web bundles are the default, with an explicit source mode for developers',
 });
 
 for (const args of [['--user-data-dir', '/custom-profile'], ['--user-data-dir=/custom-profile']]) {
-  test(`dev passes one user data directory when explicitly set as ${args[0]}`, async () => {
+  test(`dev rejects user data directory overrides supplied as ${args[0]}`, async () => {
     const fixture = launch('dev', undefined, args);
-    await fixture.run();
-    const actual = fixture.launches[0].args;
-    assert.equal(actual.filter(argument => argument === '--user-data-dir' || argument.startsWith('--user-data-dir=')).length, 1);
-    assert.equal(actual.some(argument => argument.includes('/custom-profile')), true);
-    assert.equal(actual.some(argument => argument.includes('/.studio/desktop-user-data')), false);
+    await assert.rejects(fixture.run(), /stores desktop data/);
+    assert.equal(fixture.launches.length, 0);
   });
 }
 

@@ -19,10 +19,10 @@ const coreVersion = JSON.parse(await readFile(path.join(core, 'package.json'), '
 const { createLocalRuntimePersistence } = await import(pathToFileURL(path.join(core, 'dist/runtime-storage.js')).href);
 const agentLibrary = pathToFileURL(path.join(core, 'node_modules/@earendil-works/pi-ai/dist/index.js')).href;
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-bot-artifacts-')));
-const project = path.join(root, 'project'), data = path.join(root, 'data');
+const project = path.join(root, 'project'), data = path.join(root, '.steamharness/accounts/local');
 const projectId = randomUUID(), entryId = 'main', copyId = randomUUID(), filename = 'fixture-report.md';
 const source = `artifacts/2026-11-24/${filename}`, original = 'Bot artifact test: original report\n';
-const copyRuntime = path.join(data, 'folder-bots', copyId, 'projects', projectId, 'entries', entryId, 'runtime');
+const copyRuntime = path.join(data, 'projects', projectId, 'instances', copyId, 'entries', entryId, 'runtime');
 const projects = new Map(), children = new Set();
 const parent = createServer((request, response) => {
   const view = projects.get(request.url);
@@ -32,7 +32,7 @@ const parent = createServer((request, response) => {
 });
 
 async function launch(instance, locale, theme = 'light') {
-  const child = spawn(process.execPath, [path.join(cli, 'index.js'), 'web', project, '--entry', entryId, '--data-dir', data,
+  const child = spawn(process.execPath, [path.join(cli, 'index.js'), 'web', project, '--entry', entryId,
     '--host-stdio', '--no-open', '--json', ...(instance ? ['--folder-context'] : [])], {
     cwd: project, env: { ...process.env, HOME: root, USERPROFILE: root, STEAMHARNESS_CLI_AUTH_DIR: path.join(root, 'auth'),
       STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STEAMHARNESS_WEB_HOST: 'studio', STEAMHARNESS_LOCALE: locale },

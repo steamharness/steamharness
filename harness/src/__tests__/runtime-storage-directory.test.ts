@@ -21,5 +21,5 @@ test("standalone runtime history lives outside source and survives rebuilding di
   assert.equal((await reopened.persistence.list("state"))[0]?.key, "conversation");
   await reopened.close();
   assert.deepEqual(await readdir(source), ["dist"]);
-  assert.ok((await readdir(path.join(directory, "user/.steamharness/runtime", options.projectId, "agent"))).includes("history.sqlite"));
+  assert.ok((await readdir(path.join(directory, 'user/.steamharness/accounts/local/projects', options.projectId, 'entries/agent/runtime'))).includes('history.sqlite'));
 });

@@ -10,7 +10,7 @@ function signature(value: unknown): string {
     ? Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]])) : entry);
 }
 
-/** One service for every local surface. Its directory is independent of Web/Studio history. */
+/** Configuration profiles are shared by the account and project entry. */
 export class ProjectConfigurations {
   private store!: Awaited<ReturnType<typeof createLocalProjectConfigurationStore>>;
   private value!: ProjectConfigurationState;
@@ -25,9 +25,9 @@ export class ProjectConfigurations {
   private poll?: ReturnType<typeof setInterval>;
   private reading = false;
   error?: string;
-  constructor(private readonly projectDir: string, private readonly changed: () => void, private readonly connection: () => WebConnection | undefined = () => undefined, private readonly entryId?: string, private readonly userSettings?: () => UserSettings | undefined) {}
+  constructor(private readonly projectDir: string, private readonly changed: () => void, private readonly connection: () => WebConnection | undefined = () => undefined, private readonly entryId?: string, private readonly userSettings?: () => UserSettings | undefined, private readonly rootDir?: string) {}
   async initialize() {
-    this.store = await createLocalProjectConfigurationStore(this.projectDir,{entryId: this.entryId, connection:()=>this.connection()??null, userSettings: this.userSettings});
+    this.store = await createLocalProjectConfigurationStore(this.projectDir,{entryId: this.entryId, rootDir: this.rootDir, connection:()=>this.connection()??null, userSettings: this.userSettings});
     this.value = {...await this.store.read(true),canManagePublication:false};
     this.accessIdentity=this.connectionIdentity();
     this.poll = setInterval(() => {

@@ -4,11 +4,12 @@ import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, syml
 import path from 'node:path';
 import { readProjectReleaseSync } from '@steamharness/project-manifest/release-node';
 import { resolveProjectCli } from './workflow-cli-process';
+import { localAccountsDirectory, localProjectDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
 
 const assistantId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
 export const ANALYSIS_PROJECT_ID = '6cbe3c24-2707-4f31-a553-94edbe866eb1';
 
-interface BuiltinApplicationOptions { templateDir: string; storageDir: string; dependencySources: string[]; releaseStorageDir?: string }
+interface BuiltinApplicationOptions { templateDir: string; storageDir: string; dependencySources: string[] }
 
 export function prepareAssistantApplication(options: BuiltinApplicationOptions): Promise<string> {
   return prepareBuiltinApplication(options, assistantId);
@@ -54,7 +55,7 @@ export async function prepareBuiltinApplication(options: BuiltinApplicationOptio
     }
   };
   await fingerprint(template);
-  const directory = path.join((release ? options.releaseStorageDir : undefined) ?? path.join(options.storageDir, 'apps'), digest.digest('hex').slice(0, 24));
+  const directory = path.join(localProjectDirectory(options.storageDir, projectId), 'builds', digest.digest('hex').slice(0, 24));
   const projectDirectory = hasNestedRelease ? path.join(directory, 'project') : directory;
   const verify = async () => {
     if (await realpath(path.join(projectDirectory, 'node_modules')) !== dependencies.directory) throw new Error('Unexpected built-in project runtime.');
@@ -62,7 +63,8 @@ export async function prepareBuiltinApplication(options: BuiltinApplicationOptio
     await resolveProjectCli(projectDirectory);
   };
   try { await verify(); return projectDirectory; } catch { /* Create this immutable template version once. */ }
-  await mkdir(path.dirname(directory), { recursive: true });
+  if (path.dirname(options.storageDir) === localAccountsDirectory()) prepareLocalDirectory(path.dirname(directory));
+  else await mkdir(path.dirname(directory), { recursive: true, mode: 0o700 });
   const staging = await mkdtemp(path.join(path.dirname(directory), 'prepare-'));
   try {
     await cp(template, staging, { recursive: true });

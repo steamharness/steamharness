@@ -54,7 +54,8 @@ it('runs the built-in Assistant and reads both an original and a browser upload 
     const uploaded = (await post({ type: 'import-drop', entries: [{ name: 'browser.txt', kind: 'file', data: Buffer.from(markers[1]).toString('base64') }] })).references[0];
     uploadedPath = uploaded.path;
     expect(uploaded.source).toBe('workspace-upload');
-    expect(path.dirname(path.dirname(uploaded.path))).toBe(path.join(workdir, '.steamharness', 'conversation-uploads'));
+    expect(uploaded.path.startsWith(path.join(directory, 'data', 'projects') + path.sep)).toBe(true);
+    expect(path.dirname(path.dirname(uploaded.path))).toMatch(/entries[\\/]main[\\/]files[\\/]uploads$/);
     await post({ type: 'send', text: 'Read both attachment samples.', params: {}, references: [local, uploaded], attachments: [] });
     await expect.poll(() => app!.controller!.current.messages.at(-1), { timeout: 20_000 }).toMatchObject({ status: 'success', content: 'Both attachments read.' });
     const prompt = turns[0].filter(message => message.role === 'user').map(({ content }) => typeof content === 'string' ? content

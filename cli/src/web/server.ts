@@ -1,5 +1,5 @@
 import type { WebAppBinding } from "./web-app-preview";
-import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
+import { assertProjectDataDirectory, localAccountDirectory, localEntryDirectory, prepareLocalDirectory } from "@steamharness/project-manifest/node";
 import { assertConversationUi } from '@steamharness/kanban-project';
 import { createLocalRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
 import { WorkflowHistory } from "./workflow-history";
@@ -18,7 +18,6 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { assertLocalCliCoreCompatible } from '../local';
 import { readOnlineConnection } from '../online';
@@ -46,7 +45,7 @@ import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
 import { ProjectServerCreation } from './project-server-create';
 import { projectServerBrowserLink } from './project-server-link';
-import { botMemoryDirectoryError, botMemoryDirectoryScope, createWebBotMemoryDirectories, folderBotDataRoot, runtimeDataDirectory } from './project-data-directory';
+import { botMemoryDirectoryError, botMemoryDirectoryScope, createWebBotMemoryDirectories, runtimeDataDirectory } from './project-data-directory';
 import { readFolderBotProfile } from './folder-bot-profile';
 import { previewRunDraft } from './workflow-draft';
 import { workflowScheduleHandler } from './workflow-schedule';
@@ -59,7 +58,7 @@ import type { EntryConversationSnapshot } from 'steamharness';
 import { conversationViewHtml, conversationViewClientId, scopeConversationViewMessage, passiveConversationViewMessage, type OpenConversationView } from './conversation-view';
 
 type Message = Record<string, any>;
-export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void;
+export interface WebOptions { entryId?: string; accountKey?: string; workdir?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void;
   reloadProject?(): Promise<string | undefined>;
   openConversationView?: OpenConversationView;
   invokeEntry?(call: AggregateEntryCall): Promise<unknown>;
@@ -128,8 +127,7 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
 async function startProjectWebServer(options: WebOptions, credentials: { capability: string; cookie: string }, identityChanged: () => void) {
   const projectDir = await realpath(path.resolve(options.projectDir));
   const folderBot = options.host?.folderBot;
-  const baseStorageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
-  const storageDir = folderBot ? folderBotDataRoot(baseStorageDir, folderBot.id) : baseStorageDir;
+  const storageDir = options.dataDir ? path.resolve(options.dataDir) : prepareLocalDirectory(localAccountDirectory(options.accountKey));
   assertProjectDataDirectory(projectDir, storageDir);
   const clients = new Set<ServerResponse>();
   const entryObservers = new Set<() => void>();
@@ -163,7 +161,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const hostKind = options.host && process.env[WEB_HOST_ENV] === 'studio' ? 'studio' : 'cli-web';
   // The stdio capability is issued only by the local desktop Bot host.
   const localBotManagement = hostKind === 'studio' && options.host?.localBotArtifacts === true && !folderBot?.background;
-  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, runtimeConnection, { entryId: options.entryId, hostKind, folderBot, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), userSettings: () => userSettings, entryRuntime: call => {
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, runtimeConnection, { entryId: options.entryId, accountKey: options.accountKey, workdir: options.workdir, hostKind, folderBot, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), userSettings: () => userSettings, entryRuntime: call => {
     if (!options.mount?.invokeEntry) throw new Error('Conversation entry control requires an aggregate host.');
     return options.mount.invokeEntry(call);
   } });
@@ -215,7 +213,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) throw new Error('Unsupported Workflow project type.');
   } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
-  const attachmentWorkdir = folderBot?.directory ?? project.assistant?.workdir ?? projectDir;
   const credentialHost = hostKind === 'studio' && options.host?.localBotCredentials === true && !options.host?.backgroundBotCredentials && !folderBot?.background && !projectOnline && project.projectType === 'bot'
     ? options.botCredentialHost : undefined;
   const credentialInput = !!credentialHost && project.conversation?.engine === 'agent' && descriptor.runtime?.botCredentialInputVersion === 1;
@@ -237,7 +234,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     project.entrypoints = view.entrypoints?.map(entry => ({ ...entry, tools: entry.tools?.filter(toolVisible) }));
   };
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast(), options.mount?.basePath);
-  const activityDirectory = runtimeDataDirectory(storageDir, projectDir, project);
+  const activityDirectory = runtimeDataDirectory(storageDir, project, folderBot?.id);
+  assertProjectDataDirectory(projectDir, activityDirectory);
+  if (!options.dataDir) prepareLocalDirectory(activityDirectory);
   const key = path.relative(storageDir, activityDirectory);
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   let pendingSave = Promise.resolve();
@@ -400,7 +399,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       resources.clear();
     }
     broadcast();
-  }, () => isLocalBuiltinAssistant(project) ? undefined : connection, project.entryId, () => userSettings);
+  }, () => isLocalBuiltinAssistant(project) ? undefined : connection, project.entryId, () => userSettings,
+  path.join(localEntryDirectory(localAccountDirectory(options.accountKey), project.id, project.entryId), 'configurations'));
   await configurations.initialize();
   configurationSignature=configurations.signature;
   project.agentModelPolicy = configurations.state.agentModelPolicy;
@@ -1035,7 +1035,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'resolve-paths':
       case 'import-drop': {
         const references = message.type === 'resolve-paths' ? await resolveDroppedPaths(message.paths)
-          : await importDroppedEntries(attachmentWorkdir, message.entries);
+          : await importDroppedEntries(activityDirectory, message.entries);
         replies.push({ type: 'path-references', projectUri: project.uri, sessionId: current.id, requestId: message.requestId, references });
         break;
       }

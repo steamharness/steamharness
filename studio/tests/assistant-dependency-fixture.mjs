@@ -49,7 +49,7 @@ export async function createAssistantDependencyFixture({ '@steamharness/cli': cl
         server.listen(0,'127.0.0.1',()=>{
           writeFileSync(path.join(recordDir,'assistant.pid'),String(process.pid));
           writeFileSync(path.join(recordDir,'assistant.json'),JSON.stringify({assistant:message.assistant,assistantProjectDir:message.assistantProjectDir,surface:message.surface,harnessPath,args:process.argv.slice(2),studioControl}));
-          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/'+selected+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:${JSON.stringify(harnessVersion)},harnessPath}}));
+          console.log(JSON.stringify({type:'ready',protocolVersion:1,localStorageVersion:2,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/'+selected+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:${JSON.stringify(harnessVersion)},harnessPath}}));
         });
       }else if(message.type==='close'){input.close();process.stdin.pause();server?.close();}
     });

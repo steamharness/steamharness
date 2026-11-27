@@ -2,6 +2,7 @@ import type { PlatformConnection, PlatformConnections } from 'steamharness';
 import { normalizeAuthServer } from '@steamharness/server-auth';
 import { i18n } from '@steamharness/i18n';
 import { cliAuthIsUsable, readCliAuthConfig, type AuthPurpose } from './auth-config';
+export { resolveLocalStorageAccountKey as resolveOnlineAccountKey } from 'steamharness';
 
 export function parseOnlinePurpose(value: string | undefined): AuthPurpose {
   if (value !== 'project' && value !== 'ai') throw new Error('--online requires project or ai.');

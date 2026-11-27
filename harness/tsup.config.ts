@@ -15,6 +15,7 @@ export default defineConfig({
     "types/context": "src/types/context.ts",
     "executor/rules": "src/executor/rules.ts",
     "agent-codemode-worker": "src/agent/codemode-worker.ts",
+    "local-run-worker": "src/executor/local-run-worker.ts",
   },
   outDir: "dist",
   format: ["esm"],

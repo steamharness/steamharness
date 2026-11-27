@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createReadStream, promises as fs } from "node:fs";
+import { createReadStream, promises as fs, realpathSync } from "node:fs";
 import path from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
@@ -29,6 +29,7 @@ export interface TypeboxLike {
 }
 
 export interface AgentToolScope {
+  readonly uploadRoot?: string;
   /** Directory relative paths resolve against. */
   workdir: string;
   /** Absolute directories the tools may read from and write to. */
@@ -152,14 +153,21 @@ export function createBuiltinAgentTools(input: {
   engine?: "llm";
   botFiles?: BotFileWorkspace;
 }): AgentTool[] {
+  let readable = input;
+  const uploads = input.runtimeInfo?.uploadDirectory;
+  if (uploads) {
+    try {
+      if (realpathSync(uploads) === uploads) readable = { ...input, scope: { ...input.scope, uploadRoot: uploads } };
+    } catch { /* No uploaded files yet. Never adopt a redirected directory. */ }
+  }
   return [
-    createReadTool(input),
+    createReadTool(readable),
     createWriteTool(input),
     createEditTool(input),
     createBashTool(input),
-    createGrepTool(input),
-    createFindTool(input),
-    createLsTool(input),
+    createGrepTool(readable),
+    createFindTool(readable),
+    createLsTool(readable),
     createSleepTool(input),
     createRuntimeInfoTool(input),
   ].map(tool => ({ ...tool, replay: READ_ONLY_AGENT_TOOL_NAMES.includes(tool.name) ? "safe" : "never" })) as unknown as AgentTool[];
@@ -539,7 +547,9 @@ export async function resolveInsideScope(scope: AgentToolScope, requested: strin
     Promise.all(allowed.map((directory) => resolveRealPathOrSelf(path.resolve(directory)))),
     resolveRealPathOrSelf(absolute),
   ]);
-  const permitted = roots.some((root) => target === root || target.startsWith(root + path.sep));
+  const uploaded = scope.uploadRoot && (target === scope.uploadRoot || target.startsWith(scope.uploadRoot + path.sep))
+    && await fs.realpath(scope.uploadRoot).catch(() => undefined) === scope.uploadRoot;
+  const permitted = uploaded || roots.some((root) => target === root || target.startsWith(root + path.sep));
 
   if (!permitted) {
     throw Object.assign(new Error(`Path "${requested}" is outside the directories this agent may access.`), { retryable: false });

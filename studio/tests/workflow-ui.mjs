@@ -28,8 +28,8 @@ const connection = { serverUrl: `http://127.0.0.1:${server.address().port}`, acc
 let child, browser, context, page, hostStdio;
 async function start(embedded = true) {
   hostStdio = embedded;
-  child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', projectDir, '--no-open', '--json', ...(embedded ? ['--host-stdio'] : []), '--data-dir', data], {
-    env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
+  child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', projectDir, '--no-open', '--json', ...(embedded ? ['--host-stdio'] : [])], {
+    env: { ...process.env, HOME: data, USERPROFILE: data, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   if (embedded) { child.stdin.write(`${JSON.stringify({ type: 'configure', surface: 'editor', connection })}\n`); }
   let output = '', error = '';

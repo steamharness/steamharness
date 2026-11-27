@@ -3,6 +3,7 @@ import { webAppFailureReason, type WebAppFailureReason } from "./web-app-errors"
 import { t, locale as currentLocale } from './localization';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { runtimeDataDirectory } from '../../../../cli/src/web/project-data-directory';
 import { createRequire } from 'node:module';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -134,14 +135,12 @@ export async function startProjectCli(options: {
   const { entry, version } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
   const authentication = hostAuthentication(undefined, undefined);
-  const args = [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir, ...(options.folderBot ? ['--folder-context'] : [])];
+  const args = [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--host-account', path.basename(options.dataDir), ...(options.folderBot ? ['--folder-context'] : [])];
   const env = { ...environment(options.studioControl, options.runtime, options.authRoot), STEAMHARNESS_WEB_HOST: 'studio' };
   const managed = options.managed;
   const digest = (value: string) => createHash('sha256').update(value).digest('hex');
-  const storage = options.folderBot ? path.join(options.dataDir, 'folder-bots', options.folderBot.id) : options.dataDir;
-  const activityRoots = !managed ? [] : options.assistant ? [path.join(storage, digest(options.assistant.storageScope === 'managed-project'
-    ? `managed-project:${options.expectedProjectId?.toLowerCase()}` : `assistant:${options.expectedProjectId}:${options.assistant.workdir}`).slice(0, 24), 'activity')]
-    : managed.entries.map(item => path.join(storage, ...(managed.release ? ['release'] : []), 'projects', options.expectedProjectId!.toLowerCase(), 'entries', item.entryId, 'activity'));
+  const activityRoots = !managed ? [] : managed.entries.map(({ entryId }) => path.join(runtimeDataDirectory(options.dataDir,
+    { id: options.expectedProjectId!, entryId, assistant: options.assistant }, options.folderBot?.id), 'activity'));
   const transport = managed && await managed.manager.launch({ key: digest(JSON.stringify([managed.key, entry, version])), command: options.nodePath,
     args, env, directory: options.projectDir, entryId: options.entryId, projectId: options.expectedProjectId, sources: managed.sources, activityRoots,
     controlUnavailable: options.studioControl && t('Open the project in Studio to use Studio Control.') },
@@ -233,7 +232,9 @@ export async function startProjectCli(options: {
         if (error) { reject(error); } else { resolve(message!); }
       };
       const failed = (error: Error) => settle(new Error(cleanError(error.message)));
-      const exited = (code: number | null, signal: NodeJS.Signals | null) => failed(new Error(`SteamHarness Web exited (code=${code}, signal=${signal}).${diagnostics() ? `\n${diagnostics()}` : ''}`));
+      const exited = (code: number | null, signal: NodeJS.Signals | null) => failed(new Error(/Unknown web argument: --host-account/i.test(diagnostics())
+        ? t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli.")
+        : `SteamHarness Web exited (code=${code}, signal=${signal}).${diagnostics() ? `\n${diagnostics()}` : ''}`));
       const received = (chunk: string) => {
         buffer += chunk;
         if (buffer.length > 2_000_000) { child.kill('SIGKILL'); failed(new Error('SteamHarness Web startup output is too large.')); return; }
@@ -247,7 +248,7 @@ export async function startProjectCli(options: {
             const url = new URL(message.url);
             if (options.folderBot && message.folderBotProtocolVersion !== 1) throw new Error('Update the project CLI and SDK to run a local folder Bot.');
             if (options.folderBot?.profileRecord && message.folderBotProfileVersion !== 1) throw new Error(t('Update the project CLI and SDK to use this folder Bot profile.'));
-            if (options.assistant?.storageScope === 'managed-project' && message.managedProjectStorageVersion !== 1) {
+            if (message.localStorageVersion !== 2) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
             if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || message.entriesProtocolVersion !== 1 || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || (!transport && url.pathname !== `/entries/${options.entryId}/`) || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
@@ -397,10 +398,10 @@ export async function startProjectCli(options: {
 }
 
 /** Configuration RPC uses the project's installed CLI, without a running Web session. */
-export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal, connection?: Connection, entryId?: string, runtime?: NodeRuntime, authRoot?: string): Promise<unknown> {
+export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal, connection?: Connection, entryId?: string, runtime?: NodeRuntime, authRoot?: string, accountKey = 'local'): Promise<unknown> {
   const {entry}=await resolveProjectCli(projectDir);
   return new Promise((resolve,reject)=>{
-    const child=spawn(nodePath,[entry,'configuration',projectDir,...(entryId?['--entry',entryId]:[])],{cwd:projectDir,env:environment(undefined,runtime,authRoot),shell:false,stdio:['pipe','pipe','pipe'],signal});
+    const child=spawn(nodePath,[entry,'configuration',projectDir,...(entryId?['--entry',entryId]:[])],{cwd:projectDir,env:{ ...environment(undefined,runtime,authRoot), STEAMHARNESS_LOCAL_ACCOUNT_KEY: accountKey },shell:false,stdio:['pipe','pipe','pipe'],signal});
     let stdout='',stderr='';
     const timeout=setTimeout(()=>child.kill('SIGKILL'),30_000);
     child.stdin.on('error',()=>undefined); child.stdin.end(JSON.stringify({call,connection:connection?{serverUrl:connection.serverUrl,accessToken:connection.accessToken}:null}));

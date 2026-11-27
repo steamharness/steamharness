@@ -1,7 +1,4 @@
-import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
-import os from "node:os";
-import { projectEntryKey } from "@steamharness/project-manifest";
-import { assertProjectDataDirectory } from "@steamharness/project-manifest/node";
+import { assertProjectDataDirectory, localEntryDirectory, localRuntimeAccountDirectory, prepareLocalDirectory } from "@steamharness/project-manifest/node";
 import path from "node:path";
 import type { ConversationState, ConversationStateStorage } from "../conversation";
 import type { TokenUsageEntry } from "../token-usage";
@@ -17,10 +14,9 @@ export function createRuntimeStateStorage(options: {
   let backend = options.persistence;
   let localMemory: RuntimePersistence | undefined;
   const localDirectory = () => {
-    projectEntryKey(options.projectId, options.entryId);
-    const directory = path.join(os.homedir(), ".steamharness", "runtime", ...(readProjectReleaseSync(options.aggregateDir ?? options.rootDir) ? ["release"] : []), options.projectId.toLowerCase(), options.entryId);
-    assertProjectDataDirectory(options.rootDir, directory);
-    return directory;
+    const directory = path.join(localEntryDirectory(localRuntimeAccountDirectory(), options.projectId, options.entryId), 'runtime');
+    assertProjectDataDirectory(options.aggregateDir ?? options.rootDir, directory);
+    return prepareLocalDirectory(directory);
   };
   const resolve = () => {
     if (backend) return backend;

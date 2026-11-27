@@ -1,10 +1,50 @@
 import { readFile, realpath, stat } from "node:fs/promises";
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import os from "node:os";
 import { PROJECT_UUID_PATTERN } from "./identity";
 import { projectEntryFilePath } from "./artifacts";
-import { PROJECT_MANIFEST_FILE, projectEntryConfigRoots, readProjectDeclaration, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
+import { PROJECT_MANIFEST_FILE, projectEntryConfigRoots, projectEntryKey, readProjectDeclaration, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
+
+export function localDataHome(): string { return path.join(os.homedir(), '.steamharness'); }
+export function localAccountsDirectory(): string { return path.join(localDataHome(), 'accounts'); }
+export function localAccountDirectory(owner = 'local', accounts = localAccountsDirectory()): string {
+  if (owner !== 'local' && !/^[a-f0-9]{64}$/.test(owner)) throw new Error('Invalid local account identity.');
+  return path.join(accounts, owner);
+}
+export function localRuntimeAccountDirectory(): string { return localAccountDirectory(process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY); }
+
+/** Do not follow a pre-existing link out of the product or account hierarchy. */
+export function prepareLocalDirectory(directory: string): string {
+  const home = localDataHome(), relative = path.relative(home, directory);
+  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('Invalid local storage directory.');
+  mkdirSync(path.dirname(home), { recursive: true, mode: 0o700 });
+  let current = home;
+  for (const part of ['', ...relative.split(path.sep).filter(Boolean)]) {
+    current = path.join(current, part);
+    try { mkdirSync(current, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+    if (!lstatSync(current).isDirectory()) throw new Error('Invalid local storage directory.');
+  }
+  return current;
+}
+export function localProjectDirectory(account: string, projectId: string): string {
+  if (!PROJECT_UUID_PATTERN.test(projectId)) throw new Error('Invalid local project identity.');
+  return path.join(account, 'projects', projectId.toLowerCase());
+}
+export function localEntryDirectory(account: string, projectId: string, entryId: string, scope?: { instanceId: string } | { workdir: string }): string {
+  projectEntryKey(projectId, entryId);
+  let base = localProjectDirectory(account, projectId);
+  if (scope && 'instanceId' in scope) {
+    if (!PROJECT_UUID_PATTERN.test(scope.instanceId)) throw new Error('Invalid local folder Bot identity.');
+    base = path.join(base, 'instances', scope.instanceId.toLowerCase());
+  } else if (scope) {
+    if (!path.isAbsolute(scope.workdir)) throw new Error('Invalid assistant workspace directory.');
+    const key = path.normalize(scope.workdir);
+    base = path.join(base, 'workspaces', createHash('sha256').update(process.platform === 'win32' ? key.toLowerCase() : key).digest('hex'));
+  }
+  return path.join(base, 'entries', entryId);
+}
 
 export function readProjectDocumentSync(projectDir: string): Record<string, unknown> {
   const root = realpathSync(projectDir), file = realpathSync(path.join(root, PROJECT_MANIFEST_FILE));

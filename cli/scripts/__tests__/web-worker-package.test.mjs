@@ -20,7 +20,7 @@ test("the built Web worker inspects a project outside the workspace", async () =
     }));
     // No project is inspected; this Core fixture isolates worker startup and
     // its bundled project metadata from the rest of the execution runtime.
-    await writeFile(path.join(root, "node_modules/steamharness/index.js"), "export {};\n");
+    await writeFile(path.join(root, "node_modules/steamharness/index.js"), "export const LOCAL_STORAGE_PROTOCOL_VERSION = 2;\n");
     for (const name of ["tsx", "import-meta-resolve", "typescript"]) {
       await symlink(await realpath(path.join(cliRoot, "node_modules", name)), path.join(root, "node_modules", name), "junction");
     }

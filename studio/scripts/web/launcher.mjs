@@ -90,7 +90,7 @@ async function terminate({ child, exited }) {
   try { await exited; } finally { clearTimeout(timeout); }
 }
 
-export async function runManagedWeb({ directory, storage, config, prepare }) {
+export async function runManagedWeb({ directory, config, prepare }) {
   const release = await claim(directory);
   const descriptor = path.join(directory, 'instance.json'), registry = path.join(directory, 'previews.json');
   const controller = new AbortController();
@@ -108,7 +108,6 @@ export async function runManagedWeb({ directory, storage, config, prepare }) {
     upstream = codeServer(settings.upstream, [...settings.args, '--host=127.0.0.1', '--port=0', '--without-connection-token', '--force-disable-user-env'], {
       STEAMHARNESS_STUDIO_WEB_BACKEND_KEY: proof, STEAMHARNESS_STUDIO_WEB_REGISTRY: registry,
       STEAMHARNESS_STUDIO_WEB_TEMPLATE: client?.template,
-      STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR: storage,
     });
     const port = await new Promise((resolve, reject) => {
       const lines = createInterface({ input: upstream.child.stdout });
@@ -150,7 +149,7 @@ export async function runManagedWeb({ directory, storage, config, prepare }) {
   }
 }
 
-export async function desktopWebControl({ directory, storage }) {
+export async function desktopWebControl({ directory }) {
   const key = secret(), sockets = new Set();
   let owned, start, port, closed = false;
   const unavailable = { running: false, mode: 'desktop', devices: [], localUrls: [], remoteUrls: [] };
@@ -165,7 +164,7 @@ export async function desktopWebControl({ directory, storage }) {
     if (closed) return;
     const child = spawn(process.execPath, [launchScript, 'web'], {
       cwd: ROOT, stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
-      env: buildChildEnv({ STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR: storage }),
+      env: buildChildEnv({}),
     });
     const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', () => resolve(1)); });
     const service = owned = { child, exited };

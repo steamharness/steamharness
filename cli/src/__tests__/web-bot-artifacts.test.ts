@@ -7,7 +7,7 @@ import { createLocalRuntimePersistence, type BotArtifact } from 'steamharness/ru
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { startEntryWebServer } from '../web/server';
 import type { WebHostConfiguration } from '../web/host-config';
-import { projectDataDirectorySync, folderBotDataRoot } from '../web/project-data-directory';
+import { webProjectDataDirectory } from '../web/project-data-directory';
 import type { Project, Runtime } from '../web/workflow-types';
 
 afterEach(() => vi.unstubAllEnvs());
@@ -28,8 +28,8 @@ it('authorizes local delivery and keeps the snapshot across chat deletion and ho
   const stores: ReturnType<typeof createLocalRuntimePersistence>[] = [];
   let artifact: BotArtifact | undefined, reference = '';
   const start = async (host: WebHostConfiguration) => {
-    const scoped = host.folderBot ? folderBotDataRoot(dataDir, host.folderBot.id) : dataDir;
-    const persistence = createLocalRuntimePersistence({ directory: path.join(projectDataDirectorySync(scoped, directory, projectId, entryId), 'runtime') });
+    const location = webProjectDataDirectory(dataDir, projectId, entryId, host.folderBot && { instanceId: host.folderBot.id });
+    const persistence = createLocalRuntimePersistence({ directory: path.join(location, 'runtime') });
     stores.push(persistence);
     const scope = { projectId, entryId }, files = persistence.botFiles!(scope)!;
     const runtime: Runtime = { available: true, inspect: async () => ({ projects: [project], errors: [] }),

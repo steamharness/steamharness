@@ -28,11 +28,11 @@ test('runtime changes isolate new services and recovery keeps the original runti
     const args=process.argv.slice(2),input=createInterface({input:process.stdin});
     const server=createServer((request,response)=>{
       if(request.url==='/crash'){response.end('{}');setImmediate(()=>process.exit(23));return;}
-      response.end(JSON.stringify({node:process.execPath,version:process.version,pid:process.pid,data:args[args.indexOf('--data-dir')+1],
+      response.end(JSON.stringify({node:process.execPath,version:process.version,pid:process.pid,data:args[args.indexOf('--host-account')+1],
         child:execFileSync('node',['-p','process.execPath'],{encoding:'utf8'}).trim(),electron:process.env.ELECTRON_RUN_AS_NODE}));
     });
     input.on('line',line=>{const message=JSON.parse(line);if(message.type==='configure'){
-      server.listen(Number(args[args.indexOf('--port')+1]||0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,
+      server.listen(Number(args[args.indexOf('--port')+1]||0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,localStorageVersion:2,hostProtocolVersion:1,
         accountProtocolVersion:1,entriesProtocolVersion:1,userSettingsProtocolVersion:1,
         url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),
         project:{id:'project',name:'Project',projectType:'bot',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'bot',root:'.',entry:'index.ts'}]}})));
@@ -74,11 +74,11 @@ test('runtime changes isolate new services and recovery keeps the original runti
   holder = { owner: 'a', runs: path.join(directory, 'account-A'), prepare() {} }; accountChanged();
   await Promise.all([first.closed, same.closed, second.closed]);
   const owned = await runtime.start(project, 'editor'); t.after(() => owned.close());
-  assert.equal((await info(owned)).data, holder.runs);
+  assert.equal((await info(owned)).data, path.basename(holder.runs));
   const previous = new URL(owned.ready.url).origin;
   holder = { owner: 'b', runs: path.join(directory, 'account-B'), prepare() {} }; accountChanged();
   await owned.closed;
   await assert.rejects(fetch(previous));
   const next = await runtime.start(project, 'editor'); t.after(() => next.close());
-  assert.equal((await info(next)).data, holder.runs);
+  assert.equal((await info(next)).data, path.basename(holder.runs));
 });

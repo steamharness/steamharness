@@ -15,6 +15,7 @@ export function createExecutorResources(declaration: EntryDeclaration, options: 
     entryId: declaration.entryId,
     runtimeInfo: {
       host: options.runtimeHost,
+      uploadDirectory: options.uploadDirectory,
       project: {
         name: manifest.name,
         version: manifest.version,
@@ -39,7 +40,7 @@ export function createExecutorResources(declaration: EntryDeclaration, options: 
         if (policy) await identity.toolPermissions!.requireToolApproval({ name: `entry:${entryId}:${entrypointId}`, arguments: args });
         const { runLocalProjectWithReport } = await import("./index");
         // Keep host permissions; the Bot engine check belongs to the parent conversation.
-        const report = await entryCallDepth.run(depth + 1, () => runLocalProjectWithReport({ ...options, expectedBotEngine: undefined, entryCall: { entryId: identity.sourceEntryId, conversationId: identity.sourceConversationId, runId: identity.sourceRunId }, projectDir: declaration.projectDir, entryId, entrypointId, args: [...args], configuration: undefined, configurationRunId: undefined, runId: undefined, conversationId: undefined, hostInput: undefined, actor: identity.actor, abortSignal: identity.abortSignal, inheritedToolPermissions: identity.toolPermissions, onRuntimeEvent: undefined, onDefinedNodes: undefined }));
+        const report = await entryCallDepth.run(depth + 1, () => runLocalProjectWithReport({ ...options, uploadDirectory: undefined, expectedBotEngine: undefined, entryCall: { entryId: identity.sourceEntryId, conversationId: identity.sourceConversationId, runId: identity.sourceRunId }, projectDir: declaration.projectDir, entryId, entrypointId, args: [...args], configuration: undefined, configurationRunId: undefined, runId: undefined, conversationId: undefined, hostInput: undefined, actor: identity.actor, abortSignal: identity.abortSignal, inheritedToolPermissions: identity.toolPermissions, onRuntimeEvent: undefined, onDefinedNodes: undefined }));
         if (report.status !== "success") throw new Error(`Entry "${entryId}" operation "${entrypointId}" failed: ${JSON.stringify(report.result)}`);
         if (!report.result.ok) throw new Error(report.result.error.message);
         const { readEntrypointOutput } = await import("../workflow/index");

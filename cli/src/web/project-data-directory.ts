@@ -1,42 +1,23 @@
-import { readProjectReleaseSync } from "@steamharness/project-manifest/release-node";
+import { localEntryDirectory } from '@steamharness/project-manifest/node';
 import { createHash } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { PROJECT_UUID_PATTERN, projectEntryKey } from '@steamharness/project-manifest';
 import type { BotMemoryDirectories, createLocalRuntimePersistence, RuntimePersistence } from 'steamharness/runtime-storage';
 
-export function webProjectDataDirectory(storageDir: string, projectId: string, entryId: string): string {
-  projectEntryKey(projectId, entryId);
-  return path.join(storageDir, 'projects', projectId.toLowerCase(), 'entries', entryId);
-}
-export function folderBotDataRoot(storageDir: string, id: string): string {
-  if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id)) throw new Error('Invalid local folder Bot identity.');
-  return path.join(storageDir, 'folder-bots', id);
-}
-export function projectDataDirectorySync(storageDir: string, projectDir: string, projectId: string, entryId: string): string {
-  return webProjectDataDirectory(readProjectReleaseSync(projectDir) ? path.join(storageDir, "release") : storageDir, projectId, entryId);
+export const webProjectDataDirectory = localEntryDirectory;
+export function projectDataDirectorySync(storageDir: string, _projectDir: string, projectId: string, entryId: string): string {
+  return localEntryDirectory(storageDir, projectId, entryId);
 }
 export async function projectDataDirectory(storageDir: string, projectDir: string, projectId: string, entryId: string): Promise<string> {
   return projectDataDirectorySync(storageDir, projectDir, projectId, entryId);
 }
 
 const digest = (input: string) => createHash('sha256').update(input).digest('hex');
-export function assistantDataDirectory(storageDir: string, projectId: string, workdir: string): string {
-  return path.join(storageDir, digest(`assistant:${projectId}:${workdir}`).slice(0, 24));
-}
-
-/** A managed build is replaceable. Its assistant data must not be keyed by an executable path. */
-export function managedProjectDataDirectory(storageDir: string, projectId: string): string {
-  if (!PROJECT_UUID_PATTERN.test(projectId)) throw new Error('Invalid managed project identity.');
-  return path.join(storageDir, digest(`managed-project:${projectId.toLowerCase()}`).slice(0, 24));
-}
-
-export function runtimeDataDirectory(storageDir: string, projectDir: string, project: {
+export function runtimeDataDirectory(storageDir: string, project: {
   id: string; entryId: string; assistant?: { workdir: string; storageScope?: 'managed-project' };
-}): string {
-  if (!project.assistant) return projectDataDirectorySync(storageDir, projectDir, project.id, project.entryId);
-  return project.assistant.storageScope === 'managed-project' ? managedProjectDataDirectory(storageDir, project.id)
-    : assistantDataDirectory(storageDir, project.id, project.assistant.workdir);
+}, instanceId?: string): string {
+  return localEntryDirectory(storageDir, project.id, project.entryId, instanceId !== undefined ? { instanceId }
+    : project.assistant && project.assistant.storageScope !== 'managed-project' ? { workdir: project.assistant.workdir } : undefined);
 }
 
 export type WebBotMemoryDirectoryScope = Pick<BotMemoryDirectories, 'kind' | 'primary' | 'roots'>;
@@ -103,7 +84,7 @@ export function createWebBotMemoryDirectories(scope: WebBotMemoryDirectoryScope,
   return { ...scope, async withStore(bot, projectPath, use) {
     const selected = await selectMemoryDirectory(scope, projectPath);
     if (scope.kind === 'workspace-roots' ? selected === scope.primary : !selected) return use(options.persistence.botMemory!(bot));
-    const directory = scope.kind === 'workspace-roots' ? path.join(assistantDataDirectory(options.storageDir, options.projectId, selected), 'runtime')
+    const directory = scope.kind === 'workspace-roots' ? path.join(localEntryDirectory(options.storageDir, options.projectId, bot.entryId, { workdir: selected }), 'runtime')
       : path.join(options.runtimeDirectory, 'memories-by-directory', digest(selected));
     // Only the scoped memory file is opened; conversations and artifacts stay in the primary runtime.
     const persistence = options.createPersistence({ directory });

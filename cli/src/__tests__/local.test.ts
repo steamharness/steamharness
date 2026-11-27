@@ -62,8 +62,6 @@ it("run command preserves workflow args after explicit separator", async () => {
       projectDir,
       "--conversation-id",
       "cli-conversation",
-      "--file-store-dir",
-      path.join(os.tmpdir(), "workflow-files"),
       "--entrypoint",
       "main",
       "--",

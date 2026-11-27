@@ -54,11 +54,12 @@ describe("auth-config package", () => {
     const legacyOnlyEnv = {
       STEAMHARNESS_APP_CONFIG_DIR: "C:\\workflow\\legacy-app",
       APPDATA: "C:\\Users\\workflow\\AppData\\Roaming",
+      USERPROFILE: "C:\\Users\\workflow",
       platform: "win32",
     };
 
     expect(resolveProjectDesktopConfigFilePath(legacyOnlyEnv)).toBe(
-      "C:/Users/workflow/AppData/Roaming/steamharness/workflow-desktop.json",
+      "C:/Users/workflow/.steamharness/studio/workflow-desktop.json",
     );
   });
 

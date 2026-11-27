@@ -17,11 +17,11 @@ const workspace = fileURLToPath(new URL('../../', import.meta.url)), core = path
 const { createLocalRuntimePersistence } = await import(pathToFileURL(path.join(core, 'dist/runtime-storage.js')).href);
 const coreVersion = JSON.parse(await readFile(path.join(core, 'package.json'), 'utf8')).version;
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-bot-memory-')));
-const project = path.join(root, 'project'), data = path.join(root, 'data'), nested = path.join(project, 'subproject');
+const project = path.join(root, 'project'), data = path.join(root, '.steamharness/accounts/local'), nested = path.join(project, 'subproject');
 const aRoot = path.join(root, 'workspace-a'), bRoot = path.join(root, 'workspace-b');
 const opened = [aRoot, bRoot].map(folderPath => ({ folderPath, uri: pathToFileURL(folderPath).href, name: path.basename(folderPath) }));
 const scope = { projectId: randomUUID(), entryId: 'agent' }, copy = randomUUID();
-const persistence = createLocalRuntimePersistence({ directory: path.join(data, 'folder-bots', copy, 'projects', scope.projectId, 'entries', scope.entryId, 'runtime') });
+const persistence = createLocalRuntimePersistence({ directory: path.join(data, 'projects', scope.projectId, 'instances', copy, 'entries', scope.entryId, 'runtime') });
 const store = persistence.botMemory(scope);
 const pages = new Map(), children = new Set();
 const server = createServer((request, response) => {
@@ -33,7 +33,7 @@ const server = createServer((request, response) => {
 });
 
 async function launch(instance, language = 'en', local = true, assistant) {
-  const child = spawn(process.execPath, [path.join(workspace, 'cli/dist/index.js'), 'web', project, '--data-dir', data, '--entry', scope.entryId,
+  const child = spawn(process.execPath, [path.join(workspace, 'cli/dist/index.js'), 'web', project, '--entry', scope.entryId,
     '--host-stdio', '--no-open', '--json', ...(instance ? ['--folder-context'] : [])], {
     cwd: project, env: { ...process.env, HOME: root, USERPROFILE: root, STEAMHARNESS_CLI_AUTH_DIR: path.join(root, 'auth'),
       STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STEAMHARNESS_WEB_HOST: 'studio', STEAMHARNESS_LOCALE: language },

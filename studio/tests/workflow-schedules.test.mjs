@@ -104,7 +104,12 @@ test('a clock rollback cannot dispatch an already queued fire before its time', 
 });
 
 test('scheduled Workflow uses the private desktop capability and resumes the same run after both hosts close', { timeout: 45_000 }, async t => {
-  const root = await dir(t), project = path.join(root, 'project'), webData = path.join(root, 'data'), schedules = path.join(root, 'schedules');
+  const root = await dir(t), project = path.join(root, 'project'), schedules = path.join(root, 'schedules');
+  const originalHome = process.env.HOME, originalProfile = process.env.USERPROFILE;
+  process.env.HOME = process.env.USERPROFILE = root;
+  t.after(() => { if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+    if (originalProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalProfile; });
+  const webData = path.join(root, '.steamharness/accounts/local');
   const id = randomUUID(), target = { directory: project, projectId: id, entryId: 'main', version: '1.0.0' };
   await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
   const link = (folder, destination) => symlink(path.resolve(import.meta.dirname, '..', '..', folder), path.join(project, 'node_modules', destination), process.platform === 'win32' ? 'junction' : 'dir');

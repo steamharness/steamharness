@@ -13,7 +13,7 @@ async function fixture(t) {
   const now = Date.now(), projectId = randomUUID();
   const uri = name => pathToFileURL(path.join(storage, name)).href;
   const lease = async (scope = '', entryId = 'main', id = projectId) => {
-    const directory = path.join(storage, scope, 'projects', id, 'entries', entryId, 'activity');
+    const directory = path.join(storage, 'projects', id, scope, 'entries', entryId, 'activity');
     await mkdir(directory, { recursive: true });
     const file = path.join(directory, `${randomUUID()}.json`);
     return (runs, overrides) => writeFile(file, JSON.stringify({ version: 1, projectId: id, entryId, pid: process.pid, updatedAt: now, runs, ...overrides }));
@@ -36,7 +36,7 @@ test('the launcher sees runs from any entry and clears them independently on com
   assert.deepEqual(await f.read([project]), [], 'a newer approval wait supersedes an old running snapshot');
 });
 
-test('activity is isolated by release and managed Bot instance, and cannot come from dead or stale leases', async t => {
+test('source and release share activity, isolated from Bot instances and dead or stale leases', async t => {
   const f = await fixture(t);
   const instance = randomUUID(), other = randomUUID();
   const instanceUri = f.uri(`${instance}.code-workspace`);
@@ -50,10 +50,10 @@ test('activity is isolated by release and managed Bot instance, and cannot come 
   await (await f.lease())(runs, { updatedAt: f.now - 20_001 });
   await (await f.lease())(runs, { pid: 0x7fff_ffff });
   await (await f.lease())(runs, { projectId: randomUUID() });
-  await (await f.lease('release'))(runs);
-  const writeFolderBot = await f.lease(path.join('folder-bots', instance));
+  await (await f.lease())(runs);
+  const writeFolderBot = await f.lease(path.join('instances', instance));
   await writeFolderBot(runs);
-  assert.deepEqual(await f.read(candidates), [release.uri, instanceUri]);
+  assert.deepEqual(await f.read(candidates), [source.uri, release.uri, instanceUri]);
   await writeFolderBot([{ ...runs[0], status: 'aborted' }]);
-  assert.deepEqual(await f.read(candidates), [release.uri]);
+  assert.deepEqual(await f.read(candidates), [source.uri, release.uri]);
 });

@@ -29,6 +29,7 @@ const temporaryDirectories: string[] = [];
 const connections: Array<{ close(): Promise<void> }> = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.allSettled(connections.splice(0).map((connection) => connection.close()));
   await Promise.allSettled(temporaryDirectories.splice(0).map((directory) => (
     rm(directory, { recursive: true, force: true })
@@ -47,7 +48,7 @@ describe("steamharness mcp", () => {
       apiKey: "cli-saved-key",
     }, {STEAMHARNESS_CLI_AUTH_DIR:cliAuthDir});
     const options = parseProjectMcpCliOptions([
-      process.cwd(),
+      await createMcpProject(),
       "--desktop-config-dir", desktopConfigDir,
       "--auth-dir", cliAuthDir,
     ]);
@@ -106,10 +107,11 @@ describe("steamharness mcp", () => {
 
   it("captures complete running and final snapshots outside MCP stdout", async () => {
     const projectDir = await createMcpProject();
-    const dataDir = await createTemporaryDirectory("steamharness-mcp-audit-");
+    const home = await createTemporaryDirectory("steamharness-mcp-audit-");
+    vi.spyOn(os, "homedir").mockReturnValue(home);
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createProjectMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseProjectMcpCliOptions([projectDir, "--data-dir", dataDir]),
+      ...parseProjectMcpCliOptions([projectDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -139,10 +141,11 @@ describe("steamharness mcp", () => {
 
   it("keeps one complete snapshot lineage across consecutive input resumes", async () => {
     const projectDir = await createMcpProject();
-    const dataDir = await createTemporaryDirectory("steamharness-mcp-resume-audit-");
+    const home = await createTemporaryDirectory("steamharness-mcp-audit-");
+    vi.spyOn(os, "homedir").mockReturnValue(home);
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createProjectMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseProjectMcpCliOptions([projectDir, "--data-dir", dataDir]),
+      ...parseProjectMcpCliOptions([projectDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -199,10 +202,11 @@ describe("steamharness mcp", () => {
 
   it("finalizes a pending input run when the MCP connection closes", async () => {
     const projectDir = await createMcpProject();
-    const dataDir = await createTemporaryDirectory("steamharness-mcp-close-audit-");
+    const home = await createTemporaryDirectory("steamharness-mcp-audit-");
+    vi.spyOn(os, "homedir").mockReturnValue(home);
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createProjectMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseProjectMcpCliOptions([projectDir, "--data-dir", dataDir]),
+      ...parseProjectMcpCliOptions([projectDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -236,10 +240,11 @@ describe("steamharness mcp", () => {
 
   it("records a distinct terminal diagnostic when MCP elicitation fails", async () => {
     const projectDir = await createMcpProject();
-    const dataDir = await createTemporaryDirectory("steamharness-mcp-elicitation-failure-");
+    const home = await createTemporaryDirectory("steamharness-mcp-audit-");
+    vi.spyOn(os, "homedir").mockReturnValue(home);
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createProjectMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseProjectMcpCliOptions([projectDir, "--data-dir", dataDir]),
+      ...parseProjectMcpCliOptions([projectDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -333,7 +338,7 @@ describe("steamharness mcp", () => {
     assert.equal(file?.name, "source.txt");
     assert.equal(file?.projectId, "11111111-1111-4111-8111-111111111111");
     assert.equal(
-      await readFile(path.join(connection.dataDir, "workflow-files", file?.id ?? "", "content"), "utf8"),
+      await readFile(path.join(connection.dataDir, '.steamharness/accounts/local/projects/11111111-1111-4111-8111-111111111111/entries/main/files', file?.id ?? "", "content"), "utf8"),
       "managed content",
     );
 
@@ -405,7 +410,8 @@ describe("steamharness mcp", () => {
     const dataDir = await createTemporaryDirectory("steamharness-mcp-data-");
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [cliPath, "mcp", projectDir, "--data-dir", dataDir],
+      args: [cliPath, "mcp", projectDir],
+      env: { HOME: dataDir, USERPROFILE: dataDir, PATH: process.env.PATH! },
       cwd: projectDir,
       stderr: "pipe",
     });
@@ -429,7 +435,8 @@ describe("steamharness mcp", () => {
     const dataDir = await createTemporaryDirectory("steamharness-mcp-data-");
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [cliPath, "mcp", projectDir, "--data-dir", dataDir],
+      args: [cliPath, "mcp", projectDir],
+      env: { HOME: dataDir, USERPROFILE: dataDir, PATH: process.env.PATH! },
       cwd: projectDir,
       stderr: "pipe",
     });
@@ -525,11 +532,10 @@ async function connectProjectMcp(
       cliPath,
       "mcp",
       projectDir,
-      "--data-dir",
-      dataDir,
       ...(entryId ? ["--entry", entryId] : []),
     ],
     cwd: projectDir,
+    env: { HOME: dataDir, USERPROFILE: dataDir, PATH: process.env.PATH! },
     stderr: "pipe",
   });
   let stderr = "";

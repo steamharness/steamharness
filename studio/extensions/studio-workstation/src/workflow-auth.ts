@@ -268,8 +268,8 @@ export class AccountController implements vscode.Disposable {
     const session = this.account.getSession();
     const owner = this.workspaceFactory && session && (!session.expiresAt || Date.parse(session.expiresAt) > Date.now())
       ? accountScopeKey(this.account.getState(), this.digest) : undefined;
-    if (!owner || !this.workspaceFactory) { this.activeWorkspace = undefined; return; }
-    if (this.activeWorkspace?.owner !== owner) this.activeWorkspace = this.workspaceFactory(owner);
+    if (!this.workspaceFactory) { this.activeWorkspace = undefined; return; }
+    if (this.activeWorkspace?.owner !== (owner || 'local')) this.activeWorkspace = this.workspaceFactory(owner || 'local');
     return this.activeWorkspace;
   }
   async connect(): Promise<Connection | undefined> {

@@ -40,7 +40,7 @@ async function write(filename, content) {
 }
 
 const declare = (directory, entries) => write(path.join(directory, 'steamharness.json'), JSON.stringify(doc(entries)));
-const data = (storage, entryId, prefix = []) => path.join(storage, ...prefix, 'projects', projectId, 'entries', entryId);
+const data = (storage, entryId, prefix = []) => path.join(storage, 'projects', projectId, ...prefix, 'entries', entryId);
 const memoryName = (id = projectId, entryId = 'agent') => createHash('sha256').update(JSON.stringify([id, entryId])).digest('hex') + '.sqlite';
 const memoryPath = (directory, id, entryId) => path.join(directory, 'runtime', 'memories', memoryName(id, entryId));
 const register = (directory, entryId, projectType, id = projectId) => write(path.join(directory, 'project.json'),
@@ -163,7 +163,7 @@ test('bad history records do not hide readable session and run counts or a valid
 test('folder Bot memory usage includes the scoped stores but does not read other instances', async t => {
   const f = await fixture(t);
   await declare(f.project, [{ ...bot, folderContext: true }]);
-  const locate = (instanceId, folder) => path.join(data(f.storage, 'agent', ['folder-bots', instanceId]), 'runtime',
+  const locate = (instanceId, folder) => path.join(data(f.storage, 'agent', ['instances', instanceId]), 'runtime',
     ...(folder ? ['memories-by-directory', createHash('sha256').update(folder).digest('hex')] : []), 'memories', memoryName());
   const managed = { instanceId: instance1, directory: f.project, projectId, entryId: 'agent', name: 'Folder Bot', projectDirectory: f.project };
   const scoped = locate(instance1, 'linked-project');
@@ -203,11 +203,11 @@ test('project usage combines source, release and folder Bot records while an ins
   await write(path.join(release, 'steamharness.release.json'), JSON.stringify({ kind: 'steamharness.project.release', version: 1,
     projectId, projectVersion: '1.0.0', buildId: digest, inputHash: digest, entries: [{ entryId: 'agent', root: releasedEntry, entry: 'main.js', structure: `${releasedEntry}/structure.json` }],
     files: releaseFiles.map(path => ({ path, size: 0, sha256: digest })) }));
-  for (const [index, prefix] of [[], ['release'], ['folder-bots', instance1], ['folder-bots', instance2, 'release']].entries()) {
+  for (const [index, prefix] of [[], ['workspaces', 'a'.repeat(64)], ['instances', instance1], ['instances', instance2]].entries()) {
     const db = await history(data(f.storage, 'agent', prefix), [['conversation', { messages: new Array(index + 1).fill({}) }]]);
     db.db.close();
   }
-  const otherProject = path.join(f.storage, 'folder-bots', instance1, 'projects', unrelatedId, 'entries', 'agent');
+  const otherProject = path.join(f.storage, 'projects', unrelatedId, 'instances', instance1, 'entries', 'agent');
   (await history(otherProject, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
   // A second checkout with the same manifest identity does not create another copy of the storage.
   const secondCheckout = path.join(f.root, 'another checkout');
@@ -219,15 +219,15 @@ test('project usage combines source, release and folder Bot records while an ins
   assert.deepEqual(states.map(snapshot => snapshot.usage.entries[0]?.conversation.messages), [10, 10, 10, 3, 4]);
   assert.equal(states[0].usage.location, undefined);
   assert.equal(states[0].usage.entries[0].conversation.sessions, 4);
-  assert.equal(states[4].usage.location, path.dirname(path.dirname(data(f.storage, 'agent', ['folder-bots', instance2, 'release']))));
+  assert.equal(states[4].usage.location, path.dirname(path.dirname(data(f.storage, 'agent', ['instances', instance2]))));
 });
 
 test('saved entry identities preserve retired histories and distinguish old versions of an entry with a new type', async t => {
   const f = await fixture(t);
   await declare(f.project, [bot]);
-  const current = data(f.storage, 'agent'), oldEntry = data(f.storage, 'agent', ['release']);
-  const oldBot = data(f.storage, 'retired', ['folder-bots', instance1]);
-  const wrongOwner = data(f.storage, 'foreign', ['release']);
+  const current = data(f.storage, 'agent'), oldEntry = data(f.storage, 'agent', ['workspaces', 'a'.repeat(64)]);
+  const oldBot = data(f.storage, 'retired', ['instances', instance1]);
+  const wrongOwner = data(f.storage, 'foreign', ['workspaces', 'a'.repeat(64)]);
   await register(oldEntry, 'agent', 'workflow');
   await register(oldBot, 'retired', 'bot');
   await register(wrongOwner, 'foreign', 'bot', unrelatedId);
@@ -263,10 +263,10 @@ test('saved entry identities preserve retired histories and distinguish old vers
 test('measures assistant histories across workdirs and exact memory-only scopes without mixing projects or accounts', async t => {
   const f = await fixture(t);
   await declare(f.project, [bot, workflow]);
-  function hashed(storage, workdir, id = projectId) {
-    return path.join(storage, createHash('sha256').update(`assistant:${id}:${workdir}`).digest('hex').slice(0, 24));
+  function hashed(storage, workdir, id = projectId, entry = 'agent') {
+    return path.join(storage, 'projects', id, 'workspaces', createHash('sha256').update(workdir).digest('hex'), 'entries', entry);
   }
-  const first = hashed(f.storage, f.project), second = hashed(f.storage, path.join(f.root, 'a closed workdir'));
+  const first = hashed(f.storage, f.project), second = hashed(f.storage, path.join(f.root, 'a closed workdir'), projectId, workflow.entryId);
   await register(first, bot.entryId, bot.type, projectId.toUpperCase());
   const firstHistory = await history(first, [['conversation', { messages: [{}, {}] }], ['conversation', { messages: [{}] }, 1]]);
   firstHistory.db.close();
@@ -276,11 +276,11 @@ test('measures assistant histories across workdirs and exact memory-only scopes 
   const secondHistory = await history(second, [['conversation', { messages: [{}, {}, {}] }],
     ['run', { state: { createdAt: timestamp } }], ['run', { state: { createdAt: timestamp + 500 } }, 1]]);
   secondHistory.db.close();
-  const secondMemory = await putMemory(memoryPath(second), 5);
+  const secondBot = hashed(f.storage, path.join(f.root, 'a closed workdir'));
+  const secondMemory = await putMemory(memoryPath(secondBot), 5);
   const memoryOnly = hashed(f.storage, path.join(f.root, 'a selected memory directory'));
   const elsewhere = await putMemory(memoryPath(memoryOnly), 3);
-  // Without a project marker, only the exact scoped memory file can be attributed, not arbitrary history.
-  (await history(memoryOnly, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
+  // A memory-only entry does not need to be opened in the editor.
   const otherProject = hashed(f.storage, f.project, unrelatedId);
   await register(otherProject, bot.entryId, bot.type, unrelatedId);
   (await history(otherProject, [['conversation', { messages: new Array(20).fill({}) }]])).db.close();
@@ -294,7 +294,7 @@ test('measures assistant histories across workdirs and exact memory-only scopes 
   assert.equal(usage.state, 'ok');
   assert.equal(usage.location, undefined);
   const [agent, task] = usage.entries;
-  assert.deepEqual([agent.conversation.sessions, agent.conversation.messages], [2, 5]);
+  assert.deepEqual([agent.conversation.sessions, agent.conversation.messages], [1, 2]);
   assert.deepEqual(agent.memory, { state: 'ok', created: true, records: 10, bytes: firstMemory + secondMemory + elsewhere });
   assert.deepEqual([task.workflow.runs, task.workflow.lastRunAt], [1, timestamp]);
   assert.equal(agent.conversation.bytes + task.workflow.bytes, (await stat(firstHistory.file)).size + (await stat(secondHistory.file)).size);
@@ -305,8 +305,8 @@ test('measures assistant histories across workdirs and exact memory-only scopes 
 test('resolves a retired workdir Bot before attributing its separate memory-only directory', async t => {
   const f = await fixture(t);
   await declare(f.project, [workflow]);
-  const memoryOnly = path.join(f.storage, '1'.repeat(24));
-  const priorWorkdir = path.join(f.storage, 'f'.repeat(24));
+  const memoryOnly = data(f.storage, 'retired', ['workspaces', '1'.repeat(64)]);
+  const priorWorkdir = data(f.storage, 'retired', ['workspaces', 'f'.repeat(64)]);
   const entryId = 'retired';
   const bytes = await putMemory(memoryPath(memoryOnly, projectId, entryId), 1, entryId);
   await register(priorWorkdir, entryId, 'bot');
@@ -323,7 +323,7 @@ test('resolves a retired workdir Bot before attributing its separate memory-only
 test('does not count the same cold history or memory database twice across runtime roots', async t => {
   const f = await fixture(t);
   await declare(f.project, [bot]);
-  const source = data(f.storage, 'agent'), release = data(f.storage, 'agent', ['release']);
+  const source = data(f.storage, 'agent'), release = data(f.storage, 'agent', ['workspaces', 'a'.repeat(64)]);
   const { db, file } = await history(source, [['conversation', { messages: [{}, {}] }]]);
   db.close();
   const memory = memoryPath(source), memoryBytes = await putMemory(memory, 1);

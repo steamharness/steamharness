@@ -35,7 +35,7 @@ it('imports browser directories with nested bytes, empty folders and top-level f
   ]);
   expect(references.map(({ name, kind }) => ({ name, kind }))).toEqual([{ name: '目录', kind: 'directory' }, { name: 'empty.txt', kind: 'file' }]);
   expect(references.every(reference => reference.source === 'workspace-upload')).toBe(true);
-  expect(path.dirname(path.dirname(references[0].path))).toBe(path.join(await realpath(root), '.steamharness', 'conversation-uploads'));
+  expect(path.dirname(path.dirname(references[0].path))).toBe(path.join(await realpath(root), 'files', 'uploads'));
   expect(references[1].size).toBe(0);
   expect(await readFile(path.join(references[0].path, 'nested/file.txt'), 'utf8')).toBe('文档内容');
   expect(await readdir(path.join(references[0].path, '空目录'))).toEqual([]);
@@ -56,7 +56,7 @@ it.each([
   const root = await directory(); await expect(importDroppedEntries(root, entries)).rejects.toThrow(); expect(await readdir(root)).toEqual([]);
 });
 
-it.each(['.steamharness', '.steamharness/conversation-uploads'])('does not follow a symlink at %s', async relative => {
+it.each(['files', 'files/uploads'])('does not follow a symlink at %s', async relative => {
   const root = await directory(), outside = await directory(), target = path.join(root, relative);
   await mkdir(path.dirname(target), { recursive: true });
   await symlink(outside, target, process.platform === 'win32' ? 'junction' : 'dir');

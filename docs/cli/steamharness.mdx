@@ -9,6 +9,8 @@ description: "CLI 与聚合入口"
 
 本地运行允许省略 `steamharness.json.id`，无需先在 Server 登记项目。发行构建要求清单中有有效的项目 UUID；本地运行不会替你把 ID 写入源码。
 
+项目路径指定加载哪份代码。`run`、`json`、`web` 和 `mcp` 默认在账号的项目 ID 目录执行；要让脚本在其他位置读写相对路径，传 `--workdir <目录>`。`--data-dir` 不再可用，工作目录不改变[运行历史和记忆的位置](/concepts/data-storage)。
+
 ```sh
 pnpm exec steamharness check .
 pnpm exec steamharness check . --entry workflow

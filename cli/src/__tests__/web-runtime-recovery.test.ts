@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { randomUUID } from 'node:crypto';
+import { testDataDirectory } from './test-data-directory';
 import { createWebRuntime } from '../web/runtime';
 import type { Project } from '../web/workflow-types';
 
@@ -23,8 +25,8 @@ function conflictWorker() {
 
 it.each(['cancel', 'dispose'] as const)('does not restart a recovering worker when %s occurs between ownership retries', async action => {
   spawn.mockImplementation(conflictWorker);
-  const runtime = createWebRuntime(process.cwd(), process.cwd(), () => undefined);
-  const run = runtime.run({ project: {} as Project, conversationId: 'session', runId: 'run', args: [], resumeAgent: true }, vi.fn());
+  const runtime = createWebRuntime(process.cwd(), testDataDirectory(process.cwd(), 'recovery'), () => undefined);
+  const run = runtime.run({ project: { id: randomUUID(), entryId: 'main' } as Project, conversationId: 'session', runId: 'run', args: [], resumeAgent: true }, vi.fn());
   const rejected = expect(run).rejects.toThrow();
   // Let the conflict settle; the next worker is waiting on the retry delay.
   await new Promise(resolve => setImmediate(resolve));
@@ -37,8 +39,8 @@ it.each(['cancel', 'dispose'] as const)('does not restart a recovering worker wh
 
 it('does not retry ownership conflicts for a new input', async () => {
   spawn.mockImplementation(conflictWorker);
-  const runtime = createWebRuntime(process.cwd(), process.cwd(), () => undefined);
-  await expect(runtime.run({ project: {} as Project, conversationId: 'session', runId: 'new', args: [] }, vi.fn())).rejects.toThrow('Storage owner');
+  const runtime = createWebRuntime(process.cwd(), testDataDirectory(process.cwd(), 'recovery'), () => undefined);
+  await expect(runtime.run({ project: { id: randomUUID(), entryId: 'main' } as Project, conversationId: 'session', runId: 'new', args: [] }, vi.fn())).rejects.toThrow('Storage owner');
   expect(spawn).toHaveBeenCalledOnce();
   runtime.dispose();
 });

@@ -23,7 +23,7 @@ async function checkFiles(directory: string, forbidden: string): Promise<void> {
 
 it.each([false, true])('carries sequential credential requests over real host stdio and the agent worker (folder Bot: %s)', async folder => {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'host-credential-runtime-')));
-  const directory = path.join(root, 'source'), workspace = path.join(root, 'workspace'), dataDir = path.join(root, 'data');
+  const directory = path.join(root, 'source'), workspace = path.join(root, 'workspace'), dataDir = path.join(root, '.steamharness', 'accounts', 'local');
   const core = await resolveHarnessRoot(), projectId = randomUUID(), entryId = 'main';
   const canary = `fixture-only-${randomUUID()}`;
   const slot = { name: 'fixture-fields', kind: 'structured', fields: ['account', 'token'] };
@@ -63,7 +63,7 @@ it.each([false, true])('carries sequential credential requests over real host st
         paramOptions: { fields: { provider: false, model: false } } } });
     `);
     const child = spawn(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), 'web', directory, '--entry', entryId,
-      '--host-stdio', '--data-dir', dataDir, '--json', '--no-open', ...(folder ? ['--folder-context'] : [])], {
+      '--host-stdio', '--host-account', 'local', '--json', '--no-open', ...(folder ? ['--folder-context'] : [])], {
       cwd: directory, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HOME: root, USERPROFILE: root, STEAMHARNESS_CLI_AUTH_DIR: path.join(root, 'auth'),
         STEAMHARNESS_WEB_HOST: 'studio', STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' },
     });

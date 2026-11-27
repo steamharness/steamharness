@@ -29,7 +29,7 @@ Referencing an entry neither switches windows nor runs it. Existing `/` commands
 
 When Studio desktop and the Bot run on the same machine, choosing, dropping, or pasting a disk file references its original path without copying it. If Studio cannot get the path, choose the file again using the attachment picker in the composer.
 
-In a browser, choose a file or folder with the attachment picker, or drag it into the composer. Uploads go into `.steamharness/conversation-uploads/` inside the project working directory. Assistant uses its bound working directory. Uploads keep the folder structure intact and are labeled **Uploaded copy**. The Bot gets the copy's path on the execution host, not the client's original path. Deleting the conversation does not remove these copies.
+In a browser, choose a file or folder with the attachment picker, or drag it into the composer. Copies go into `files/uploads/` in the [current entry's data directory](/en/concepts/data-storage), not into source or the bound working directory. Uploads keep the folder structure intact and are labeled **Uploaded copy**. The Bot gets the copy's path on the execution host, not the client's original path. Deleting the conversation does not remove these copies.
 
 Each import can contain up to 50 MiB. If the browser provides a path without the contents, select the file or folder again to upload it. For larger files, include a path the Bot can access in your message. Supported inline images still send as images.
 

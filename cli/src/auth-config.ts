@@ -1,12 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { serviceChannel, defaultServerUrl } from "./service-url";
 import { normalizeAuthServer } from "@steamharness/server-auth";
 import { readFileSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import {
   createEmptyProjectAuthConfig, normalizeProjectAuthConfig, resolveProjectCliAuthDir,
-  resolveProjectCliAuthFilePath as legacyFilePath, type AuthConfig,
+  type AuthConfig,
 } from "@steamharness/auth-config";
 
 function sameServer(left: string, right: string): boolean {
@@ -19,10 +18,7 @@ export function cliAuthIsUsable(config: AuthConfig): boolean {
 
 function scopedFilePath(env: NodeJS.ProcessEnv, serverUrl?: string, purpose: AuthPurpose = 'project'): string {
   const server = serverUrl ? `-${createHash("sha256").update(normalizeAuthServer(serverUrl)).digest("hex").slice(0, 20)}` : "";
-  return path.join(resolveProjectCliAuthDir(env), `workflow-auth-${serviceChannel(env)}${purpose === 'ai' ? '-ai' : ''}${server}.json`);
-}
-function canMigrate(config: AuthConfig, env: NodeJS.ProcessEnv): boolean {
-  return !!config.apiKey && sameServer(config.serverUrl, env.STEAMHARNESS_SERVER_URL || defaultServerUrl(env));
+  return path.join(resolveProjectCliAuthDir(env), `${purpose}${server}.json`);
 }
 
 /** Read the active channel identity, or the identity saved for a particular Server. */
@@ -30,11 +26,7 @@ export async function readCliAuthConfig(env: NodeJS.ProcessEnv = process.env, se
   const read = async (file: string) => {
     try { return normalizeProjectAuthConfig(JSON.parse(await readFile(file, "utf8"))); } catch { return undefined; }
   };
-  let config = await read(scopedFilePath(env, undefined, purpose));
-  if (!config) {
-    const legacy = purpose === 'project' ? await read(legacyFilePath(env)) : undefined;
-    config = legacy && canMigrate(legacy, env) ? legacy : createEmptyProjectAuthConfig();
-  }
+  const config = await read(scopedFilePath(env, undefined, purpose)) ?? createEmptyProjectAuthConfig();
   if (!serverUrl || sameServer(config.serverUrl, serverUrl)) return config;
   const saved = await read(scopedFilePath(env, serverUrl, purpose));
   return saved && sameServer(saved.serverUrl, serverUrl) ? saved : createEmptyProjectAuthConfig();
@@ -43,11 +35,7 @@ export function readCliAuthConfigSync(env: NodeJS.ProcessEnv = process.env, serv
   const read = (file: string) => {
     try { return normalizeProjectAuthConfig(JSON.parse(readFileSync(file, "utf8"))); } catch { return undefined; }
   };
-  let config = read(scopedFilePath(env, undefined, purpose));
-  if (!config) {
-    const legacy = purpose === 'project' ? read(legacyFilePath(env)) : undefined;
-    config = legacy && canMigrate(legacy, env) ? legacy : createEmptyProjectAuthConfig();
-  }
+  const config = read(scopedFilePath(env, undefined, purpose)) ?? createEmptyProjectAuthConfig();
   if (!serverUrl || sameServer(config.serverUrl, serverUrl)) return config;
   const saved = read(scopedFilePath(env, serverUrl, purpose));
   return saved && sameServer(saved.serverUrl, serverUrl) ? saved : createEmptyProjectAuthConfig();

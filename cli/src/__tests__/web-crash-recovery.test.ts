@@ -16,7 +16,7 @@ import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 it.each(['generation', 'uncooperative-tool'])('recovers a Bot after its CLI is SIGKILLed during %s without sending its queue after failure', async phase => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-crash-recovery-'));
   const connection = await runtimeStorageService({ leaseDurationMs: 1500 }).start();
-  const applicationId = crypto.randomUUID(), dataDir = path.join(testDataDirectory(directory));
+  const applicationId = crypto.randomUUID(), home = testDataDirectory(directory), dataDir = path.join(home, '.steamharness/accounts/local');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
@@ -67,8 +67,8 @@ tools: [{ name: 'stuck_tool', enabled: true, autoApprove: true }],
 prepareInput(input, { args }) { writeFileSync(new URL('./worker-pid', import.meta.url), String(process.pid)); return input; }
 });
     `);
-    cli = spawn(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), 'web', directory, '--data-dir', dataDir, '--no-open', '--json'],
-      { cwd: directory, env: { ...process.env, STEAMHARNESS_SERVER_URL: connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: connection.accessToken }, stdio: ['ignore', 'pipe', 'pipe'] });
+    cli = spawn(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), 'web', directory, '--no-open', '--json'],
+      { cwd: directory, env: { ...process.env, HOME: home, USERPROFILE: home, STEAMHARNESS_SERVER_URL: connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: connection.accessToken }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '', diagnostics = '';
     cli.stderr!.on('data', chunk => { diagnostics = (diagnostics + chunk).slice(-8000); });
     const ready = await new Promise<{ url: string }>((resolve, reject) => {

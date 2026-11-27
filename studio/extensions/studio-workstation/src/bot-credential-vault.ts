@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
-import { mkdir, open, readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { mkdir, open, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -60,40 +60,12 @@ export async function resolveBotCredentialNamespaces(profile: string, scope: Bot
   const legacy = (directory: string, folder: string | undefined) => botCredentialNamespace(profile, scope.projectId, scope.entryId, directory, scope.instanceId, folder);
   const direct = legacy(projectDirectory, workdir);
   if (scope.projectId.toLowerCase() !== DEVELOPER_ASSISTANT_PROJECT_ID) return [direct];
-  const profileDirectory = await realpath(profile).catch(() => path.resolve(profile));
-  const roots = [path.join(profileDirectory, 'workflow', 'builtin-apps'), path.join(profileDirectory, 'workflow', 'assistant', 'apps')];
-  const managed = (directory: string) => roots.some(root => /^[a-f0-9]{24}(?:[\\/]project)?$/.test(path.relative(root, directory)));
-  if (!managed(projectDirectory)) return [direct];
-
-  const releases = (await Promise.all(roots.map(async root => {
-    if (await realpath(root).catch(() => undefined) !== root) return [];
-    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
-    return (await Promise.all(entries.filter(entry => entry.isDirectory() && /^[a-f0-9]{24}$/.test(entry.name)).map(async entry => {
-      const base = path.join(root, entry.name);
-      for (const directory of [path.join(base, 'project'), base]) {
-        try {
-          if (await realpath(directory) !== directory) continue;
-          const manifest: unknown = JSON.parse(await readFile(path.join(directory, 'steamharness.json'), 'utf8'));
-          if (typeof manifest === 'object' && manifest !== null && 'id' in manifest && manifest.id === DEVELOPER_ASSISTANT_PROJECT_ID) {
-            return { directory, time: (await stat(directory)).birthtimeMs };
-          }
-        } catch { /* Ignore incomplete or removed release directories. */ }
-      }
-    }))).flatMap(entry => entry ? [entry] : []);
-  }))).flat().sort((a, b) => b.time - a.time || a.directory.localeCompare(b.directory)).map(entry => entry.directory);
-  if (!releases.includes(projectDirectory)) return [direct];
-
-  const standalone = !scope.instanceId && (!workdir || releases.includes(workdir));
-  const primary = legacy('builtin:developer-assistant', standalone ? undefined : workdir);
-  const previous = new Set([direct]);
-  for (const release of releases) {
-    if (standalone) {
-      previous.add(legacy(release, release));
-      previous.add(legacy(release, undefined));
-      if (workdir) previous.add(legacy(release, workdir));
-    } else previous.add(legacy(release, workdir));
-  }
-  return [primary, ...previous];
+  const home = path.join(await realpath(profile), 'projects', scope.projectId.toLowerCase());
+  if (!/^[a-f0-9]{24}(?:[\\/]project)?$/.test(path.relative(path.join(home, 'builds'), projectDirectory))) return [direct];
+  const manifest = JSON.parse(await readFile(path.join(projectDirectory, 'steamharness.json'), 'utf8'));
+  if (manifest.id !== DEVELOPER_ASSISTANT_PROJECT_ID) return [direct];
+  const standalone = !scope.instanceId && (!workdir || workdir === projectDirectory || workdir === home);
+  return [legacy('builtin:developer-assistant', standalone ? undefined : workdir)];
 }
 
 interface SecretStore {

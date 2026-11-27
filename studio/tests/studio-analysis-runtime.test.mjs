@@ -62,7 +62,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
               body: JSON.stringify({ operation: request.url === '/mutate' ? 'studio.theme.set' : 'studio.analysis.get', input: {}, permissionPolicy: 'read-only' }) });
             response.writeHead(reply.status, { 'Content-Type': 'application/json' }); response.end(await reply.text());
           });
-          server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,
+          server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1, localStorageVersion:2,hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,
             url: 'http://127.0.0.1:' + server.address().port + '/entries/main/#session=' + 'a'.repeat(64), project, runtime: { harnessVersion: '2.3.4', harnessPath: 'fixture' } })));
         } else if (message.type === 'close') { input.close(); process.stdin.pause(); server?.close(); }
       });
@@ -71,7 +71,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   `);
   const current = { id: '8f6a6240-4860-4efc-bd07-932868be2b98', name: 'Current', uri: pathToFileURL(path.join(directory, 'current')).href, projectType: 'workflow' };
   const builtin = { id: '6cbe3c24-2707-4f31-a553-94edbe866eb1', name: 'Built-in', projectType: 'kanban',
-    uri: pathToFileURL(path.join(storage, 'workflow', 'builtin-apps', 'a'.repeat(24))).href };
+    uri: pathToFileURL(path.join(storage, 'projects', '6cbe3c24-2707-4f31-a553-94edbe866eb1', 'builds', 'a'.repeat(24))).href };
   let imports = [{ id: current.id, name: 'Imported', uri: current.uri }, builtin];
   const vscode = {
     env: { language: 'zh-cn', uiKind: 1 }, UIKind: { Desktop: 1 },
@@ -86,8 +86,9 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } }, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   }, { importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
   let userId = 'analysis-user';
+  const holder = { owner: 'local', runs: storage, prepare() {} };
   const runtime = module.exports.createProjectRuntime({ subscriptions: [], extensionUri: { fsPath: extension }, globalStorageUri: { fsPath: storage },
-    globalState: { get: () => imports } }, { getConnection: () => undefined, getState: () => ({ user: { userId } }), onDidChange: () => ({ dispose() {} }) });
+    globalState: { get: () => imports } }, { workspace: () => holder, getConnection: () => undefined, getState: () => ({ user: { userId } }), onDidChange: () => ({ dispose() {} }) });
   t.after(() => runtime.dispose());
   runtime.updateAnalysisProjects([current, builtin]);
   const project = await runtime.inspectAnalysis(); assert.equal(project.builtin, 'analysis'); assert.equal(project.projectType, 'kanban');
@@ -98,7 +99,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   const connection = await fetch(`${origin}/connection`).then(response => response.json()); assert.equal(connection.assistant, undefined); assert.equal(connection.mcp, undefined);
   let result = await fetch(`${origin}/analysis`).then(response => response.json());
   assert.equal(result.ok, true); assert.equal(result.value.projects.length, 1); assert.equal(result.value.projects[0].name, 'Current');
-  assert.equal(result.value.storageDir, path.join(storage, 'workflow/web')); assert.equal(result.value.locale, 'zh-cn');
+  assert.equal(result.value.storageDir, storage); assert.equal(result.value.locale, 'zh-cn');
   assert.equal((await fetch(`${origin}/mutate`)).status, 400);
   const reader = await import(pathToFileURL(path.join(cli, 'web/local-analysis.mjs')).href);
   const heldAccount = reader.holdNextRead(), accountQuery = fetch(`${origin}/analysis`).then(response => response.json());

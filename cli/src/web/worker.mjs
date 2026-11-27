@@ -156,6 +156,7 @@ try {
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
 } = await import(coreUrl);
   const core = await import(coreUrl);
+  if (core.LOCAL_STORAGE_PROTOCOL_VERSION !== 2) throw new Error('Update the project SDK to use the unified local storage layout.');
   if (request.folderBot && core.LOCAL_FOLDER_CONTEXT_PROTOCOL_VERSION !== 1) throw new Error('Update the project SDK to run a local folder Bot.');
   if (request.folderBot?.profileRecord && core.LOCAL_BOT_PROFILE_PROTOCOL_VERSION !== 1) throw new Error('Update the project SDK to use this folder Bot profile.');
   // IPC callbacks execute outside the async scope that registered the listener.
@@ -226,7 +227,7 @@ try {
     await send('result', { projects, errors });
   } else if (request.project?.folderPath) {
     const { botMemoryDirectoryScope, createWebBotMemoryDirectories, runtimeDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
-    const dataDir = runtimeDataDirectory(request.storageDir, request.project.folderPath, request.project);
+    const dataDir = runtimeDataDirectory(request.storageDir, request.project, request.folderBot?.id);
     if (request.project.assistant) {
       const assistant = request.project.assistant;
       const primary = assistant.roots.find(root => root.folderPath === assistant.workdir);
@@ -241,8 +242,7 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
-      localKey: createHash('sha256').update(request.project.assistant?.storageScope === 'managed-project'
-        ? `managed-project:${request.project.id.toLowerCase()}` : request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
+      localKey: createHash('sha256').update(dataDir).digest('hex') };
     const { createLocalRuntimePersistence, BOT_MEMORY_DIRECTORY_VERSION } = await import(resolve('steamharness/runtime-storage', coreUrl));
     const runtimeDirectory = path.join(dataDir, 'runtime');
     runtimePersistence = createLocalRuntimePersistence({ directory: runtimeDirectory,
@@ -365,6 +365,7 @@ try {
       }
       const running = runLocalProjectWithReport({
         runtimeHost: request.runtimeHost,
+        uploadDirectory: path.join(dataDir, 'files', 'uploads'),
         folderContext: request.folderBot && { directory: request.folderBot.directory, projectId: request.folderBot.projectId, permissionCeiling: request.folderBot.permissionCeiling, profile: request.folderBotProfile },
         entryConversationHost,
         entryCall: request.entryCall,

@@ -41,7 +41,8 @@ import { canAccessBotCredentialStorage } from './bot-credential-metadata';
 import { createBotCredentialTargetResolver } from './bot-credential-list';
 import { registerWebBotCredentialManagement } from './bot-credential-management';
 import { registerBotManagementView } from './bot-management-view';
-import { prepareManagedProjectStorage } from './managed-project-storage';
+import { localAccountDirectory, localDataHome, localProjectDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
+import { PROJECT_UUID_PATTERN } from '@steamharness/project-manifest';
 import type { AccountWorkspace } from './account-workspace-data';
 import { ProjectProcessManager } from './workflow-process-client';
 
@@ -58,9 +59,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const sessions = new Set<WebSession>();
   const kanbanSessions = new Map<WebSession, StudioKanbanHost>();
   const controller = new AbortController();
-  const authRoot = path.join(context.globalStorageUri.fsPath, 'workflow', 'isolated-auth', randomUUID());
+  const authRoot = path.join(localDataHome(), 'hosts', randomUUID(), 'isolated-auth');
   const browser = usingStudioWeb();
-  const webDataDirectory = (browser && process.env.STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR) || path.join(context.globalStorageUri.fsPath, 'workflow', 'web');
   const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
   const settingsSnapshot = () => readUserSettings(account.getUserAgentModels?.());
@@ -79,8 +79,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const selectedRuntime = () => configuredNodeRuntime(context.globalStorageUri.fsPath);
   const localDesktop = !vscode.env.remoteName && typeof vscode.env.uiKind === 'number' && vscode.env.uiKind === vscode.UIKind.Desktop;
   const desktop = !browser && localDesktop;
-  const botCredentials = createBotCredentialInteraction(context);
-  const startSchedules = (scope: RuntimeScope) => new WorkflowScheduleRuntime(scope.workspace?.schedules ?? path.join(context.globalStorageUri.fsPath, 'workflow', 'schedules'), scope.data,
+  const botCredentials = createBotCredentialInteraction(context, undefined, () => currentData());
+  const startSchedules = (scope: RuntimeScope) => new WorkflowScheduleRuntime(path.join(scope.data, 'schedules'), scope.data,
     directory => Promise.resolve(vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false)).catch(() => false),
     async (target, workflowScheduleKey, signal) => {
       const combined = AbortSignal.any([signal, controller.signal, scope.lifetime.signal]);
@@ -98,15 +98,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       } finally { signal.removeEventListener('abort', abort); }
     }, error => console.warn('Studio Workflow scheduler:', error instanceof Error ? error.message : 'unknown error'));
   let activeScope: RuntimeScope | undefined;
-  let stoppingScope = Promise.resolve();
-  const retireScope = (stop = false) => {
+  const retireScope = () => {
     const scope = activeScope;
     activeScope = undefined;
-    if (stop && scope?.processes) {
-      stoppingScope = Promise.all([stoppingScope, scope.processes.stop(AbortSignal.timeout(12_000))]).then(() => undefined, error => {
-        console.warn('Studio project manager:', error instanceof Error ? error.message : 'unknown error');
-      });
-    }
+    // Abort this window's leases only. Other desktop/Web clients may still own work in the account.
     if (scope) { scope.lifetime.abort(); scope.schedules?.dispose(); scope.usage.dispose(); }
     void hosts.close();
   };
@@ -114,9 +109,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     controller.signal.throwIfAborted();
     const workspace = account.workspace?.();
     if (activeScope && activeScope.workspace === workspace) return activeScope;
-    retireScope(true);
+    retireScope();
     workspace?.prepare();
-    const data = workspace?.runs ?? webDataDirectory;
+    const data = workspace?.runs ?? prepareLocalDirectory(localAccountDirectory());
     const scope: RuntimeScope = { workspace, data, lifetime: new AbortController(), usage: new ProjectUsageService(data,
       path.join(context.extensionUri.fsPath, 'dist', 'project-usage-worker.cjs'), account.platform
         ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined) };
@@ -135,10 +130,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const warmLocalScope = desktop || browser && account.sharesWorkspace;
   if (warmLocalScope) { void Promise.resolve(workspaceReady).then(warmScope); }
   const accountScopeChanged = account.sharesWorkspace ? account.onDidChange(() => {
-    if (activeScope && activeScope.workspace !== account.workspace?.()) retireScope(true);
+    if (activeScope && activeScope.workspace !== account.workspace?.()) retireScope();
     if (warmLocalScope) void Promise.resolve(workspaceReady).then(warmScope);
   }) : undefined;
-  const captureScope = async () => { await workspaceReady; const scope = scopeForAccount(); await stoppingScope; scope.lifetime.signal.throwIfAborted(); return scope; };
+  const captureScope = async () => { await workspaceReady; const scope = scopeForAccount(); scope.lifetime.signal.throwIfAborted(); return scope; };
   const configurationService = {
     systemModelCatalog: async (signal: AbortSignal) => {
       await account.loadUserModels?.();
@@ -153,7 +148,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       if(input.storage==='local') {
         if(input.open) { await vscode.commands.executeCommand('studio.openProjectConfigurations',input.projectDir,input.entryId); return {opened:true,storage:'local',projectDir:input.projectDir}; }
         const runtime = await selectedRuntime();
-        return requestProjectCliConfiguration(String(input.projectDir), runtime.nodePath, input.call as Record<string, unknown>, signal, undefined, String(input.entryId), runtime, authRoot);
+        return requestProjectCliConfiguration(String(input.projectDir), runtime.nodePath, input.call as Record<string, unknown>, signal, undefined, String(input.entryId), runtime, authRoot, account.workspace?.()?.owner ?? 'local');
       }
       // Remote Studio Control is explicit and never initiates interactive login on behalf of an agent.
       const connection = account.getConnection();
@@ -165,47 +160,50 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const runtimePackageDirectory = process.env.STEAMHARNESS_PROJECT_PACKAGE_DIR;
   const runtimeNpmLatest = desktop ? createRuntimeNpmLatest(controller.signal) : undefined;
   const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language, runtimePackageDirectory);
-  const releaseStorageDir = path.join(context.globalStorageUri.fsPath, 'workflow', 'builtin-apps');
+  const currentData = () => account.workspace?.()?.runs ?? localAccountDirectory();
   const isBuiltinProjectDirectory = (directory: string): boolean => {
-    const relative = path.relative(releaseStorageDir, directory);
-    return /^[a-f0-9]{24}(?:[\\/]project)?$/.test(relative);
+    const [id, builds, stamp, subdir, ...rest] = path.relative(path.join(currentData(), 'projects'), directory).split(path.sep);
+    return PROJECT_UUID_PATTERN.test(id) && builds === 'builds' && /^[a-f0-9]{24}$/.test(stamp) && (!subdir || subdir === 'project') && !rest.length;
   };
-  let assistantApplication: Promise<string> | undefined;
-  const assistantDirectory = (): Promise<string> => {
-    return assistantApplication ??= realpath(context.extensionUri.fsPath).then(extensionDirectory => {
+  const applications = new Map<string, Promise<string>>();
+  const cached = (data: string, id: string, load: () => Promise<string>): Promise<string> => {
+    const key = JSON.stringify([data, id]);
+    const previous = applications.get(key);
+    if (previous) return previous;
+    const operation = load().catch(error => { applications.delete(key); throw error; });
+    applications.set(key, operation); return operation;
+  };
+  const assistantDirectory = async (requestedData?: string): Promise<string> => {
+    await workspaceReady;
+    const data = requestedData ?? currentData();
+    return cached(data, DEVELOPER_ASSISTANT_PROJECT_ID, () => realpath(context.extensionUri.fsPath).then(extensionDirectory => {
       const studioRoot = path.resolve(extensionDirectory, '..', '..');
       return prepareAssistantApplication({
         templateDir: path.join(extensionDirectory, 'dist', 'developer-assistant'),
-        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant'),
-        releaseStorageDir,
-        dependencySources: [path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'runtime'),
+        storageDir: data,
+        dependencySources: [
           path.join(process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(studioRoot, '..'), 'build-in', 'build-in-developer-assistant'),
           path.join(process.env.STUDIO_STEAMHARNESS_SOURCE || path.join(studioRoot, '..', 'workflow'), 'build-in', 'build-in-developer-assistant'),
           path.join(studioRoot, 'vendor', 'developer-assistant')],
       });
-    }).catch(error => { assistantApplication = undefined; throw error; });
+    }));
   };
-  let analysisApplication: Promise<string> | undefined;
-  const analysisDirectory = (): Promise<string> => analysisApplication ??= realpath(context.extensionUri.fsPath)
+  const analysisDirectory = (data: string): Promise<string> => cached(data, ANALYSIS_PROJECT_ID, () => realpath(context.extensionUri.fsPath)
     .then(async extensionDirectory => prepareAnalysisApplication({
       templateDir: path.join(extensionDirectory, 'dist', 'analysis'),
-      storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'analysis'), releaseStorageDir, dependencySources: [await assistantDirectory()],
-    })).catch(error => { analysisApplication = undefined; throw error; });
-  const additionalApplications = new Map<string, Promise<string>>();
+      storageDir: data, dependencySources: [await assistantDirectory(data)],
+    })));
   const listBuiltinProjectDirectories = async () => {
+    const scope = await captureScope();
+    const data = scope.data;
     const additional = account.platform ? await vscode.commands.executeCommand<{ directory: string; projectId: string; pending?: boolean }[]>(
       'studio.internalListAdditionalBuiltinProjects').then(rows => rows ?? [], () => []) : [];
     const applications = additional.filter(row => path.isAbsolute(row.directory) && !row.pending).map(({ directory, projectId }) => {
-      let application = additionalApplications.get(directory);
-      if (!application) {
-        application = assistantDirectory().then(dependencies => prepareBuiltinApplication({ templateDir: directory,
-          storageDir: releaseStorageDir, releaseStorageDir, dependencySources: [dependencies] }, projectId))
-          .catch(error => { additionalApplications.delete(directory); throw error; });
-        additionalApplications.set(directory, application);
-      }
-      return application;
+      return cached(data, directory, async () => prepareBuiltinApplication({ templateDir: directory,
+        storageDir: data, dependencySources: [await assistantDirectory(data)] }, projectId));
     });
-    const results = await Promise.allSettled([assistantDirectory(), analysisDirectory(), ...applications]);
+    const results = await Promise.allSettled([assistantDirectory(data), analysisDirectory(data), ...applications]);
+    scope.lifetime.signal.throwIfAborted();
     return { directories: results.flatMap(result => result.status === 'fulfilled' && isBuiltinProjectDirectory(result.value) ? [result.value] : []),
       pending: additional.some(row => row.pending) };
   };
@@ -237,7 +235,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   if (desktop) context.subscriptions.push(registerBotManagementView(context, { captureScope,
     currentOwner: () => account.workspace?.()?.owner ?? null,
     target: { assistantId: DEVELOPER_ASSISTANT_PROJECT_ID, isBuiltinProjectDirectory, localAssistantDirectory: assistantDirectory,
-      prepareManagedStorage: options => prepareManagedProjectStorage({ ...options, builds: releaseStorageDir }),
       resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
       trusted: directory => vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false),
     },
@@ -385,7 +382,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     },
     inspectAnalysis: async () => {
       assertAvailable();
-      const directory = await analysisDirectory();
+      const directory = await analysisDirectory((await captureScope()).data);
       const runtime = await selectedRuntime();
       const result = await inspectProjectCli(directory, runtime.nodePath, controller.signal, undefined, undefined, vscode.env.language, false, runtime, authRoot);
       const project = result.projects.find(project => project.id === ANALYSIS_PROJECT_ID && project.projectType === 'kanban');
@@ -452,11 +449,11 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         const runtime = await selectedRuntime();
         const result = await inspectProjectCli(directory, runtime.nodePath, controller.signal, directory, assistant, vscode.env.language, false, runtime, authRoot);
         if (result.errors.length || !result.projects.some(project => project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.projectType === 'bot')) {
-          if (assistantApplication === preparation) { assistantApplication = undefined; }
+          applications.delete(JSON.stringify([currentData(), DEVELOPER_ASSISTANT_PROJECT_ID]));
         }
         return { ...result, projects: result.projects.map(project => createAssistantProject({ ...project, uri: '', assistant }, target, folders)) };
       } catch (error) {
-        if (assistantApplication === preparation) { assistantApplication = undefined; }
+        applications.delete(JSON.stringify([currentData(), DEVELOPER_ASSISTANT_PROJECT_ID]));
         throw error;
       }
     },
@@ -489,7 +486,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const workspaceAssistant = project.assistant ?? (ownFolder ? { standalone: true, workdir: ownFolder.folderPath, roots: [ownFolder] } : undefined);
       const managedWorkspace = workspaceAssistant?.standalone === true && !project.folderBot && project.distribution === 'release'
         && isBuiltinProjectDirectory(project.folderPath) && workspaceAssistant.workdir === project.folderPath && workspaceAssistant.roots.length === 1;
-      const assistant = workspaceAssistant && { ...workspaceAssistant, storageScope: managedWorkspace ? 'managed-project' as const : undefined };
+      const projectHome = managedWorkspace ? prepareLocalDirectory(localProjectDirectory(scope.data, project.id)) : undefined;
+      const assistant = workspaceAssistant && (projectHome ? { ...workspaceAssistant, workdir: projectHome, storageScope: 'managed-project' as const,
+        roots: [{ uri: vscode.Uri.file(projectHome).toString(), folderPath: projectHome, name: project.name }] } : workspaceAssistant);
       if (project.assistant?.standalone) {
         if (project.folderPath !== await assistantDirectory()) { throw new Error('Invalid standalone assistant scope.'); }
         assertAvailable(); assertAssistantWorkspace(project.assistant);
@@ -498,18 +497,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const runSignal = AbortSignal.any([hostSignal, controller.signal, scope.lifetime.signal]);
       let bridge: StudioControlBridge | undefined;
       try {
-        if (managedWorkspace) {
-          try {
-            await prepareManagedProjectStorage({ storage: scope.data, builds: releaseStorageDir, projectId: project.id,
-              entryId: project.entryId, projectType: project.projectType, signal: runSignal });
-          } catch (error) {
-            runSignal.throwIfAborted();
-            if ((error as NodeJS.ErrnoException).code === 'MANAGED_PROJECT_STORAGE_BUSY') {
-              throw new Error(t('Close the older project window before opening this build. The saved data has not changed.'));
-            }
-            throw new Error(t('Could not restore this project’s local data. The original data has not changed.'), { cause: error });
-          }
-        }
         const workflowSchedules = scope.schedules;
         const manager = options?.embedded ? scope.processes : undefined;
         const workflowScheduleKey = (workflowSchedules || manager) && !project.assistant && !project.folderBot && project.distribution !== 'release'
@@ -519,13 +506,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           && project.entries.some(entry => entry.entryId === STUDIO_CONTROL_ENTRY_ID && entry.type === 'workflow');
         if (!project.folderBot && (project.assistant || assistantAggregate)) {
           const directory = project.assistant ? await assistantDirectory() : project.folderPath;
-          const assistantScope = assistant ?? { workdir: directory, roots };
+          const assistantScope = (managedWorkspace ? workspaceAssistant : assistant) ?? { workdir: directory, roots };
           if (!studioControlWorkspaceAvailable(assistantScope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
           bridge = await startStudioControlBridge(createStudioControlHandler(assistantScope, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token, mcpServer: JSON.stringify({
-            id: 'workflow-studio', command: [runtime.nodePath, (await resolveProjectCli(directory)).entry, 'mcp', directory, '--entry', STUDIO_CONTROL_ENTRY_ID,
-              '--data-dir', scope.workspace ? path.join(scope.data, 'studio-control') : path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'control-data')],
-            environment: { PATH: nodeRuntimeEnvironment(runtime).PATH!, ...createProjectCliEnvironment({}, undefined, runtime, authRoot), ...(runtime.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) },
+            id: 'workflow-studio', command: [runtime.nodePath, (await resolveProjectCli(directory)).entry, 'mcp', directory, '--entry', STUDIO_CONTROL_ENTRY_ID],
+            environment: { PATH: nodeRuntimeEnvironment(runtime).PATH!, ...createProjectCliEnvironment({}, undefined, runtime, authRoot), STEAMHARNESS_LOCAL_ACCOUNT_KEY: scope.workspace?.owner ?? 'local', ...(runtime.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) },
             inheritEnvironment: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'], timeout: 30_000,
           }) };
         } else if (project.id === ANALYSIS_PROJECT_ID && project.projectType === 'kanban') {

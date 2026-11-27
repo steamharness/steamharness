@@ -1,12 +1,11 @@
 import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { projectEntrySources } from "./project-sources";
-import { resolveProjectDeclarationEntrySync } from "@steamharness/project-manifest/node";
+import { localEntryDirectory, localRuntimeAccountDirectory, prepareLocalDirectory, resolveProjectDeclarationEntrySync } from "@steamharness/project-manifest/node";
 import { projectEntryKey } from "@steamharness/project-manifest";
 import {isDeepStrictEqual} from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
@@ -252,7 +251,8 @@ export interface LocalProjectConfigurationOptions {
 }
 export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
   const resolved = resolveProjectDeclarationEntrySync(projectDir, options.entryId);
-  return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, bot: resolved.registration.type === "bot", entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId) + (readProjectReleaseSync(resolved.projectDir) ? ":release" : ""), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
+  const rootDir = options.rootDir ?? prepareLocalDirectory(path.join(localEntryDirectory(localRuntimeAccountDirectory(), resolved.manifest.projectId, resolved.registration.entryId), 'configurations'));
+  return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, rootDir, bot: resolved.registration.type === "bot", entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
 }
 async function createLocalEntryConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions & { bot?: boolean } = {}) {
   const directory=await realpath(projectDir);
@@ -298,7 +298,7 @@ export async function assertCurrentProjectConfigurationAccess():Promise<void>{
 
 async function createProjectConfigurationStoreForIdentity(projectDir: string, options: LocalProjectConfigurationOptions & { bot?: boolean } = {}, agentModelSources:AgentModelSourceCache=new Map(), local=options.storageKey===undefined) {
   const directory = await realpath(projectDir);
-  const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
+  const root = options.rootDir!;
   const key = createHash("sha256").update(options.storageKey ?? options.identity!).digest("hex");
   const filename = path.join(root, `${key}.json`), lock = `${filename}.lock.sqlite`;
 
@@ -458,7 +458,7 @@ function parseSnapshot(value: unknown): ProjectConfigurationSnapshot {
   return snapshot;
 }
 
-function configurationTemplateCachePath(template: ProjectConfigurationTemplate,cacheDir = path.join(os.homedir(),".steamharness","configuration-templates")): string {
+function configurationTemplateCachePath(template: ProjectConfigurationTemplate,cacheDir = path.join(localRuntimeAccountDirectory(), 'configuration-templates')): string {
   return path.join(cacheDir, `${createHash('sha256').update(JSON.stringify(template)).digest('hex')}.json`);
 }
 /** Called only after an authenticated source download and its archive hash have been verified. */

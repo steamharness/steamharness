@@ -14,24 +14,7 @@ import { webConfig } from './web/config.mjs';
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const [command = 'help', ...args] = process.argv.slice(2);
 
-// macOS caps Unix domain socket paths at 103 characters.
-const UNIX_SOCKET_PATH_LIMIT = 103;
-// VS Code names its main-process socket `<major.minor>-main.sock`; this leaves
-// room for that plus the separating slash.
-const SOCKET_NAME_BUDGET = 32;
-
-/**
- * The desktop build opens a Unix domain socket inside the user-data directory,
- * so a deeply nested checkout can push that path past the macOS limit and the
- * launch fails with `listen EINVAL`. Prefer the checkout-local directory and
- * fall back to a short, persistent one under the home directory only when the
- * socket would not fit.
- */
-function resolveDesktopUserDataDir(preferred) {
-  if (process.platform !== 'darwin') return preferred;
-  if (preferred.length + SOCKET_NAME_BUDGET <= UNIX_SOCKET_PATH_LIMIT) return preferred;
-  return path.join(os.homedir(), '.studio', 'desktop-user-data');
-}
+const productHome = path.join(os.homedir(), '.steamharness');
 
 async function prepare(options) {
   await assertRuntime();
@@ -82,14 +65,8 @@ const flagValue = flag => {
   return index < 0 ? undefined : args[index] === flag ? args[index + 1] : args[index].slice(flag.length + 1);
 };
 const webDirectory = () => {
-  const managedDirectory = process.env.STEAMHARNESS_STUDIO_WEB_DATA_DIR;
-  if (managedDirectory) {
-    if (!path.isAbsolute(managedDirectory)) throw new Error('STEAMHARNESS_STUDIO_WEB_DATA_DIR must be absolute.');
-    return managedDirectory;
-  }
-  return path.join(ROOT, process.env.STEAMHARNESS_STUDIO_INTERNAL === '1' ? '.studio/web-internal-server-data' : '.studio/web-server-data');
+  return path.join(productHome, 'hosts', 'web');
 };
-const projectWebData = profile => path.join(profile, 'User/globalStorage/studio.studio-workstation/workflow/web');
 
 async function doctor() {
   let failed = false;
@@ -219,14 +196,16 @@ async function main() {
         ...await electronEnvironment(upstream), VSCODE_FORCE_PRELAUNCH: '',
       });
       const testing = command === 'test:desktop';
-      const extensionsDirectory = path.join(ROOT, testing ? '.studio/test-desktop-extensions' : '.studio/desktop-extensions');
+      if (!testing && hasFlag('--user-data-dir')) throw new Error('SteamHarness stores desktop data under ~/.steamharness/hosts.');
+      const testHome = testing ? path.join(os.tmpdir(), `studio-test-${process.pid}`) : undefined;
+      const testEnv = testHome ? { HOME: testHome, USERPROFILE: testHome } : {};
+      const extensionsDirectory = testing ? path.join(ROOT, '.studio/test-desktop-extensions') : path.join(productHome, 'studio', 'extensions');
       const directoryArgs = [
-        ...(hasFlag('--user-data-dir') ? [] : ['--user-data-dir', resolveDesktopUserDataDir(path.join(ROOT, testing ? `.studio/test-${process.pid}` : '.studio/desktop-user-data'))]),
         '--extensions-dir', extensionsDirectory,
         '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'),
       ];
       await ensureDefaultExtensions(extensionsDirectory, (extension) =>
-        launch(upstream, 'code-cli', [...directoryArgs, '--install-extension', extension]));
+        launch(upstream, 'code-cli', [...directoryArgs, '--install-extension', extension], testEnv));
       const desktopArgs = testing ? [
         `--extensionDevelopmentPath=${path.join(upstream.directory, 'extensions/vscode-api-tests')}`,
         `--extensionTestsPath=${path.join(ROOT, 'tests/extension-host.cjs')}`,
@@ -234,15 +213,14 @@ async function main() {
       ] : command === 'workflow' && !args.length ? [await resolveMonorepoRoot()] : args;
       const assistantFixture = testing ? await (await import('../tests/assistant-dependency-fixture.mjs')).createAssistantDependencyFixture(
         (await readJSON(path.join(ROOT, 'extensions/studio-workstation/dist/developer-assistant/project/package.json'))).devDependencies) : undefined;
-      const profile = path.resolve(process.env.VSCODE_APPDATA || flagValue('--user-data-dir') || resolveDesktopUserDataDir(path.join(ROOT, '.studio/desktop-user-data')));
-      const remote = testing ? undefined : await desktopWebControl({ directory: webDirectory(), storage: projectWebData(profile) });
+      const remote = testing ? undefined : await desktopWebControl({ directory: webDirectory() });
       try {
         await launch(upstream, 'code', [
           ...directoryArgs,
           '--disable-telemetry',
           ...(testing || product.workspaceTrustEnabledByDefault === undefined ? ['--disable-workspace-trust'] : []),
           ...desktopArgs,
-        ], { ...remote?.env, ...(assistantFixture ? { STUDIO_STEAMHARNESS_SOURCE: assistantFixture.root } : {}) });
+        ], { ...remote?.env, ...testEnv, ...(assistantFixture ? { STUDIO_STEAMHARNESS_SOURCE: assistantFixture.root } : {}) });
       } finally { await remote?.close(); await assistantFixture?.dispose(); }
       break;
     }
@@ -254,13 +232,12 @@ async function main() {
       }
       const directory = webDirectory();
       const config = await webConfig(process.env, port);
-      const storage = process.env.STEAMHARNESS_STUDIO_PROJECT_WEB_DATA_DIR || projectWebData(resolveDesktopUserDataDir(path.join(ROOT, '.studio/desktop-user-data')));
-      await runManagedWeb({ directory, storage, config, prepare: async () => {
+      await runManagedWeb({ directory, config, prepare: async () => {
         const { upstream, extensionSource } = await prepare({ linkBuiltinExtension: false });
         await requireDependencies(upstream);
         await build(upstream);
         await run(npm, ['run', 'download-builtin-extensions'], upstream.directory);
-        const extensionsDirectory = path.join(directory, 'extensions');
+        const extensionsDirectory = path.join(productHome, 'studio', 'extensions');
         const defaults = ['--server-data-dir', directory, '--extensions-dir', extensionsDirectory,
           '--builtin-extensions-dir', await webBuiltins(directory, upstream.directory, extensionSource), '--telemetry-level', 'off', '--disable-workspace-trust'];
         await ensureDefaultExtensions(extensionsDirectory, extension => run(process.execPath,

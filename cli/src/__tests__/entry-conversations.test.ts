@@ -3,7 +3,7 @@ import { ConversationController } from '../web/conversation-controller';
 import { EntryConversations, conversationProjection } from '../web/entry-conversations';
 import { hostConversation } from '../web/host-conversation';
 import { randomUUID } from 'node:crypto';
-import { folderBotDataRoot, webProjectDataDirectory } from '../web/project-data-directory';
+import { webProjectDataDirectory } from '../web/project-data-directory';
 import type { Project, Report, Runtime, ConversationSession } from '../web/workflow-types';
 
 function fixture(saved: { sessions?: ConversationSession[] } = {}) {
@@ -144,7 +144,7 @@ it('uses separate data roots for two instances of the same entry', () => {
   const project = randomUUID(), first = randomUUID(), second = randomUUID();
   const root = process.cwd();
   const local = webProjectDataDirectory(root, project, 'agent');
-  const locations = [first, second].map(id => webProjectDataDirectory(folderBotDataRoot(root, id), project, 'agent'));
+  const locations = [first, second].map(instanceId => webProjectDataDirectory(root, project, 'agent', { instanceId }));
   expect(new Set([local, ...locations]).size).toBe(3);
-  expect(() => folderBotDataRoot(root, '../other')).toThrow('identity');
+  expect(() => webProjectDataDirectory(root, project, 'agent', { instanceId: '../other' })).toThrow('identity');
 });

@@ -44,7 +44,7 @@ export async function createLLMBotToolRunner(
   const builtinNames = new Set<string>([...BUILTIN_AGENT_TOOL_NAMES, ...BOT_FILE_TOOL_NAMES, BOT_ARTIFACT_TOOL.name]);
   const readOnly = resolveAgentPermissionPolicySetting(selectedPolicy) === "read-only";
   const files = enabled.has("bash") || BOT_FILE_TOOL_NAMES.some(name => enabled.has(name)) ? resolveBotFiles(context) : undefined;
-  const workdir = path.resolve(String(context.metadata?.entryRootDir ?? context.runtimeInfo?.project.directory ?? process.cwd()));
+  const workdir = path.resolve(context.folderContext?.directory ?? String(context.metadata?.executionWorkdir ?? process.cwd()));
   const builtin = createBuiltinAgentTools({ Type, scope: { workdir, allowedDirectories: [workdir] }, engine: "llm", runtimeInfo: context.runtimeInfo,
     botFiles: readOnly ? undefined : files });
   if (files) builtin.push(...createBotFileTools(files, readOnly));
