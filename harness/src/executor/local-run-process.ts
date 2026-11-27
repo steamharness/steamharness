@@ -1,7 +1,9 @@
 import { fork } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { localAccountDirectory, localProjectDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
-import { currentPlatformConnections, resolveLocalStorageAccountKey } from '../platform-connections';
+import path from 'node:path';
+import { localProjectDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
+import { currentPlatformConnections } from '../platform-connections';
+import { executionAccountDirectory } from '../local-storage-account';
 import { getHostUserSettings } from '../user-settings';
 import type { RunLocalProjectOptions, runLocalProjectWithReport } from './index';
 
@@ -17,8 +19,8 @@ export function isolatedLocalRun(options: RunLocalProjectOptions, projectDir: st
 
 async function spawnLocalRun(options: RunLocalProjectOptions, projectDir: string, projectId: string): Promise<Report> {
   const platform = currentPlatformConnections();
-  const key = platform?.project ? await resolveLocalStorageAccountKey(platform.project) : process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY ?? 'local';
-  const cwd = realpathSync(options.folderContext?.directory ?? options.workdir ?? prepareLocalDirectory(localProjectDirectory(localAccountDirectory(key), projectId)));
+  const account = executionAccountDirectory();
+  const cwd = realpathSync(options.folderContext?.directory ?? options.workdir ?? prepareLocalDirectory(localProjectDirectory(account, projectId)));
   const { abortSignal, ...input } = options;
   abortSignal?.throwIfAborted();
   const source = import.meta.url.endsWith('.ts');
@@ -26,7 +28,7 @@ async function spawnLocalRun(options: RunLocalProjectOptions, projectDir: string
   return new Promise((resolve, reject) => {
     const child = fork(worker, [], { cwd, serialization: 'advanced', stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
       execArgv: source ? ['--import', import.meta.resolve('tsx'), '--conditions=development'] : [],
-      env: { ...process.env, STEAMHARNESS_LOCAL_ACCOUNT_KEY: key, STEAMHARNESS_LOCAL_SDK_WORKER: '1', STEAMHARNESS_PROJECT_WORKDIR: cwd, ...(process.versions.electron && { ELECTRON_RUN_AS_NODE: '1' }) } });
+      env: { ...process.env, STEAMHARNESS_LOCAL_ACCOUNT_KEY: path.basename(account), STEAMHARNESS_LOCAL_SDK_WORKER: '1', STEAMHARNESS_PROJECT_WORKDIR: cwd, ...(process.versions.electron && { ELECTRON_RUN_AS_NODE: '1' }) } });
     let timer: ReturnType<typeof setTimeout> | undefined, report: Report | undefined, error: Error | undefined;
     const abort = () => { if (child.connected) child.send({ cancel: true }, () => {}); timer = setTimeout(() => child.kill('SIGKILL'), 3000).unref(); };
     abortSignal?.addEventListener('abort', abort, { once: true });

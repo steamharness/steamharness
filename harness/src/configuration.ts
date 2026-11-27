@@ -1,6 +1,7 @@
 import { readProjectReleaseSync, readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { projectEntrySources } from "./project-sources";
-import { localEntryDirectory, localRuntimeAccountDirectory, prepareLocalDirectory, resolveProjectDeclarationEntrySync } from "@steamharness/project-manifest/node";
+import { localEntryDirectory, prepareLocalDirectory, resolveProjectDeclarationEntrySync } from "@steamharness/project-manifest/node";
+import { executionAccountDirectory } from './local-storage-account';
 import { projectEntryKey } from "@steamharness/project-manifest";
 import {isDeepStrictEqual} from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -251,7 +252,7 @@ export interface LocalProjectConfigurationOptions {
 }
 export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
   const resolved = resolveProjectDeclarationEntrySync(projectDir, options.entryId);
-  const rootDir = options.rootDir ?? prepareLocalDirectory(path.join(localEntryDirectory(localRuntimeAccountDirectory(), resolved.manifest.projectId, resolved.registration.entryId), 'configurations'));
+  const rootDir = options.rootDir ?? prepareLocalDirectory(path.join(localEntryDirectory(executionAccountDirectory(), resolved.manifest.projectId, resolved.registration.entryId), 'configurations'));
   return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, rootDir, bot: resolved.registration.type === "bot", entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
 }
 async function createLocalEntryConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions & { bot?: boolean } = {}) {
@@ -458,7 +459,7 @@ function parseSnapshot(value: unknown): ProjectConfigurationSnapshot {
   return snapshot;
 }
 
-function configurationTemplateCachePath(template: ProjectConfigurationTemplate,cacheDir = path.join(localRuntimeAccountDirectory(), 'configuration-templates')): string {
+function configurationTemplateCachePath(template: ProjectConfigurationTemplate,cacheDir = path.join(executionAccountDirectory(), 'configuration-templates')): string {
   return path.join(cacheDir, `${createHash('sha256').update(JSON.stringify(template)).digest('hex')}.json`);
 }
 /** Called only after an authenticated source download and its archive hash have been verified. */

@@ -1,4 +1,5 @@
-import { assertProjectDataDirectory, localEntryDirectory, localRuntimeAccountDirectory, prepareLocalDirectory } from "@steamharness/project-manifest/node";
+import { assertProjectDataDirectory, localEntryDirectory, prepareLocalDirectory } from "@steamharness/project-manifest/node";
+import { executionAccountDirectory } from '../local-storage-account';
 import path from "node:path";
 import type { ConversationState, ConversationStateStorage } from "../conversation";
 import type { TokenUsageEntry } from "../token-usage";
@@ -13,8 +14,9 @@ export function createRuntimeStateStorage(options: {
   const failed = new AbortController();
   let backend = options.persistence;
   let localMemory: RuntimePersistence | undefined;
+  const account = executionAccountDirectory();
   const localDirectory = () => {
-    const directory = path.join(localEntryDirectory(localRuntimeAccountDirectory(), options.projectId, options.entryId), 'runtime');
+    const directory = path.join(localEntryDirectory(account, options.projectId, options.entryId), 'runtime');
     assertProjectDataDirectory(options.aggregateDir ?? options.rootDir, directory);
     return prepareLocalDirectory(directory);
   };
