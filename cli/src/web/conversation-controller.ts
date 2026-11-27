@@ -33,7 +33,7 @@ interface ControllerOptions {
   log(message: string): void;
 }
 type CredentialPolicy = UserSettings['agent']['permissionPolicy'];
-interface RunTask { sessionId: string; credentialInput?: true; credentialPolicy?: CredentialPolicy; cancelled: boolean; stopping?: boolean; finished: Promise<void> }
+interface RunTask { sessionId: string; credentialInput?: true; credentialPolicy?: CredentialPolicy; credentialRequests?: Set<string>; cancelled: boolean; stopping?: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
 const isLiveInput = (request?: InputRequest): boolean => !!(request?.credential || request?.credentialUse) || request?.metadata?.type === 'tool-approval' && request.metadata.live === true;
 type ForkIsolation = { replacements: { from: string; to: string }[]; files: Attachment[] };
@@ -1349,8 +1349,19 @@ export class ConversationController {
     const runId = entry.activeRunId;
     if (runId && this.credentialPrompts.has(JSON.stringify([runId, request.requestId]))) return;
     const task = runId && this.tasks.get(runId);
-    // Older workers may report a retired credential operation, but cannot execute it.
-    if (request.credentialUse && request.credentialUse.connector !== 'host') return;
+    if (request.credentialUse && task && runId && anchor.runId === runId) {
+      // Sending live input only acknowledges IPC. The Worker may report the same
+      // request again before or after its resolution event. Never repeat a host action.
+      const seen = task.credentialRequests ??= new Set();
+      if (seen.has(request.requestId)) return;
+      seen.add(request.requestId);
+      if (request.credentialUse.connector !== 'host') {
+        // Older Workers accept a bare failure for retired connectors. They still
+        // need a reply to unblock; never forward the legacy arguments to a host.
+        void this.failCredentialUse(runId, task, request);
+        return;
+      }
+    }
     if (entry.origin === 'host' || !request.credentialUse || !runId || !task || anchor.runId !== runId) { this.bindUserInput(entry, anchor, request); return; }
     const target = this.bindUserInput(entry, anchor, request, false);
     const resolve = (host: BotCredentialHost, approval?: BotCredentialApproval) => this.resolveCredential(target, request, host, entry, approval, true);
@@ -1372,9 +1383,16 @@ export class ConversationController {
       if (scope && await resolve(host, { scopeId: scope, mode: 'reuse' })) return;
       const scopeId = this.conversationCredentialScope(entry, request, runId, true);
       await resolve(host, scopeId ? { scopeId, mode: 'prompt' } : undefined);
-    })().catch(() => {
-      if (!this.disposed && !task.cancelled && this.tasks.get(runId) === task && !target.pendingInput) this.runtime.cancel(runId);
-    });
+    })().catch(() => this.failCredentialUse(runId, task, request));
+  }
+  private async failCredentialUse(runId: string, task: RunTask, request: InputRequest): Promise<void> {
+    const active = () => !this.disposed && !task.cancelled && this.tasks.get(runId) === task;
+    if (!active()) return;
+    try {
+      if (!this.runtime.resolveLiveInput) throw credentialUnavailable();
+      await this.runtime.resolveLiveInput(runId, { requestId: request.requestId, nodeName: request.nodeName,
+        values: { status: 'failed' }, submittedAt: new Date().toISOString() });
+    } catch { if (active()) this.runtime.cancel(runId); } // No live channel remains to wake the Worker.
   }
   async resume(messageId: string, requestId: string, values: Record<string, unknown>, entry = this.current): Promise<void> {
     this.assertCurrentEngine(entry);
@@ -1463,7 +1481,7 @@ export class ConversationController {
     const task = runId ? this.tasks.get(runId) : undefined;
     const authorized = answer.allowBotCredentialInput === true || this.owner(entry).agentParameters?.allowBotCredentialInput === true;
     if (!authorized || !!slot === !!use || use && !credentialUseSupported || !runId || answer.runId !== runId || !task || task.cancelled
-      || this.disposed || (hosted ? entry.origin !== 'host' : !!entry.origin) || !this.runtime.resolveLiveInput || answer.submittingInput || (silent ? answer.pendingInput : answer.pendingInput !== request)) throw credentialUnavailable();
+      || this.disposed || (hosted ? entry.origin !== 'host' : !!entry.origin) || !this.runtime.resolveLiveInput || !silent && (answer.submittingInput || answer.pendingInput !== request)) throw credentialUnavailable();
     const promptKey = JSON.stringify([runId, requestId]);
     if (this.credentialPrompts.has(promptKey)) throw new Error(t('A secure credential prompt is already open. Try again after closing it.'));
     const abort = new AbortController();
@@ -1482,13 +1500,13 @@ export class ConversationController {
         }
       }
       if (abort.signal.aborted || task.cancelled || this.disposed || this.tasks.get(runId) !== task || entry.activeRunId !== runId
-        || (silent ? answer.pendingInput : answer.pendingInput !== request)) throw credentialUnavailable();
+        || !silent && answer.pendingInput !== request) throw credentialUnavailable();
       if ((approval?.mode === 'auto' || approval?.mode === 'reuse') && reply === 'approval-required') {
         if (approval.mode === 'reuse' || this.credentialUsePolicy(request, task) !== 'auto') return false;
         // Older hosts may ask for interaction on an unsupported operation; Auto Approve does not open a prompt.
         reply = { status: 'denied', reason: 'blocked-policy' };
       }
-      const queryResult = operation && parseBotCredentialUseResult(reply, operation);
+      const queryResult = operation && (parseBotCredentialUseResult(reply, operation) ?? { status: 'failed', reason: 'invalid-response' });
       const capture = !operation ? parseCredentialCapture(reply) : undefined;
       const receipt = operation ? queryResult : capture;
       if (!receipt) throw credentialUnavailable();

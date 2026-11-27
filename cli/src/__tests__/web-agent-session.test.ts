@@ -130,9 +130,13 @@ it('uses an automatic command without rendering or saving a credential result ca
   expect(workerReceipt.values).toEqual(result);
   expect(workerReceipt.resultCard).toBeUndefined();
   expect(answer.resolvedInputs).toBeUndefined();
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
   const event = { type: 'user_input_resolved', requestId: request.requestId, nodeName: request.nodeName, request, values: { status: 'ok' }, submittedAt: '2026-11-26T00:00:00.000Z' };
   f.runs[0].emit(event);
   f.runs[0].emit({ ...event, resultCard: { title: 'Unexpected worker presentation' } });
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  expect(host).toHaveBeenCalledOnce();
+  expect(f.runtime.resolveLiveInput).toHaveBeenCalledOnce();
   expect(answer.resolvedInputs).toHaveLength(1);
   const [resolved] = answer.resolvedInputs!;
   expect(resolved.values).toEqual({ status: 'ok' });
@@ -141,6 +145,26 @@ it('uses an automatic command without rendering or saving a credential result ca
   const saved = f.save.mock.lastCall?.[0];
   expect(saved?.[0].messages[1].resolvedInputs?.[0]).toMatchObject({ values: { status: 'ok' } });
   expect(saved?.[0].messages[1].resolvedInputs?.[0].resultCard).toBeUndefined();
+});
+
+it('replies to a retired credential request without opening a host, stopping the turn, or disturbing another prompt', async () => {
+  const host = vi.fn<BotCredentialHost>(async () => ({ status: 'ok', data: null }));
+  const f = fixture(undefined, () => ({ agent: { permissionPolicy: 'auto' } }), host, host);
+  await f.start('placed', true);
+  f.runtime.resolveLiveInput = vi.fn(async () => {});
+  const emitInput = (data: Record<string, unknown>) => f.runs[0].emit({ type: 'user_input_requested', nodeName: 'fixture', params: [],
+    metadata: { botRequestId: f.snapshot().turns[0].requestId, credentialUsePolicy: 'auto' }, ...data });
+  emitInput({ requestId: 'visible', credential: { name: 'another-slot', kind: 'api-key' } });
+  for (let i = 0; i < 2; i++) emitInput({ requestId: 'legacy', credentialUse: { connector: 'retired' } });
+  await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(f.runtime.resolveLiveInput).mock.calls[0][1].values).toEqual({ status: 'failed' });
+  expect(host).not.toHaveBeenCalled();
+  emitInput({ requestId: 'current', credentialUse: { name: 'fixture', connector: 'host', operation: 'fixture.read', args: {} } });
+  await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(f.runtime.resolveLiveInput).mock.calls[1][1].values).toEqual({ status: 'ok', data: null });
+  expect(f.controller.current.messages[1].pendingInput?.requestId).toBe('visible');
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  await f.finish();
 });
 
 it.each([
@@ -261,6 +285,11 @@ it('keeps identical credential request IDs independent in two running conversati
   } finally { save('saved'); await opening; }
   expect(f.runtime.resolveLiveInput).toHaveBeenNthCalledWith(1, second.activeRunId, expect.objectContaining({ values: { status: 'declined' } }));
   expect(f.runtime.resolveLiveInput).toHaveBeenNthCalledWith(2, first.activeRunId, expect.objectContaining({ values: { status: 'saved' } }));
+  // A Workflow input node can run again with the same default ID after confirmation.
+  f.runs[0].emit({ type: 'user_input_resolved', ...vi.mocked(f.runtime.resolveLiveInput).mock.calls[1][1] });
+  f.runs[0].emit({ type: 'user_input_requested', ...request });
+  await f.controller.captureCredential(firstAnswer.id!, request.requestId, async () => 'existing', first);
+  expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(3);
   for (const run of f.runs) run.finish({ status: 'success' });
   await f.controller.idle();
 });
