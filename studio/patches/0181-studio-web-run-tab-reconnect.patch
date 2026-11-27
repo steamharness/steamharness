@@ -1,0 +1,52 @@
+diff --git a/src/vs/code/browser/workbench/studioWebProjectEntry.ts b/src/vs/code/browser/workbench/studioWebProjectEntry.ts
+index d9497b3e3a5..879b9f7904c 100644
+--- a/src/vs/code/browser/workbench/studioWebProjectEntry.ts
++++ b/src/vs/code/browser/workbench/studioWebProjectEntry.ts
+@@ -7,21 +7,21 @@ import type { IStudioProjectEntry } from '../../../platform/window/common/studio
+ 
+ const storageKey = 'studio.web.projectEntry';
+ 
+-// The run request goes to the new tab, not into the project URL. Shared links and reloads must not run it.
++// This tab owns the run view. Reloads can reattach, but sharing the folder URL must not open it.
+ export function writeStudioWebProjectEntry(storage: Storage, href: string, entryId: string | undefined): void {
+ 	storage.setItem(storageKey, JSON.stringify({ href, entryId }));
+ }
+ 
+-export function takeStudioWebProjectEntry(target: Pick<Window, 'sessionStorage'>, href: string, folderUri: string): IStudioProjectEntry | undefined {
++export function readStudioWebProjectEntry(target: Pick<Window, 'sessionStorage'>, href: string, folderUri: string): IStudioProjectEntry | undefined {
+ 	try {
+ 		const storage = target.sessionStorage;
+ 		const raw = storage.getItem(storageKey);
+ 		if (raw === null) { return undefined; }
+-		storage.removeItem(storageKey);
+ 		const entry = JSON.parse(raw) as { href?: string; entryId?: string } | null;
+-		if (entry?.href === href && (entry.entryId === undefined || typeof entry.entryId === 'string')) {
++		if (entry?.href === href && (entry.entryId === undefined || typeof entry.entryId === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(entry.entryId))) {
+ 			return { uri: folderUri, entryId: entry.entryId };
+ 		}
++		storage.removeItem(storageKey);
+ 	} catch { /* The workspace still opens if browser storage is unavailable. */ }
+ 	return undefined;
+ }
+diff --git a/src/vs/code/browser/workbench/workbench.ts b/src/vs/code/browser/workbench/workbench.ts
+index 0e0ccd9f968..a580f33a324 100644
+--- a/src/vs/code/browser/workbench/workbench.ts
++++ b/src/vs/code/browser/workbench/workbench.ts
+@@ -23,7 +23,7 @@ import { readStudioWebImRoute, type StudioWebImTarget } from '../../../workbench
+ import { AuthenticationSessionInfo } from '../../../workbench/services/authentication/browser/authenticationService.js';
+ import type { IURLCallbackProvider } from '../../../workbench/services/url/browser/urlService.js';
+ import { create } from '../../../workbench/workbench.web.main.internal.js';
+-import { takeStudioWebProjectEntry, writeStudioWebProjectEntry } from './studioWebProjectEntry.js';
++import { readStudioWebProjectEntry, writeStudioWebProjectEntry } from './studioWebProjectEntry.js';
+ 
+ interface ISecretStorageCrypto {
+ 	seal(data: string): Promise<string>;
+@@ -646,7 +646,7 @@ function readCookie(name: string): string | undefined {
+ 	const workspace = workspaceProvider.workspace;
+ 	const folder = config.studioWeb && workspace && isFolderToOpen(workspace) ? workspace.folderUri : undefined;
+ 	const studioProjectEntry = folder?.scheme === Schemas.vscodeRemote && folder.authority === config.remoteAuthority
+-		? takeStudioWebProjectEntry(mainWindow, mainWindow.location.href, folder.with({ scheme: Schemas.file, authority: '' }).toString()) : undefined;
++		? readStudioWebProjectEntry(mainWindow, mainWindow.location.href, folder.with({ scheme: Schemas.file, authority: '' }).toString()) : undefined;
+ 	create(mainWindow.document.body, {
+ 		...config,
+ 		studioLaunchpad: workspaceProvider.studioLaunchpad,
