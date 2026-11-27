@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { createHmac, randomBytes } from 'node:crypto';
 import { parseBotCredentialUseResult } from '../../../../harness/src/types/bot-credential-use';
 import { t } from './localization';
-import { botCredentialKinds, resolveBotCredentialNamespaces, createBotCredentialVault, describeBotCredential, readPickedSshKey, structuredCredentialFields, validBotCredentialName,
+import { botCredentialKinds, resolveBotCredentialNamespaces, createBotCredentialVault, readPickedSshKey, structuredCredentialFields, validBotCredentialName,
   type BotCredentialAction, type BotCredentialResult, type BotCredentialSlot } from './bot-credential-vault';
 import type { Project } from './workflow-types';
 import { botCredentialTransports, prepareBotCredentialOperation } from './bot-credential-operations';
@@ -136,6 +136,7 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
         if (beforeQuery) return beforeQuery;
         const values = stored.filter(value => value != null);
         const raw = await hosted.run(values, signal, project.folderBot?.directory ?? project.assistant?.workdir ?? project.folderPath);
+        if (!await canPersist()) return { status: 'denied', reason: 'blocked-policy' };
         signal.throwIfAborted();
         const afterQuery = queryBlock();
         // A policy change after execution must not trigger a second run through the approval fallback.
@@ -171,13 +172,12 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
       };
       if (request.action === 'capture') {
         const { slot } = request;
-        const before = await vault.inspect(slot, signal);
-        if (before === 'existing' && !slot.replace) return { status: 'existing', structure: await vault.describe(slot, signal) };
-        if (before === 'missing' && slot.replace) return 'declined';
+        const before = await vault.snapshot(slot, signal);
+        if (before && !slot.replace) return { status: 'existing', structure: before.structure };
+        if (!before && slot.replace) return 'declined';
         const value = await valueFor(slot);
         if (value === undefined) return 'declined';
-        const status = await vault.write(slot, value, slot.replace === true, signal);
-        return { status, structure: status === 'saved' ? describeBotCredential(slot, value) : await vault.describe(slot, signal) };
+        return await vault.write(slot, value, before?.revision, signal);
       }
       const stored = await vault.list(signal);
       const add = { label: t('Add credential'), slot: undefined };
@@ -191,23 +191,28 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
         const slot = { name, kind: type.credentialKind };
         if (await vault.inspect(slot, signal) !== 'missing') { void vscode.window.showWarningMessage(t('This credential alias and type already exist.')); return 'managed'; }
         const value = await valueFor(slot);
-        if (value !== undefined && await vault.write(slot, value, false, signal) === 'existing') void vscode.window.showWarningMessage(t('This credential alias and type already exist.'));
+        if (value !== undefined && (await vault.write(slot, value, undefined, signal)).status === 'existing') void vscode.window.showWarningMessage(t('This credential alias and type already exist.'));
       } else {
         const slot = choice.slot;
         const action = await vscode.window.showQuickPick([{ label: t('Replace credential'), remove: false }, { label: t('Delete credential'), remove: true }], { title: t('{0}: {1}', title, slot.name) }, cancellation.token);
-        if (action?.remove) {
+        if (!action) return 'managed';
+        const before = await vault.snapshot(slot, signal);
+        if (!before) { void vscode.window.showWarningMessage(t('The credential changed or was removed. Reopen it before trying again.')); return 'managed'; }
+        if (action.remove) {
           const remove = t('Delete credential');
           const confirmed = await vscode.window.showWarningMessage(t('Delete the saved credential {0}?', slot.name), { modal: true }, remove);
-          if (confirmed === remove) await vault.remove(slot, signal);
-        } else if (action) {
+          if (confirmed === remove) await vault.remove(slot, signal, before.revision);
+        } else {
           const value = await valueFor(slot);
-          if (value !== undefined) await vault.write(slot, value, true, signal);
+          if (value !== undefined) await vault.write(slot, value, before.revision, signal);
         }
       }
       return 'managed';
     } catch (error) {
-      if (!signal.aborted && (error as { code?: string })?.code === 'BOT_CREDENTIAL_TOO_LARGE') {
-        void vscode.window.showWarningMessage(t('The credential is too large to save (maximum 64 KiB).'));
+      const code = (error as { code?: string })?.code;
+      if (!signal.aborted && (code === 'BOT_CREDENTIAL_TOO_LARGE' || code === 'BOT_CREDENTIAL_CHANGED')) {
+        void vscode.window.showWarningMessage(code === 'BOT_CREDENTIAL_CHANGED' ? t('The credential changed or was removed. Reopen it before trying again.')
+          : t('The credential is too large to save (maximum 64 KiB).'));
         return request.action === 'capture' ? 'declined' : 'managed';
       }
       return request.action === 'use' && !signal.aborted

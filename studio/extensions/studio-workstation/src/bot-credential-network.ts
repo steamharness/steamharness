@@ -33,7 +33,9 @@ export async function resolveCredentialAddress(hostname: string, signal: AbortSi
 
 /** Reject common reflections, including keys and encoded authorization data. */
 export function containsCredentialValue(data: BotCredentialQueryData, values: string[], minSubstringLength = 4): boolean {
-  const needles = [...new Set(values.flatMap(value => value ? [value, Buffer.from(value).toString('base64'), Buffer.from(value).toString('base64url'),
+  // A client may trim a pasted token even though the vault preserves it verbatim.
+  const normalized = new Set(values.flatMap(value => [value, value.trim()]));
+  const needles = [...new Set([...normalized].flatMap(value => value ? [value, Buffer.from(value).toString('base64'), Buffer.from(value).toString('base64url'),
     new URLSearchParams({ v: value }).toString().slice(2), JSON.stringify(value).slice(1, -1)] : []))];
   const match = (text: string) => needles.some(value => value.length < minSubstringLength ? text === value : text.includes(value));
   const check = (value: BotCredentialQueryData): boolean => {

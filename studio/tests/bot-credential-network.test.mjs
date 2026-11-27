@@ -99,6 +99,8 @@ test('HTTPS never follows redirects or returns reflected values, headers, oversi
     assert.deepEqual(await runBotCredentialHttpQuery(request, credential, signal, httpsFixture(body, () => requests++, status), exampleAddress), { status: expected, reason, httpStatus: status });
     assert.equal(requests, 1);
   }
+  assert.deepEqual(await runBotCredentialHttpQuery(request, 'z', signal, httpsFixture('{"result":"prefix-z"}'), exampleAddress),
+    { status: 'failed', reason: 'unsafe-response', httpStatus: 200 });
 });
 
 test('the address filter admits IPv4 and IPv6 targets without admitting special or mapped destinations', async () => {
@@ -144,6 +146,10 @@ test('maps only selected secret fields into a single child without leaking into 
   assert.deepEqual(await run('process.stdout.write(JSON.stringify(process.env))'), { status: 'failed', reason: 'unsafe-response' });
   assert.deepEqual(await run('process.stderr.write("prefix=" + process.env.STEAM_TEST_TOKEN)', { STEAM_TEST_TOKEN: true }, 'abc'),
     { status: 'failed', reason: 'unsafe-response' });
+  assert.deepEqual(await run('process.stdout.write(process.env.STEAM_TEST_TOKEN.trim())', { STEAM_TEST_TOKEN: 'AccessKeyId' }, { AccessKeyId: '  fixture-pasted-id ' }),
+    { status: 'failed', reason: 'unsafe-response' });
+  assert.deepEqual(await run('if (process.env.STEAM_TEST_TOKEN.length !== 1) process.exit(1)', { STEAM_TEST_TOKEN: true }, 'z'),
+    { status: 'ok', data: { exitCode: 0, stdout: '', stderr: '' } });
   assert.deepEqual(await run('process.exit(0)', { STEAM_TEST_TOKEN: 'missing' }), { status: 'missing-fields' });
   assert.deepEqual(await run('process.exit(0)', env, values, 'steamharness-fixture-nonexistent-program'), { status: 'failed', reason: 'command-not-found' });
   assert.deepEqual(await run('process.exit(0)', env, values, process.execPath, AbortSignal.abort()), { status: 'failed', reason: 'timeout' });

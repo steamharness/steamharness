@@ -23,8 +23,9 @@ test('the native store isolates entries, projects, assistants, and folder Bot in
   let protectedStorage = true;
   const vault = (entry = 'main', instance, folder, sourcePath = path.join(root, 'project')) => createBotCredentialVault(storage, root, botCredentialNamespace(root, 'project-id', entry, sourcePath, instance, folder), async () => protectedStorage);
   const slot = { name: 'deploy', kind: 'api-key' };
-  assert.equal(await vault().write(slot, 'fixture-first', false), 'saved');
-  assert.equal(await vault().write(slot, 'fixture-unapproved-overwrite', false), 'existing');
+  const editor = vault();
+  assert.equal((await editor.write(slot, 'fixture-first')).status, 'saved');
+  assert.equal((await editor.write(slot, 'fixture-unapproved-overwrite')).status, 'existing');
   assert.deepEqual([...values.values()], ['fixture-first']);
   const bound = path.join(root, 'target');
   for (const other of [vault('other'), vault('main', 'copy-1', bound), vault('main', 'copy-2', bound), vault('main', undefined, bound), vault('main', undefined, undefined, path.join(root, 'other-project'))]) {
@@ -32,14 +33,19 @@ test('the native store isolates entries, projects, assistants, and folder Bot in
     assert.equal(await other.inspect(slot), 'missing');
   }
   assert.deepEqual(await vault().list(), [slot]);
-  await vault().write(slot, 'fixture-rotated', true);
+  const { revision } = await editor.snapshot(slot);
+  await editor.write(slot, 'fixture-rotated', revision);
   assert.deepEqual([...values.values()], ['fixture-rotated']);
+  await assert.rejects(editor.remove(slot, undefined, revision), { code: 'BOT_CREDENTIAL_CHANGED' });
   const cancelled = AbortSignal.abort();
-  await assert.rejects(vault().write(slot, 'fixture-cancelled', true, cancelled), { name: 'AbortError' });
+  await assert.rejects(editor.write(slot, 'fixture-cancelled', revision, cancelled), { name: 'AbortError' });
   protectedStorage = false;
-  await assert.rejects(vault().write(slot, 'fixture-unprotected', true), /unavailable/);
+  await assert.rejects(editor.write(slot, 'fixture-unprotected', revision), /unavailable/);
   assert.deepEqual([...values.values()], ['fixture-rotated']);
   protectedStorage = true;
+  const unreadable = createBotCredentialVault({ ...storage, get: async () => undefined }, root, botCredentialNamespace(root, 'project-id', 'main', path.join(root, 'project')), async () => true);
+  await assert.rejects(unreadable.write(slot, 'do-not-overwrite'), /Cannot read/);
+  assert.deepEqual([...values.values()], ['fixture-rotated']);
   await vault().remove(slot); assert.equal(values.size, 0);
 });
 
@@ -57,9 +63,9 @@ test('managed Assistant release upgrades keep old aliases without merging worksp
   const values = new Map(), store = memoryStore(values), allow = async () => true;
   const slot = { name: 'gitlab-fixture', kind: 'api-key' };
   const legacy = (directory, workdir) => botCredentialNamespace(profile, projectId, 'main', directory, undefined, workdir);
-  await createBotCredentialVault(store, profile, legacy(old, old), allow).write(slot, 'fixture-only-token', false);
-  await createBotCredentialVault(store, profile, legacy(lookalike, lookalike), allow).write({ ...slot, name: 'other-project' }, 'fixture-other', false);
-  await createBotCredentialVault(store, profile, legacy(old, workspaces[0]), allow).write({ ...slot, name: 'workspace-only' }, 'fixture-workspace', false);
+  await createBotCredentialVault(store, profile, legacy(old, old), allow).write(slot, 'fixture-only-token');
+  await createBotCredentialVault(store, profile, legacy(lookalike, lookalike), allow).write({ ...slot, name: 'other-project' }, 'fixture-other');
+  await createBotCredentialVault(store, profile, legacy(old, workspaces[0]), allow).write({ ...slot, name: 'workspace-only' }, 'fixture-workspace');
   const scope = { projectId, entryId: 'main', projectDirectory: next, workdir: next };
   const namespaces = await resolveBotCredentialNamespaces(profile, scope);
   assert.equal(namespaces[0], (await resolveBotCredentialNamespaces(profile, { ...scope, projectDirectory: old, workdir: old }))[0]);
@@ -67,14 +73,14 @@ test('managed Assistant release upgrades keep old aliases without merging worksp
   const listOnly = createBotCredentialVault({ ...store, get: () => assert.fail('Listing must not read any value') }, profile, namespaces, allow);
   assert.deepEqual(await listOnly.list(), [slot]);
   assert.equal(await vault.readForUse(slot, new AbortController().signal), 'fixture-only-token');
-  assert.equal(await vault.write(slot, 'not-an-overwrite', false), 'existing');
+  assert.equal((await vault.write(slot, 'not-an-overwrite')).status, 'existing');
   for (const other of [{ ...scope, entryId: 'other' }, { ...scope, instanceId: 'copy' },
     { ...scope, workdir: workspaces[1] }, { ...scope, projectDirectory: external, workdir: external }]) {
     assert.deepEqual(await createBotCredentialVault(store, profile, await resolveBotCredentialNamespaces(profile, other), allow).list(), []);
   }
   assert.deepEqual(await createBotCredentialVault(store, profile,
     await resolveBotCredentialNamespaces(profile, { ...scope, workdir: workspaces[0] }), allow).list(), [{ ...slot, name: 'workspace-only' }]);
-  assert.equal(await vault.write(slot, 'fixture-rotation', true), 'saved');
+  assert.equal((await vault.write(slot, 'fixture-rotation', (await vault.snapshot(slot)).revision)).status, 'saved');
   assert.equal(values.has(`${legacy(old, old)}api-key:${slot.name}`), false);
   assert.equal(await vault.readForUse(slot, new AbortController().signal), 'fixture-rotation');
   await vault.remove(slot);
@@ -89,10 +95,10 @@ test('concurrent vault writes wait without overwriting; a cancelled waiter never
   const first = createBotCredentialVault({ ...storage, async store(key, value) { acquired.resolve(); await release.promise; await storage.store(key, value); } }, root, prefix, async () => true);
   const second = createBotCredentialVault(storage, root, prefix, async () => true);
   const slot = { name: 'shared-fixture', kind: 'api-key' };
-  const writing = first.write(slot, 'first-fixture', false);
+  const writing = first.write(slot, 'first-fixture');
   try {
     await acquired.promise;
-    const concurrent = second.write(slot, 'second-fixture', false);
+    const concurrent = second.write(slot, 'second-fixture');
     const showedNoError = assert.doesNotReject(concurrent);
     const abort = new AbortController();
     const cancelled = assert.rejects(second.remove(slot, abort.signal), { name: 'AbortError' });
@@ -101,7 +107,7 @@ test('concurrent vault writes wait without overwriting; a cancelled waiter never
     await cancelled;
     release.resolve();
     await showedNoError;
-    assert.equal(await concurrent, 'existing');
+    assert.deepEqual(await concurrent, { status: 'existing', structure: { format: 'hidden' } });
     assert.deepEqual([...values.values()], ['first-fixture']);
   } finally { release.resolve(); await writing; }
 });
@@ -121,7 +127,7 @@ test('SSH capture checks file safety and size but defers key format checks until
   const values = new Map(), prefix = botCredentialNamespace(root, 'fixture-project', 'main', root);
   const vault = createBotCredentialVault(memoryStore(values), root, prefix, async () => true);
   const slot = { name: 'deploy', kind: 'ssh-private-key' };
-  assert.equal(await vault.write(slot, await readPickedSshKey(file), false), 'saved');
+  assert.equal((await vault.write(slot, await readPickedSshKey(file))).status, 'saved');
   assert.equal(await vault.readForUse(slot, new AbortController().signal), null);
   await assert.rejects(readPickedSshKey(root), /Invalid Bot credential/);
   await writeFile(file, Buffer.alloc(65537));
@@ -151,28 +157,29 @@ test('structured credentials preserve arbitrary input and expose a bounded value
   }
   assert.equal(parseBotCredentialAction({ ...capture, slot: { ...slot, kind: 'api-key' } }), undefined);
   for (const value of varied) {
-    assert.equal(await vault.write(slot, value, false), 'saved');
+    assert.equal((await vault.write(slot, value)).status, 'saved');
     assert.deepEqual([...values.values()], [value]);
     await vault.remove(slot);
   }
   assert.equal(values.size, 0);
-  assert.equal(await vault.write(slot, JSON.stringify(first), false), 'saved');
+  assert.equal((await vault.write(slot, JSON.stringify(first))).status, 'saved');
   assert.deepEqual(await vault.list(), [{ name: slot.name, kind: slot.kind }]);
   assert.equal(values.size, 1);
   const next = { ...first, 'client.secret': 'next-fixture-secret' };
   assert.equal(await vault.inspect({ ...slot, fields: [...slot.fields].reverse() }), 'existing');
   assert.equal(await vault.inspect({ ...slot, fields: ['user', 'password'] }), 'existing');
-  assert.equal(await vault.write({ ...slot, fields: ['token'] }, '{"token":"fixture-another"}', false), 'existing');
-  assert.equal(await vault.write(slot, JSON.stringify(next), false), 'existing');
-  await assert.rejects(vault.write(slot, 'x'.repeat(65_537), true), { code: 'BOT_CREDENTIAL_TOO_LARGE' });
+  const { structure, revision } = await vault.snapshot(slot);
+  assert.deepEqual(await vault.write({ ...slot, fields: ['token'] }, '{"token":"fixture-another"}'), { status: 'existing', structure });
+  assert.equal((await vault.write(slot, JSON.stringify(next))).status, 'existing');
+  await assert.rejects(vault.write(slot, 'x'.repeat(65_537), revision), { code: 'BOT_CREDENTIAL_TOO_LARGE' });
   assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [first]);
-  assert.equal(await vault.write(slot, JSON.stringify(next), true), 'saved');
+  assert.equal((await vault.write(slot, JSON.stringify(next), revision)).status, 'saved');
   assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [next]);
   await vault.remove(slot);
   assert.deepEqual(await vault.list(), []);
   const untyped = { name: 'fixture-document', kind: 'structured' };
   const pair = { AccessKeyId: 'fixture-id', AccessKeySecret: 'fixture-secret' };
-  assert.equal(await vault.write(untyped, JSON.stringify(pair), false), 'saved');
+  assert.equal((await vault.write(untyped, JSON.stringify(pair))).status, 'saved');
   assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [pair]);
   assert.equal(parseStructuredCredential('{"__proto__":"invalid"}'), undefined);
   assert.equal(parseStructuredCredential('{"token":{"nested":"unsupported"}}'), undefined);
@@ -187,6 +194,12 @@ test('structured credentials preserve arbitrary input and expose a bounded value
     { name: 'accessKeyId', type: 'string' }, { name: 'AccessKeySecret', type: 'string' }, { name: 'Extra', type: 'object' }, { name: 'other', type: 'number' },
   ], partial: true });
   assert.doesNotMatch(JSON.stringify(description), /fixture-id|fixture-secret|secret-inner|hidden-inner/);
+  const deep = '{"AccessKeyId":" fixture-id", "nested":' + '['.repeat(8000) + '{"child":"  nested-fixture  ","n":73529}' + ']'.repeat(8000) + ',"prefix-nested-fixture":null,"73529":0}';
+  const safe = { format: 'object', fields: [{ name: 'AccessKeyId', type: 'string' }, { name: 'nested', type: 'array' }], partial: true };
+  assert.deepEqual(describeBotCredential(untyped, deep), safe);
+  assert.deepEqual(describeBotCredential(untyped, '{"fixture":["fixture"]}'), { format: 'hidden' });
+  assert.deepEqual(describeBotCredential(untyped, '{"accessKeyId":"a","a":0}'),
+    { format: 'object', fields: [{ name: 'accessKeyId', type: 'string' }], partial: true });
   await vault.remove(untyped);
   // Old entries stay in the original key space. Only the user can replace or delete them.
   const legacy = { name: 'fixture-legacy', kind: 'access-key-pair' };
@@ -197,13 +210,13 @@ test('structured credentials preserve arbitrary input and expose a bounded value
   assert.equal(await vault.readForUse({ ...legacy, kind: 'structured' }, signal), undefined);
   assert.deepEqual(await vault.readForUse(legacy, signal), pair);
   const sameAlias = { name: legacy.name, kind: 'structured' };
-  await vault.write(sameAlias, '{"otherField":"fixture"}', false);
+  await vault.write(sameAlias, '{"otherField":"fixture"}');
   assert.deepEqual(await vault.readForUse(sameAlias, signal), { otherField: 'fixture' });
   assert.deepEqual(await vault.readForUse(legacy, signal), pair);
   await vault.remove(sameAlias);
   assert.equal(values.size, 1, 'reading the legacy alias does not migrate it');
   assert.equal(parseBotCredentialAction({ ...capture, slot: legacy }), undefined);
-  assert.equal(await vault.write(legacy, JSON.stringify({ ...pair, AccessKeySecret: 'rotated-fixture' }), true), 'saved');
+  assert.equal((await vault.write(legacy, JSON.stringify({ ...pair, AccessKeySecret: 'rotated-fixture' }), (await vault.snapshot(legacy)).revision)).status, 'saved');
   assert.equal(JSON.parse(values.get(legacyKey)).AccessKeySecret, 'rotated-fixture');
   await vault.remove(legacy);
   assert.equal(values.size, 0);
@@ -321,6 +334,25 @@ test('native input accepts any shape, supports secure replacement, and checks us
   assert.equal(await cancelled.result, 'declined');
   assert.equal(cancelled.input.disposed, true);
   assert.deepEqual([...values.values()], previous);
+
+  const race = { name: 'capture-race', kind: 'structured' };
+  const competing = createBotCredentialVault(store, root, botCredentialNamespace(root, 'fixture-project', 'main', await realpath(root)), async () => true);
+  const addition = await openCapture(race);
+  const firstWriter = await competing.write(race, '{"firstField":"fixture-winner"}');
+  addition.input.changeValue('{"otherField":"fixture-loser"}'); addition.input.accept();
+  assert.deepEqual(await addition.result, { status: 'existing', structure: firstWriter.structure });
+  const stale = await openCapture({ ...race, replace: true });
+  const original = await competing.snapshot(race);
+  await competing.write(race, '{"firstField":"fixture-rotated"}', original.revision);
+  stale.input.changeValue('stale replacement'); stale.input.accept();
+  assert.equal(await stale.result, 'declined');
+  assert.deepEqual(await competing.readForUse(race, new AbortController().signal), { firstField: 'fixture-rotated' });
+  const removed = await openCapture({ ...race, replace: true });
+  await competing.remove(race);
+  removed.input.changeValue('do not recreate'); removed.input.accept();
+  assert.equal(await removed.result, 'declined');
+  assert.equal(await competing.inspect(race), 'missing');
+  assert.match(warnings.at(-1), /changed or was removed/);
 
   const parsed = parseBotCredentialAction({ type: 'bot-credential-request', id: 'id', entryId: 'main', action: 'use', use: {
     name: slot.name, connector: 'host', operation: 'https.get-json', args: {
@@ -464,6 +496,13 @@ test('native input accepts any shape, supports secure replacement, and checks us
   duringQuery = () => { policy = 'workspace'; };
   assert.deepEqual(await callHost('auto'), { status: 'denied', reason: 'blocked-policy' });
   assert.equal(httpCalls.length, priorHttpCalls + 5, 'a completed operation does not ask to be run again');
+  duringQuery = undefined;
+
+  let authorized = true;
+  policy = 'auto';
+  duringQuery = () => { authorized = false; };
+  assert.deepEqual(await interaction(project, 'main', 'Fixture Bot', { action: 'use', use: hostRequest, approval: { mode: 'auto' } }, hosting.signal,
+    hosting.signal, async () => authorized), { status: 'denied', reason: 'blocked-policy' });
   duringQuery = undefined;
 
   const env = { FIXTURE_ID: 'clientId', FIXTURE_SECRET: 'clientSecret' };

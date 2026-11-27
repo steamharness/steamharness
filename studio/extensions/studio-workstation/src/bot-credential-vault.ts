@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -125,6 +125,7 @@ export async function listBotCredentialSummaries(store: Pick<SecretStore, 'keys'
 export const MAX_BOT_CREDENTIAL_BYTES = 64 * 1024;
 const invalidCredential = () => new Error('Invalid Bot credential.');
 const oversizedCredential = () => Object.assign(new Error('Bot credential exceeds the storage limit.'), { code: 'BOT_CREDENTIAL_TOO_LARGE' });
+const changedCredential = () => Object.assign(new Error('Bot credential changed during editing.'), { code: 'BOT_CREDENTIAL_CHANGED' });
 
 const usableText = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && !/[\u0000-\u001f\u007f]/u.test(value);
 const fitsStorage = (value: string) => Buffer.byteLength(value, 'utf8') <= MAX_BOT_CREDENTIAL_BYTES;
@@ -146,9 +147,25 @@ export function describeBotCredential(slot: BotCredentialSlot, value: string): B
   const object = slot.kind === 'structured' || slot.kind === legacyPairKind ? readObject(value) : undefined;
   const entries = Object.entries(object ?? {});
   if (!entries.length) return { format: 'hidden' };
-  const values = new Set(entries.flatMap(([, field]) => typeof field === 'string' ? [field, field.trim()] : []));
-  const fields = entries.filter(([name]) => isBotCredentialFieldName(name) && !values.has(name)).slice(0, BOT_CREDENTIAL_MAX_FIELDS)
-    .map(([name, field]) => ({ name, type: (field === null ? 'null' : Array.isArray(field) ? 'array' : typeof field) as BotCredentialFieldType }));
+  const candidates = entries.filter(([name]) => isBotCredentialFieldName(name)).slice(0, BOT_CREDENTIAL_MAX_FIELDS);
+  const names = new Set(candidates.map(([name]) => name));
+  // Pasted JSON can nest very deeply. Compare only the bounded display names,
+  // without recursion or retaining a second copy of every secret in the input.
+  const pending: unknown[] = [object];
+  while (pending.length && names.size) {
+    const item = pending.pop();
+    if (item && typeof item === 'object') {
+      for (const child of Object.values(item)) pending.push(child);
+    } else {
+      const text = String(item).trim();
+      if (text && text.length <= 64) for (const name of names) {
+        if (name === text || text.length >= 4 && name.includes(text)) names.delete(name);
+      }
+    }
+  }
+  if (!names.size) return { format: 'hidden' };
+  const fields = candidates.filter(([name]) => names.has(name)).map(([name, field]) => ({ name,
+    type: (field === null ? 'null' : Array.isArray(field) ? 'array' : typeof field) as BotCredentialFieldType }));
   return { format: 'object', fields, ...(fields.length < entries.length && { partial: true }) };
 }
 
@@ -184,6 +201,8 @@ export async function readPickedSshKey(file: string): Promise<string> {
 
 export function createBotCredentialVault(store: SecretStore, profile: string, prefixes: CredentialPrefixes, canPersist: () => Promise<boolean>) {
   const scope = credentialPrefixes(prefixes);
+  const revisionKey = randomBytes(32);
+  const revisionOf = (value: string) => createHmac('sha256', revisionKey).update(value, 'utf16le').digest('hex');
   const keysFor = (input: BotCredentialSlot) => {
     if (!validBotCredentialName(input.name) || !validKind(input.kind)) throw invalidCredential();
     return scope.map(prefix => `${prefix}${input.kind}:${input.name}`);
@@ -193,7 +212,12 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
     const available = candidates.length > 1 ? new Set(await store.keys()) : undefined;
     const key = available ? candidates.find(candidate => available.has(candidate)) : candidates[0];
     signal?.throwIfAborted();
-    return key === undefined ? undefined : store.get(key);
+    if (key === undefined) return;
+    const value = await store.get(key);
+    // Some secret stores return undefined for an unreadable record. An add
+    // must not overwrite a listed alias just because its material is unavailable.
+    if (value === undefined && (available || (await store.keys()).includes(key))) throw new Error('Cannot read the saved Bot credential.');
+    return value;
   };
   const requireStorage = async (signal?: AbortSignal) => {
     signal?.throwIfAborted();
@@ -227,17 +251,17 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
   };
   return {
     async inspect(slot: BotCredentialSlot, signal?: AbortSignal) { await requireStorage(signal); return inspect(slot, signal); },
-    async describe(slot: BotCredentialSlot, signal: AbortSignal) {
+    async snapshot(slot: BotCredentialSlot, signal?: AbortSignal) {
       await requireStorage(signal);
       const stored = await getSaved(slot, signal);
-      signal.throwIfAborted();
-      return stored === undefined ? undefined : describeBotCredential(slot, stored);
+      await requireStorage(signal);
+      return stored === undefined ? undefined : { revision: revisionOf(stored), structure: describeBotCredential(slot, stored) };
     },
     /** Only native, already authorized operations call this. No IPC exposes raw material. */
     async readForUse(slot: BotCredentialSlot, signal: AbortSignal) {
       await requireStorage(signal);
       const stored = await getSaved(slot, signal);
-      signal.throwIfAborted();
+      await requireStorage(signal);
       if (stored === undefined) return;
       if (!fitsStorage(stored)) return null;
       if (slot.kind === 'structured' || slot.kind === legacyPairKind) return parseStructuredCredential(stored) ?? null;
@@ -246,30 +270,37 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
     },
     async list(signal?: AbortSignal): Promise<BotCredentialSummary[]> {
       await requireStorage(signal);
-      return listBotCredentialSummaries(store, prefixes, signal);
+      const rows = await listBotCredentialSummaries(store, prefixes, signal);
+      await requireStorage(signal);
+      return rows;
     },
-    async write(slot: BotCredentialSlot, value: string, replace: boolean, signal?: AbortSignal) {
+    async write(slot: BotCredentialSlot, value: string, expectedRevision?: string, signal?: AbortSignal): Promise<BotCredentialCaptureReceipt> {
       if (!fitsStorage(value)) throw oversizedCredential();
-      if (slot.kind === legacyPairKind && !replace) throw invalidCredential();
+      if (slot.kind === legacyPairKind && expectedRevision === undefined) throw invalidCredential();
       return lock(signal, async () => {
         await requireStorage(signal);
-        const present = await inspect(slot, signal);
-        signal?.throwIfAborted();
-        if (present !== 'missing' && !replace) return present;
-        if (present === 'missing' && replace) throw new Error('The Bot credential no longer exists.');
+        const current = await getSaved(slot, signal);
+        await requireStorage(signal);
+        if (expectedRevision === undefined && current !== undefined) return { status: 'existing', structure: describeBotCredential(slot, current) };
+        if (expectedRevision !== undefined && (current === undefined || revisionOf(current) !== expectedRevision)) throw changedCredential();
         const [primary, ...legacy] = keysFor(slot);
         await store.store(primary, value);
-        if (replace && legacy.length) {
+        if (expectedRevision !== undefined && legacy.length) {
           const available = new Set(await store.keys());
           for (const key of legacy) if (available.has(key)) await store.delete(key);
         }
-        return 'saved' as const;
+        return { status: 'saved', structure: describeBotCredential(slot, value) };
       });
     },
-    async remove(slot: BotCredentialSlot, signal?: AbortSignal) {
+    async remove(slot: BotCredentialSlot, signal?: AbortSignal, expectedRevision?: string) {
       await lock(signal, async () => {
         await requireStorage(signal);
+        if (expectedRevision !== undefined) {
+          const current = await getSaved(slot, signal);
+          if (current === undefined || revisionOf(current) !== expectedRevision) throw changedCredential();
+        }
         const available = new Set(await store.keys());
+        await requireStorage(signal);
         for (const key of keysFor(slot)) if (available.has(key)) await store.delete(key);
       });
     },

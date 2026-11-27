@@ -14,6 +14,7 @@
   "Use {0} for {1}": "为 {1} 使用凭据 {0}",
   "Replace the saved credential {0}": "替换已保存的凭据 {0}",
   "The credential is too large to save (maximum 64 KiB).": "凭据过大，无法保存（最大 64 KiB）。",
+  "The credential changed or was removed. Reopen it before trying again.": "该凭据已被修改或删除，请重新打开后再试。",
   "System-protected credential storage is unavailable. No credential was saved.": "系统保护的凭据存储不可用，没有保存凭据。",
   "System-protected credential storage is unavailable. No query was sent.": "系统保护的凭据存储不可用，没有发起查询。",
   "Bot credentials: {0}": "Bot 凭据库：{0}",

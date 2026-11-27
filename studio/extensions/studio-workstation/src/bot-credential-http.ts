@@ -65,7 +65,7 @@ export async function runBotCredentialHttpQuery(use: BotCredentialHttpRequest, s
           if (!validBotCredentialQueryData(data)) return { status: 'failed', reason: 'response-too-large', httpStatus: status };
           const values = [...(typeof stored === 'string' ? [stored] : Object.values(stored)), ...Object.values(headers),
             ...(headers.authorization?.startsWith('Basic ') || headers.authorization?.startsWith('Bearer ') ? [headers.authorization.slice(headers.authorization.indexOf(' ') + 1)] : [])];
-          return containsCredentialValue(data.body, values) ? { status: 'failed', reason: 'unsafe-response', httpStatus: status } : { status: 'ok', data };
+          return containsCredentialValue(data.body, values, 1) ? { status: 'failed', reason: 'unsafe-response', httpStatus: status } : { status: 'ok', data };
         })().then(resolve, reject);
       });
       req.once('error', reject);

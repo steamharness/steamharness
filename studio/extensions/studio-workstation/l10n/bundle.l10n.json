@@ -14,6 +14,7 @@
   "Use {0} for {1}": "Use {0} for {1}",
   "Replace the saved credential {0}": "Replace the saved credential {0}",
   "The credential is too large to save (maximum 64 KiB).": "The credential is too large to save (maximum 64 KiB).",
+  "The credential changed or was removed. Reopen it before trying again.": "The credential changed or was removed. Reopen it before trying again.",
   "System-protected credential storage is unavailable. No credential was saved.": "System-protected credential storage is unavailable. No credential was saved.",
   "System-protected credential storage is unavailable. No query was sent.": "System-protected credential storage is unavailable. No query was sent.",
   "Bot credentials: {0}": "Bot credentials: {0}",
