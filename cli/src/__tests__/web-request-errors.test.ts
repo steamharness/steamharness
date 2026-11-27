@@ -143,6 +143,7 @@ it('formats saved Conversation failures, retry errors and request alerts without
   expect(error.querySelector('.request-error-summary')!.textContent).toBe('Request failed (HTTP 502).');
   emit({ type: 'error', requestType: 'attach', message: gatewayError });
   const alert = document.querySelector<HTMLElement>('#error')!;
+  expect(alert.nextElementSibling).toBe(document.querySelector('.composer-area #parameters > .composer'));
   expect(alert.hidden).toBe(false); expect(alert.querySelector('.request-error-summary')!.textContent).toBe('Request failed (HTTP 502).');
   alert.querySelector('button')!.click();
   await render('running'); expect(alert.hidden).toBe(true);
