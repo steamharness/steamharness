@@ -235,7 +235,9 @@ Agent Bot 默认提供以下工具，和记忆开关无关。LLM Bot 可以在 *
 
 除列出根目录或日期列表外，路径形如 `temp/YYYY-MM-DD/draft.md`。文件工具不接受绝对路径、上级路径或指向其他文件的链接。Plan 和只读模式下只提供列目录和读取，所有工具继续遵守宿主权限与审批。
 
-本地 `bash` 的工作目录默认仍是项目工作区。传 `directory: "temp"` 或 `"artifacts"` 可在当天的对应目录执行命令。子进程的 `TMPDIR`、`TMP` 和 `TEMP` 指向当天的 `temp`，两个绝对路径也通过 `STEAMHARNESS_BOT_TEMP_DIR` 和 `STEAMHARNESS_BOT_ARTIFACT_DIR` 提供。不会读取这些变量的程序仍需显式指定输出路径。
+本地 Agent Bot 的默认工作目录是 `~/.steamharness/accounts/<账号键>/projects/<项目ID>/`，不是加载 Bot 代码的源码目录。没有项目账号时，账号键为 `local`。例如，未指定 `workdir` 时，用 `bash` 创建的 `plan.md` 就在项目 ID 目录下。显式指定工作目录或绑定文件夹时使用所选目录；`prepareInput` 的 `input.workdir` 和运行结果的 `workdir` 都是绝对路径。
+
+传 `directory: "temp"` 或 `"artifacts"` 可让单条 `bash` 命令在当天的对应目录执行。子进程的 `TMPDIR`、`TMP` 和 `TEMP` 指向当天的 `temp`，两个绝对路径也通过 `STEAMHARNESS_BOT_TEMP_DIR` 和 `STEAMHARNESS_BOT_ARTIFACT_DIR` 提供。不会读取这些变量的程序仍需显式指定输出路径。
 
 Bot 的内置说明会指引它把中间文件和成品分开放置，并在任务结束时给出用户要求的成品路径。可以直接说：「把分析过程的临时文件放进你的临时目录，最终报告放到产物目录，告诉我保存位置。」
 

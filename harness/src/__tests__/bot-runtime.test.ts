@@ -249,8 +249,9 @@ test("parallel entries with the same conversation and request IDs keep their inp
     async prepareInput(input, context) { await Promise.resolve(); return { ...input, topic: String(context.paramValues.topic) }; },
     onCompleted(_result, context) { receipts.push(context.entryId); },
   });
+  const { projectId } = createTestResources();
   await Promise.all(["one", "two"].map(async entryId => {
-    const run = { ...context(), projectId: "shared", entryId };
+    const run = { ...context(), projectId, entryId };
     const input = await bot.createInput({ ...executorContext(), paramValues: { topic: entryId } });
     run.metadata!.runId = "same";
     await bot.workflow.run(input, run);

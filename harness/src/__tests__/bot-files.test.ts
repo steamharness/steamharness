@@ -120,6 +120,44 @@ function context(metadata: RunContext["metadata"], resources = createTestResourc
     tokenUsage: createDisabledProjectTokenUsageContext() };
 }
 
+test('Agent Bot shell, hooks and output use the account project directory unless a working directory was selected', async t => {
+  const root = await fixture(t), source = path.join(root, 'source'), selected = path.join(root, 'selected');
+  await Promise.all([mkdir(source), mkdir(selected)]);
+  const previous = process.cwd(), previousOwner = process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY;
+  t.mock.method(os, 'homedir', () => root);
+  t.after(() => { process.chdir(previous); if (previousOwner === undefined) delete process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY; else process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY = previousOwner; });
+  process.chdir(source);
+  const resources = createTestResources(), account = 'a'.repeat(64);
+  const cwdFor = (owner: string) => path.join(root, '.steamharness', 'accounts', owner, 'projects', resources.projectId);
+  for (const [kind, owner, expected] of [
+    ['default', 'local', cwdFor('local')], ['default', account, cwdFor(account)],
+    ['host', account, selected], ['input', account, selected], ['configured', account, selected], ['bound', account, selected],
+  ]) {
+    process.env.STEAMHARNESS_LOCAL_ACCOUNT_KEY = owner;
+    const persistence = createLocalRuntimePersistence({ directory: path.join(root, 'store', owner, kind) });
+    t.after(() => persistence.close());
+    const run = context({ runtimePersistence: persistence, entryRootDir: source, ...(kind === 'host' && { executionWorkdir: selected }) }, resources);
+    const bound = kind === 'bound' ? { ...run, folderContext: { directory: selected } } : run;
+    const provider = fauxProvider({ models: [{ id: 'cwd', contextWindow: 4096, maxTokens: 100 }] });
+    const models = createModels(); models.setProvider(provider.provider);
+    let shellCwd: string | undefined, preparedCwd: string | undefined, completedCwd: string | undefined;
+    provider.setResponses([
+      fauxAssistantMessage([fauxToolCall('bash', { command: `node -e "const fs=require('node:fs'); fs.writeFileSync('agent-working-directory.txt','checked'); console.log(fs.realpathSync('.'))"` })], { stopReason: 'toolUse' }),
+      request => { const result = request.messages.at(-1) as { content: { text?: string }[] }; shellCwd = result.content[0]?.text?.trim(); return fauxAssistantMessage('Done'); },
+    ]);
+    const bot = defineBot({ engine: 'agent', memory: { enabled: false }, agent: { models, resolvedModel: models.getModel('faux', 'cwd')!, tools: ['bash'], permissionPolicy: 'workspace', ...(kind === 'configured' && { workdir: selected + path.sep }) },
+      prepareInput(input) { preparedCwd = input.workdir; return input; }, onCompleted({ output }) { completedCwd = output.workdir; } });
+    bound.toolPermissions = createProjectToolPermissionContext({ definitions: bot.tools, projectName: 'bot', runId: 'cwd' });
+    const output = await bot.workflow.run({ errCode: 0, errMessage: '', prompt: 'Check cwd', ...(kind === 'input' && { workdir: selected }), ...(kind === 'bound' && { workdir: source }) }, bound);
+    assert.equal(shellCwd, expected, `${kind}: bash cwd`);
+    assert.equal(preparedCwd, expected, `${kind}: prepareInput`);
+    assert.equal(output.workdir, expected, `${kind}: workflow result`);
+    assert.equal(completedCwd, expected, `${kind}: completion hook`);
+    assert.equal(await readFile(path.join(expected, 'agent-working-directory.txt'), 'utf8'), 'checked');
+    await assert.rejects(stat(path.join(source, 'agent-working-directory.txt')), { code: 'ENOENT' });
+  }
+});
+
 test("Agent Bot receives file guidance with a prepared persona and actually routes Shell temporary files", { timeout: 15_000 }, async t => {
   const directory = await fixture(t);
   const workspace = path.join(directory, "project"); await mkdir(workspace);

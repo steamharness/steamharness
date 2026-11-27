@@ -3,6 +3,8 @@ import { agentSessionLease } from "./session-control";
 import { currentBotRequestId, withBotRequest } from "./bot-lifecycle";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import path from 'node:path';
+import { localProjectDirectory, localRuntimeAccountDirectory, prepareLocalDirectory } from '@steamharness/project-manifest/node';
 import type { NodeContext } from "../types/index";
 import type { BotExecutorDefinition, ConversationDefinition, BotParamDeclaration, ExecutorContext, ParamResolveResult, ParamResolverContext } from "../executor/types";
 import type { AgentInput, AgentOutputPayload, AgentProjectOptions, AgentToolSet } from "./types";
@@ -30,6 +32,19 @@ import { BOT_CREDENTIAL_TOOL, BOT_CREDENTIAL_USE_TOOL } from "./bot-credential";
 import { BOT_JSON_SUMMARY_DEFINITION } from "./bot-json-summary";
 import { createLLMBot } from "./llm-bot";
 import { applyFolderAgentInput } from "../executor/folder-context";
+
+/** A library caller's cwd is not a Bot workspace. */
+function withBotWorkdir<T extends AgentInput>(input: T, context: NodeContext, fallback?: string): T {
+  const selected = context.folderContext?.directory || input.workdir?.trim() || fallback?.trim();
+  if (selected && path.isAbsolute(selected)) {
+    const workdir = path.resolve(selected);
+    return input.workdir === workdir ? input : { ...input, workdir };
+  }
+  const host = context.metadata?.executionWorkdir;
+  const base = typeof host === 'string' && path.isAbsolute(host) ? host
+    : prepareLocalDirectory(localProjectDirectory(localRuntimeAccountDirectory(), context.projectId));
+  return { ...input, workdir: path.resolve(base, selected || '.') };
+}
 
 export interface BotInputContext extends NodeContext {
   readonly args: string[];
@@ -172,14 +187,15 @@ export function defineBot<Input extends AgentInput = AgentInput>(options: BotDef
     const key = `steamharness.bot.input:${requestId}`;
     const persist = !!options.prepareInput && input.hostInput === undefined;
     const saved = persist ? (await context.conversation.getValue()).values[key] as Input | undefined : undefined;
-    if (saved && reuse) return applyFolderAgentInput(applyAgentProjectFixedValues(saved, params) as Input, context, lockedModel);
+    if (saved && reuse) return applyFolderAgentInput(withBotWorkdir(applyAgentProjectFixedValues(saved, params) as Input, context, input.workdir ?? agent.workdir), context, lockedModel);
     const executor = inputContexts.get(input) ?? ownerContexts.get(ownerKey(context));
-    const parsed = await resolveAgentImageFiles(context.folderContext ? { ...input, workdir: context.folderContext.directory, allowedDirectories: undefined } : input, context, `${options.name ?? "bot"}-input`);
+    const scoped = withBotWorkdir(input, context, agent.workdir);
+    const parsed = await resolveAgentImageFiles(context.folderContext ? { ...scoped, allowedDirectories: undefined } : scoped, context, `${options.name ?? "bot"}-input`);
     const prepared = options.prepareInput ? await withBotRequest(requestId, () => options.prepareInput!(parsed, {
       ...context, args: executor?.args ?? [], paramValues: executor?.paramValues ?? {} }), context) : parsed;
     if (!prepared || typeof prepared.prompt !== "string") invalid("Bot prepareInput must return an AgentInput with a prompt.");
     context.abortSignal?.throwIfAborted();
-    const result = applyFolderAgentInput({ ...applyAgentProjectFixedValues(prepared, params), requestId } as Input, context, lockedModel);
+    const result = applyFolderAgentInput(withBotWorkdir({ ...applyAgentProjectFixedValues(prepared, params), requestId } as Input, context, parsed.workdir), context, lockedModel);
     if (persist) await context.conversation.setValue(key, result);
     return result;
   }

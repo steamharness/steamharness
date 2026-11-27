@@ -235,7 +235,9 @@ Agent Bots provide the following tools by default, independently of the memory s
 
 Except when listing the root or browsing dates, paths look like `temp/YYYY-MM-DD/draft.md`. The file tools reject absolute paths, parent traversal and links to other files. Plan and read-only modes offer listing and reading only, and all tools respect host permissions and approval settings.
 
-Local `bash` still starts in the project workspace by default. Set `directory` to `"temp"` or `"artifacts"` to start in today's corresponding directory. Child processes receive `TMPDIR`, `TMP`, and `TEMP` pointing to today's temporary directory, plus both absolute paths as `STEAMHARNESS_BOT_TEMP_DIR` and `STEAMHARNESS_BOT_ARTIFACT_DIR`. Programs that ignore those variables need an explicit output path.
+A local Agent Bot starts in `~/.steamharness/accounts/<account-key>/projects/<project-id>/`, not in its source directory. Without a project account, the key is `local`. For example, a `bash` command that creates `plan.md` writes it to the project ID directory unless you select a different working directory. An explicit working directory or folder binding takes precedence. Both `input.workdir` in `prepareInput` and `workdir` in the run result are absolute paths.
+
+Set `directory` to `"temp"` or `"artifacts"` to run a single `bash` command in today's corresponding directory. Child processes receive `TMPDIR`, `TMP`, and `TEMP` pointing to today's temporary directory, plus both absolute paths as `STEAMHARNESS_BOT_TEMP_DIR` and `STEAMHARNESS_BOT_ARTIFACT_DIR`. Programs that ignore those variables need an explicit output path.
 
 The built-in prompt guides the Bot to keep intermediate files and deliverables separate, then report the path to a requested deliverable. For example: “Keep the working files in your temporary directory, save the final report under artifacts, and tell me where it is.”
 
