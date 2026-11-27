@@ -12,7 +12,7 @@ const chinese = JSON.parse(await readFile('extensions/studio-workstation/l10n/bu
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const request = (name = 'preview-sample.docx', requestId = 'open-1') => ({ type: 'workflow-path-open', version: 1, requestId, path: resolve('fixtures', name) });
 
-function fixture({ stat = async () => ({ type: 1 }), openExternal = async () => true, executeCommand = async () => {}, language = 'en', basePath } = {}) {
+function fixture({ stat = async () => ({ type: 1, size: 128 }), openExternal = async () => true, executeCommand = async () => {}, language = 'en', basePath } = {}) {
   const module = { exports: {} }, replies = [], commands = [], external = [], stats = [], editors = [];
   const uriFor = path => ({ scheme: 'file', fsPath: path, path: path.replaceAll('\\', '/') });
   runInNewContext(compiled.outputFiles[0].text, {
@@ -73,6 +73,26 @@ test('opens document references with Studio previews and code references with th
     assert.deepEqual(f.replies.at(-1), { type: 'workflow-host', pathOpened: { version: 1, requestId: message.requestId } });
   }
   assert.equal(f.external.length, 0); assert.equal(f.stats.length, 8);
+});
+
+test('clicking an attachment opens the matching preview or reveals the original in the system file manager', async () => {
+  const f = fixture({ stat: async uri => ({ type: 1, size: uri.path.includes('large') ? 51 * 1024 * 1024 : 128 }),
+    executeCommand: async (command, uri) => { if (command === 'vscode.openWith' && uri.path.includes('broken')) throw new Error('Cannot open editor'); } });
+  for (const [name, command, editor] of [
+    ['table.XLSX', 'vscode.openWith', 'studio.documentPreview'],
+    ['report.pdf', 'vscode.openWith', 'studio.documentPreview'],
+    ['formula.tex', 'vscode.openWith', 'studio.formulaPreview'],
+    ['archive.zip', 'revealFileInOS'],
+    ['large.xlsx', 'revealFileInOS'],
+    ['broken.xlsx', 'revealFileInOS'],
+  ]) {
+    const message = { ...request(name, name), attachment: true };
+    f.binding.receive(message); await tick();
+    const [actual, uri, view] = f.commands.at(-1);
+    assert.equal(actual, command); assert.equal(uri.fsPath, message.path); assert.equal(view, editor);
+    assert.deepEqual(f.replies.at(-1).pathOpened, { version: 1, requestId: name });
+  }
+  assert.equal(f.commands.filter(([command]) => command === 'vscode.open').length, 0);
 });
 
 test('opens the folder itself in the system file manager and uses its actual filesystem type', async () => {

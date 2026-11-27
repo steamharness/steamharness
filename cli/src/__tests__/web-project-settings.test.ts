@@ -62,6 +62,21 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal'); Reflect.deleteProperty(HTMLDialogElement.prototype, 'close'); document.body.replaceChildren();
 });
 
+it.each(['en', 'zh-CN'] as const)('shows file information instead of the image dialog in %s', language => {
+  initI18n({ preference: language }); document.querySelector('#project-information-dialog')!.remove();
+  dialogs = new ConversationTools({ embeddedConversation: true });
+  const zh = language === 'zh-CN', download = vi.fn();
+  const trigger = document.getElementById('project-info')!; trigger.focus();
+  dialogs.attachmentDetails('table.xlsx', 'XLSX · 12 KiB', download);
+  const dialog = document.querySelector<HTMLDialogElement>('dialog[open]')!;
+  expect(dialog.querySelector('h2')!.textContent).toBe(zh ? '文件信息' : 'File details');
+  expect(dialog.querySelector('strong')!.textContent).toBe('table.xlsx');
+  expect(dialog.querySelector('p')!.textContent).toBe('XLSX · 12 KiB');
+  expect(dialog.querySelector('img, .image-preview-panel')).toBeNull();
+  click(zh ? '下载文件' : 'Download file', dialog); expect(download).toHaveBeenCalledOnce();
+  click(zh ? '关闭' : 'Close', dialog); expect(document.activeElement).toBe(trigger);
+});
+
 it('opens plan file references through the same editor callback as answer links', () => {
   dialogs.plan('[configuration](file:///work/configuration.json#L12C3) and `src/main.ts`');
   const links = document.querySelectorAll<HTMLAnchorElement>('.message-content a');

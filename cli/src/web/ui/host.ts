@@ -17,7 +17,7 @@ import { acquireHostKeyboard } from './host-keyboard';
 import { prepareImageFiles } from './image-cropper';
 
 type Message = Record<string, any>;
-export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; copyText?(text: string): Promise<boolean>; reloadProject?(draft?: Message): Promise<void> }
+export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; readonly canOpenAttachments?: boolean; copyText?(text: string): Promise<boolean>; reloadProject?(draft?: Message): Promise<void> }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -70,6 +70,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     serverProjectRequests.clear();
   });
   let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, browserOpenHost = false, fileIconsHost = false, downloadHost = false;
+  let attachmentOpenHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
   const pathOpens = new Map<string, Message>();
@@ -210,6 +211,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.dropVersion === 1) advertiseDropTarget();
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
     if (event.data.pathOpenVersion !== undefined) pathOpenHost = event.data.pathOpenVersion === 1;
+    if (event.data.attachmentOpenVersion !== undefined) attachmentOpenHost = event.data.attachmentOpenVersion === 1;
     if (event.data.browserOpenVersion !== undefined) browserOpenHost = event.data.browserOpenVersion === 1;
     if (event.data.downloadVersion !== undefined) downloadHost = event.data.downloadVersion === 1;
     if (event.data.fileIconsVersion !== undefined || event.data.fileIconsChanged?.version === 1) {
@@ -479,12 +481,13 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'open-path') {
         if (!pathOpenHost) { emit({ type: 'error', requestType: 'open-path', projectUri: message.projectUri, sessionId: message.sessionId, message: t('Open this conversation in Studio to open referenced files and folders.') }); return; }
         const requestId = crypto.randomUUID(); pathOpens.set(requestId, message);
-        window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path, ...(message.line === undefined ? {} : { line: message.line }), ...(message.column === undefined ? {} : { column: message.column }) }, '*'); return;
+        window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path, ...(message.line === undefined ? {} : { line: message.line }), ...(message.column === undefined ? {} : { column: message.column }), ...(message.attachment === true && attachmentOpenHost ? { attachment: true } : {}) }, '*'); return;
       }
       if (message.type === 'login') { accountPanel?.open(); return; }
       void request(message).catch(error => emit({ type: 'error', errorSource: 'request', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, projectUri: message.projectUri, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
     },
     fileUrl: id => connection.fileUrl(`/api/file/${encodeURIComponent(id)}`),
+    get canOpenAttachments() { return pathOpenHost && attachmentOpenHost; },
     getState: () => { try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null'); } catch { return undefined; } },
     setState: (state) => {
       try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}

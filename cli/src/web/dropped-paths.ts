@@ -12,7 +12,7 @@ export async function resolveDroppedPaths(value: unknown): Promise<PathReference
     if (!path.isAbsolute(location)) throw new Error(t("Invalid dropped path."));
     const info = await stat(location);
     if (!info.isFile() && !info.isDirectory()) throw new Error(t("Only files and folders can be referenced."));
-    return pathReferences([{ path: path.normalize(location), kind: info.isDirectory() ? 'directory' : 'file' }])[0];
+    return pathReferences([{ path: path.normalize(location), kind: info.isDirectory() ? 'directory' : 'file', size: info.size }])[0];
   }));
 }
 
@@ -37,12 +37,14 @@ export async function importDroppedEntries(root: string, value: unknown): Promis
     return { name: entry.name as string, kind: entry.kind as 'file' | 'directory', bytes };
   });
   const top = new Map<string, 'file' | 'directory'>();
+  const fileSizes = new Map<string, number>();
   for (const entry of entries) {
     const parts = entry.name.split('/');
     for (let index = 1; index < parts.length; index++) {
       if (names.get(parts.slice(0, index).join('/').toLowerCase()) === 'file') throw new Error(t("A dropped file conflicts with a folder."));
     }
     top.set(parts[0], parts.length > 1 ? 'directory' : entry.kind);
+    if (parts.length === 1 && entry.bytes) fileSizes.set(entry.name, entry.bytes.length);
   }
   if (top.size > 32) throw new Error(t("Too many path references."));
   const directory = path.join(root, randomUUID());
@@ -52,6 +54,6 @@ export async function importDroppedEntries(root: string, value: unknown): Promis
       await mkdir(entry.kind === 'directory' ? target : path.dirname(target), { recursive: true });
       if (entry.bytes) await writeFile(target, entry.bytes, { flag: 'wx' });
     }
-    return pathReferences([...top].map(([name, kind]) => ({ path: path.join(directory, name), kind })));
+    return pathReferences([...top].map(([name, kind]) => ({ path: path.join(directory, name), kind, size: fileSizes.get(name) })));
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }

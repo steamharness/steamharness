@@ -18,6 +18,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
     <body><iframe id="workflow-frame" title="${escape(title)}" allow="clipboard-read; clipboard-write; microphone *" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups allow-modals"></iframe>
     <script nonce="${nonce}">
       const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)},projectDetails=${literal(features?.projectDetails)};
+      const isNative=()=>document.documentElement.dataset.vscodeNativeClipboard==='1';
       let theme=${literal(theme)},windowChrome=${literal(windowChrome)},editCommands=false,contextMenu=false,clipboardImageRequestId;
       const postHost=message=>frame.contentWindow.postMessage(message,origin);
       const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
@@ -49,7 +50,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();postHost({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})});contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,projectDetails,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,clipboardImageVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,projectDetails,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:isNative()?1:0,clipboardImageVersion:isNative()?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,attachmentOpenVersion:isNative()?1:0,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
           if(event.origin!==origin)return;
@@ -75,7 +76,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
             const {width,height,regions}=message;vscode.postMessage({type:'studio-window-drag-regions',version:1,width,height,regions});
           }
           if(message?.type==='workflow-edit'&&message.version===1){editCommands=true;}
-          if(message?.type==='workflow-edit'&&message.version===1&&message.command==='paste'&&document.activeElement===frame&&document.documentElement.dataset.vscodeNativeClipboard==='1'){
+          if(message?.type==='workflow-edit'&&message.version===1&&message.command==='paste'&&document.activeElement===frame&&isNative()){
             if(message.clipboardImageRequestId!==undefined){
               if(typeof message.clipboardImageRequestId!=='string'||!message.clipboardImageRequestId||message.clipboardImageRequestId.length>128)return;
               clipboardImageRequestId=message.clipboardImageRequestId;

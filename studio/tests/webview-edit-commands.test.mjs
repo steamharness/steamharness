@@ -76,7 +76,7 @@ function nativePasteFixture() {
   const view = runInNewContext(pasteCode, { Base: class { paste() { standardPastes++; } } });
   Object.assign(view, { element: { ownerDocument: { hasFocus: () => true } }, useNativeClipboard: true, isFocused: true,
     execCommand: command => commands.push(command),
-    _nativeHostService: { readClipboardText: async () => { reads.push('text'); return 'native text'; }, readImage: async () => { reads.push('image'); return new Uint8Array([1, 2, 3]); } } });
+    _nativeHostService: { readClipboardText: async () => { reads.push('text'); return 'native text'; }, readImage: async () => { reads.push('image'); return new Uint8Array([1, 2, 3]); }, readClipboardFileUrls: async () => undefined } });
   return { view, commands, reads, standardPastes: () => standardPastes };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -88,6 +88,49 @@ test('Studio paste reads text and image from the native host without changing ot
   assert.deepEqual(JSON.parse(JSON.stringify(commands)), [{ command: 'paste', clipboard: { text: 'native text', image: { 0: 1, 1: 2, 2: 3 } } }]);
   view.useNativeClipboard = false; view.paste(); await settle();
   assert.deepEqual(reads, ['text', 'image']); assert.equal(standardPastes(), 1);
+});
+
+test('a Finder selection reaches only the project surface without reading its clipboard icon', async () => {
+  const { view, commands, reads } = nativePasteFixture();
+  Object.assign(view, { extension: { id: { value: 'studio.studio-workstation' } }, providedViewType: 'studio.project' });
+  const fileUrls = ['file:///tmp/table%20%23.xlsx', 'file:///tmp/archive.zip'];
+  view._nativeHostService.readClipboardFileUrls = async () => { reads.push('files'); return fileUrls; };
+  view.paste(); await settle();
+  assert.deepEqual(reads.splice(0), ['files', 'text']);
+  assert.deepEqual(commands[0].clipboard.fileUrls, fileUrls);
+  assert.equal(commands[0].clipboard.image.byteLength, 0);
+
+  view.providedViewType = 'studio.projectSidebar'; view.paste(); await settle();
+  assert.deepEqual(reads.splice(0), ['text', 'image']);
+  assert.equal(commands[1].clipboard.fileUrls, undefined);
+  view.providedViewType = 'studio.project'; view._nativeHostService.readClipboardFileUrls = async () => [];
+  view.paste(); await settle();
+  assert.deepEqual(reads, ['text']); assert.equal(commands[2].clipboard.image.byteLength, 0);
+});
+
+const nativeHostSource = await readFile(new URL('../upstream/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts', import.meta.url), 'utf8');
+const fileUrlsMethod = nativeHostSource.slice(nativeHostSource.indexOf('\tasync readClipboardFileUrls('), nativeHostSource.indexOf('\n\tasync writeClipboardText('));
+const fileUrlsCode = ts.transpileModule(`new (class {${fileUrlsMethod}\n})()`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+
+test('the macOS reader only invokes AppKit for file clipboard formats and never returns non-file URLs', async () => {
+  const formats = new Set(), calls = [];
+  const fileUrls = ['file:///tmp/table%20%23.xlsx', 'file:///tmp/archive.zip'];
+  let stdout = JSON.stringify(fileUrls);
+  function reader(isMacintosh) {
+    return Object.assign(runInNewContext(fileUrlsCode, {
+      isMacintosh, clipboard: { has: format => formats.has(format) }, execFile() {},
+      promisify: () => async (...args) => { calls.push(args); return { stdout }; },
+    }), { logService: { trace() {} } });
+  }
+  const mac = reader(true);
+  assert.equal(await mac.readClipboardFileUrls(), undefined);
+  formats.add('public.file-url');
+  assert.equal(await reader(false).readClipboardFileUrls(), undefined); assert.equal(calls.length, 0);
+  assert.deepEqual([...(await mac.readClipboardFileUrls())], fileUrls);
+  assert.equal(calls[0][0], '/usr/bin/osascript'); assert.equal(calls[0][2].timeout, 2000);
+  for (const invalid of [['https://example.invalid/archive.zip'], Array(34).fill(fileUrls[0]), 'unparseable']) {
+    stdout = JSON.stringify(invalid); assert.deepEqual([...(await mac.readClipboardFileUrls())], []);
+  }
 });
 
 test('late native clipboard data cannot paste into an unfocused, replaced or disposed view', async () => {

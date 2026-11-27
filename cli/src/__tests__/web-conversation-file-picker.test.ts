@@ -186,6 +186,19 @@ it('opens referenced paths through the authenticated Studio bridge and reports s
   expect(f.messages().at(-1).message).toContain('Open this conversation in Studio');
 });
 
+it('only uses the attachment open mode with a parent that supports it', async () => {
+  const f = hostFixture(), request = { type: 'open-path', path: '/tmp/sample.xlsx', attachment: true };
+  expect(f.host.canOpenAttachments).toBe(false);
+  f.receive({ pathOpenVersion: 1, attachmentOpenVersion: 1 }, {});
+  expect(f.host.canOpenAttachments).toBe(false);
+  f.receive({ pathOpenVersion: 1 }); await f.host.postMessage(request);
+  expect(f.host.canOpenAttachments).toBe(false); expect(f.sent.at(-1)).not.toHaveProperty('attachment');
+  f.receive({ attachmentOpenVersion: 1 }); await f.host.postMessage(request);
+  expect(f.host.canOpenAttachments).toBe(true);
+  expect(f.sent.at(-1)).toMatchObject({ type: 'workflow-path-open', attachment: true, path: request.path });
+  f.receive({ attachmentOpenVersion: 0 }); expect(f.host.canOpenAttachments).toBe(false); f.close();
+});
+
 it('authenticates and correlates Studio theme responses and refreshes after host invalidation', async () => {
   const f = hostFixture(), request = { type: 'file-icons', requestId: 'icons-1', files: [{ path: '/src/index.ts', kind: 'file' }] };
   f.receive({ fileIconsVersion: 1 }, {}); await f.host.postMessage(request); expect(f.sent).toHaveLength(0);

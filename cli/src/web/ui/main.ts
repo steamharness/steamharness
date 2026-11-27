@@ -32,7 +32,7 @@ import { childConversationSubagent, ChildConversationStatus, conversationSubagen
 import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
-import { captureFileDrop, isFileDrop, type FileImport } from './conversation-drop';
+import { captureFileDrop, isFileDrop, transferredFileUrls, type FileImport } from './conversation-drop';
 import { ConversationFileMenu } from './conversation-file-menu';
 import { FileIcons } from './file-icons';
 import { activeAgentActivity } from './agent-activity';
@@ -1028,40 +1028,61 @@ function initialize(): void {
   function attachmentList(container: HTMLElement, attachments: Attachment[], removable: boolean, references: PathReference[] = []): void {
     container.replaceChildren(); container.hidden = !attachments.length && !references.length;
     for (const file of attachments) {
-      const isImage = file.kind === 'image';
-      const item = document.createElement('div'); item.className = `attachment${isImage ? ' attachment-image' : ''}`;
-      const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'attachment-preview'; preview.title = isImage ? t("Image") : file.name; preview.setAttribute('aria-label', preview.title);
-      if (isImage && file.previewUrl) { const image = document.createElement('img'); image.src = file.previewUrl; image.alt = t("Image"); preview.append(image); }
-      else { const symbol = document.createElement('span'); fileIcons.bind(symbol, file.name); preview.append(symbol); }
-      preview.addEventListener('click', () => {
-        if (isImage && file.previewUrl) { dialogs.image(file.previewUrl, t("Image")); }
-        else { post({ type: 'open-file', id: file.id }); }
-      });
-      item.append(preview);
-      if (!isImage) { const name = document.createElement('span'); name.textContent = file.name; name.title = file.name; item.append(name); }
+      const imageUrl = file.kind === 'image' && file.mimeType.startsWith('image/') ? file.previewUrl : undefined;
+      const item = document.createElement('div'); item.className = `attachment${imageUrl ? ' attachment-image' : ' attachment-file'}`;
+      if (imageUrl) {
+        const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'attachment-preview'; preview.title = t('Image'); preview.ariaLabel = preview.title;
+        const image = document.createElement('img'); image.src = imageUrl; image.alt = preview.title; preview.append(image);
+        preview.addEventListener('click', () => dialogs.image(imageUrl, preview.title)); item.append(preview);
+      } else {
+        item.append(fileCard(file.name, file.name, 'file', attachmentDetails(file), details => {
+          if (vscode.canOpenAttachments && file.storage === 'local' && file.path) post({ type: 'open-path', path: file.path, attachment: true });
+          else dialogs.attachmentDetails(file.name, details, () => post({ type: 'open-file', id: file.id }));
+        }));
+      }
       if (removable) { item.append(iconButton('close', t("Remove attachment"), () => { draftFiles = draftFiles.filter((entry) => entry.id !== file.id); attachmentList(container, draftFiles, true, draftReferences); saveDraft(); updateControls(); })); }
       container.append(item);
     }
     for (const reference of references) {
-      const item = document.createElement('div'); item.className = 'attachment path-reference'; item.dataset.path = reference.path;
-      const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'path-reference-open';
-      preview.title = `${reference.kind === 'directory' ? t("Open folder in file manager") : t("Open file in Studio")}\n${reference.path}`;
-      preview.setAttribute('aria-label', preview.title.replace('\n', ': '));
-      const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; fileIcons.bind(symbol, reference.path, reference.kind);
-      symbol.title = reference.kind === 'directory' ? t("Folder") : t("File");
-      const name = document.createElement('span'); name.className = 'path-reference-name'; name.textContent = reference.name;
-      preview.append(symbol, name); item.append(preview);
-      preview.addEventListener('click', event => {
-        const selection = window.getSelection();
-        if (event.detail > 0 && selection && !selection.isCollapsed
-          && (preview.contains(selection.anchorNode) || preview.contains(selection.focusNode) || selection.containsNode(preview, true))) return;
-        post({ type: 'open-path', path: reference.path });
-      });
+      const item = document.createElement('div'); item.className = 'attachment attachment-file path-reference'; item.dataset.path = reference.path;
+      item.append(fileCard(reference.name, reference.path, reference.kind, reference.kind === 'file' ? attachmentDetails(reference) : '', details => {
+        if (reference.kind === 'directory') post({ type: 'open-path', path: reference.path });
+        else if (vscode.canOpenAttachments) post({ type: 'open-path', path: reference.path, attachment: true });
+        else dialogs.attachmentDetails(reference.name, details);
+      }));
       if (removable) item.append(iconButton('close', t("Remove path reference"), () => {
         draftReferences = draftReferences.filter(entry => entry.path !== reference.path); attachmentList(container, draftFiles, true, draftReferences); saveDraft(); updateControls();
       }));
       container.append(item);
     }
+  }
+
+  function attachmentDetails(file: { name: string; size?: number }): string {
+    const type = /[^.]\.([a-z0-9]{1,16})$/i.exec(file.name)?.[1].toUpperCase() ?? t('File');
+    if (file.size === undefined || !Number.isSafeInteger(file.size) || file.size < 0) return type;
+    let size = file.size, unit = 0;
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++; }
+    return `${type} · ${size.toLocaleString(locale(), { maximumFractionDigits: 1 })} ${units[unit]}`;
+  }
+
+  function fileCard(name: string, path: string, kind: PathReference['kind'], details: string, open: (details: string) => void): HTMLButtonElement {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'path-reference-open';
+    const action = kind === 'directory' ? t('Open folder in file manager') : vscode.canOpenAttachments ? t('Open file') : t('File details');
+    button.title = `${action}\n${path}${details ? `\n${details}` : ''}`; button.ariaLabel = `${action}: ${path}${details ? `, ${details}` : ''}`;
+    const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; fileIcons.bind(symbol, path, kind);
+    symbol.title = kind === 'directory' ? t('Folder') : t('File');
+    const label = document.createElement('span'); label.className = 'attachment-file-label';
+    const filename = document.createElement('span'); filename.className = 'path-reference-name'; filename.textContent = name; label.append(filename);
+    if (details) { const metadata = document.createElement('span'); metadata.className = 'attachment-file-metadata'; metadata.textContent = details; label.append(metadata); }
+    button.append(symbol, label);
+    button.addEventListener('click', event => {
+      const selection = window.getSelection();
+      if (event.detail > 0 && selection && !selection.isCollapsed
+        && (button.contains(selection.anchorNode) || button.contains(selection.focusNode) || selection.containsNode(button, true))) return;
+      open(details);
+    });
+    return button;
   }
 
   async function applyFileImport(drop: FileImport, selectedRequestId?: string): Promise<void> {
@@ -1765,12 +1786,18 @@ function initialize(): void {
     if (event.key === 'Escape') { contentSearch.close(); dismissNarrowMenu(); }
   });
   textarea.addEventListener('paste', (event) => {
-    const files = Array.from(event.clipboardData?.files ?? []);
-    if (files.length) {
-      if (!event.clipboardData?.getData('text/plain')) { event.preventDefault(); }
+    const transfer = event.clipboardData;
+    if (!transfer) return;
+    const paths = transferredFileUrls(transfer);
+    if (paths.length) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      void applyFileImport({ paths, read: async () => [] });
+    } else if (transfer.files?.length) {
+      if (!transfer.getData('text/plain')) { event.preventDefault(); }
+      const files = Array.from(transfer.files);
       void uploadFiles(files);
     }
-  });
+  }, { capture: true });
   document.querySelector('main')!.addEventListener('click', dismissNarrowMenu);
   const dropArea = document.querySelector('main')!;
   dropArea.addEventListener('dragover', event => {

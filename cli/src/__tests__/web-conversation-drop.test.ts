@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { captureFileDrop, capturePickedFiles } from '../web/ui/conversation-drop';
-import type { ConversationSession, Project } from '../web/workflow-types';
+import type { Attachment, ConversationSession, Project } from '../web/workflow-types';
 
-const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
+const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn(), canOpenAttachments: true }));
+const dialogs = vi.hoisted(() => ({ image: vi.fn(), attachmentDetails: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
-vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} } }));
+vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} image = dialogs.image; attachmentDetails = dialogs.attachmentDetails; } }));
 const listeners: { target: EventTarget; type: string; listener: EventListenerOrEventListenerObject; options?: boolean | AddEventListenerOptions }[] = [];
 const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/drop',entries:[{entryId:"main",name:"Main",type:'bot',root:".",entry:"index.ts"}], id: 'drop', uri: 'file:///drop', folderPath: '/drop', name: 'Drop', projectType: 'bot', fields: [], entrypoints: [] };
 const session = (id: string): ConversationSession => ({ id, title: id, messages: [], draft: { text: '', attachments: [] } });
@@ -20,8 +21,9 @@ afterEach(() => {
   for (const name of ['scrollIntoView', 'showPopover', 'hidePopover']) Reflect.deleteProperty(HTMLElement.prototype, name);
 });
 
-async function fixture(language = 'en', currentProject = project) {
+async function fixture(language = 'en', currentProject = project, canOpenAttachments = true) {
   vi.resetModules(); vi.useFakeTimers(); host.postMessage.mockReset(); host.getState.mockReturnValue(undefined); host.setState.mockReset();
+  host.canOpenAttachments = canOpenAttachments; dialogs.image.mockClear(); dialogs.attachmentDetails.mockClear();
   document.documentElement.lang = language;
   for (const target of [window, document]) {
     const add = target.addEventListener.bind(target);
@@ -187,7 +189,7 @@ it('restores compact reference tags above the text in the same user bubble witho
   ] }, session('second')]);
   const message = document.querySelector('[data-message-id=saved]')!, bubble = message.querySelector('.message-bubble')!;
   expect([...bubble.querySelectorAll('.path-reference-name')].map(name => name.textContent)).toEqual(references.map(reference => reference.name));
-  expect(bubble.textContent).toBe('资料a b.txtReview these files');
+  expect(bubble.textContent).toBe('资料a b.txtTXTReview these files');
   expect(bubble.querySelector('.attachments')!.nextElementSibling).toBe(bubble.querySelector('.message-content'));
   expect(message.querySelector('.message-actions')!.parentElement).toBe(message.querySelector('.message-body'));
   expect(bubble.querySelector('.message-feedback')).toBeNull();
@@ -213,7 +215,7 @@ it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while ke
   expect(cards[1].querySelector('.path-reference-icon')?.textContent).toBe('\ue618');
   const open = cards[0].querySelector<HTMLButtonElement>('.path-reference-open')!;
   expect(open.type).toBe('button'); open.focus(); expect(document.activeElement).toBe(open);
-  expect(open.ariaLabel).toContain(language === 'en' ? 'Open file in Studio' : '在 Studio 中打开文件');
+  expect(open.ariaLabel).toContain(language === 'en' ? 'Open file' : '打开文件');
   open.click(); cards[1].querySelector<HTMLButtonElement>('.path-reference-open')!.click();
   expect(f.requests('open-path').map(message => message.path)).toEqual(paths.map(file => file.path));
   const range = document.createRange(); range.selectNodeContents(cards[0].querySelector('.path-reference-name')!);
@@ -226,7 +228,47 @@ it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while ke
   expect(document.querySelectorAll('#draft-attachments .path-reference')).toHaveLength(1);
   document.querySelector<HTMLButtonElement>('#send')!.click();
   document.querySelector<HTMLButtonElement>('.message .path-reference-open')!.click();
-  expect(f.requests('open-path').at(-1)).toMatchObject({ path: paths[0].path, projectUri: project.uri, sessionId: 'first' });
+  expect(f.requests('open-path').at(-1)).toMatchObject({ path: paths[0].path, projectUri: project.uri, sessionId: 'first', attachment: true });
+});
+
+it('pastes Finder file references ahead of filenames or image representations and opens the original file from its card', async () => {
+  const f = await fixture();
+  const fileUrls = ['file:///tmp/table%20%23.xlsx', 'file:///tmp/example.zip'];
+  const event = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData: transfer({
+    'text/uri-list': fileUrls.join('\r\n'), 'text/plain': 'table #.xlsx\nexample.zip',
+  }, { files: [new File(['Finder icon'], 'clipboard.png', { type: 'image/png' })] }) });
+  const composer = document.querySelector<HTMLTextAreaElement>('#message')!; composer.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  const resolution = f.requests('resolve-paths').at(-1);
+  expect(resolution.paths).toEqual(fileUrls); expect(f.requests('upload')).toEqual([]);
+  f.emit({ type: 'path-references', projectUri: project.uri, sessionId: 'first', requestId: resolution.requestId, references: [
+    { path: '/tmp/table #.xlsx', name: 'table #.xlsx', kind: 'file', size: 12_288 },
+    { path: '/tmp/example.zip', name: 'example.zip', kind: 'file', size: 0 },
+  ] });
+  const cards = [...document.querySelectorAll<HTMLButtonElement>('#draft-attachments .path-reference-open')];
+  expect(cards.map(card => card.textContent)).toEqual(['table #.xlsxXLSX · 12 KiB', 'example.zipZIP · 0 B']);
+  expect(composer.value).toBe(''); expect(document.querySelector('#draft-attachments img')).toBeNull();
+  cards.forEach(card => card.click());
+  expect(f.requests('open-path')).toMatchObject([{ path: '/tmp/table #.xlsx', attachment: true }, { path: '/tmp/example.zip', attachment: true }]);
+  expect(dialogs.image).not.toHaveBeenCalled();
+});
+
+it.each([true, false])('shows managed attachment metadata, keeps genuine image preview, and handles native capability %s', async native => {
+  const f = await fixture('en', { ...project, conversation: { attachments: { images: true, files: true } } }, native);
+  const file: Attachment = { id: 'sheet', name: 'table.xlsx', size: 4096, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', kind: 'file', storage: 'local', path: '/tmp/managed/table.xlsx', createdAt: '' };
+  const photo: Attachment = { ...file, id: 'photo', name: 'screenshot.png', kind: 'image', mimeType: 'image/png', previewUrl: '/api/file/photo' };
+  f.emit({ type: 'attachments', sessionId: 'first', projectUri: project.uri, files: [file, photo] });
+  const card = document.querySelector<HTMLButtonElement>('#draft-attachments .attachment-file button')!; card.click();
+  expect(card.textContent).toBe('table.xlsxXLSX · 4 KiB');
+  expect(card.querySelector('img')).toBeNull(); expect(dialogs.image).not.toHaveBeenCalled();
+  if (native) { expect(f.requests('open-path').at(-1)).toMatchObject({ attachment: true, path: file.path }); expect(dialogs.attachmentDetails).not.toHaveBeenCalled(); }
+  else {
+    expect(f.requests('open-path')).toEqual([]);
+    expect(dialogs.attachmentDetails).toHaveBeenCalledWith('table.xlsx', 'XLSX · 4 KiB', expect.any(Function));
+    dialogs.attachmentDetails.mock.calls[0][2](); expect(f.requests('open-file').at(-1).id).toBe(file.id);
+  }
+  document.querySelector<HTMLButtonElement>('#draft-attachments .attachment-image .attachment-preview')!.click();
+  expect(dialogs.image).toHaveBeenCalledWith('/api/file/photo', 'Image');
 });
 
 it('renders path names as copyable text without interpreting markup', async () => {

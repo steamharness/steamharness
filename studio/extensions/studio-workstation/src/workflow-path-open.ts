@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
-import { documentPreviewKind, documentPreviewView } from './document-preview-types';
+import { DOCUMENT_PREVIEW_LIMIT, LATEX_PREVIEW_LIMIT, documentPreviewKind, documentPreviewView } from './document-preview-types';
 
 export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Uri) {
   let disposed = false;
@@ -9,7 +9,7 @@ export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Ur
     receive(message: Record<string, unknown> | undefined): boolean {
       if (disposed || message?.type !== 'workflow-path-open' || message.version !== 1
         || typeof message.requestId !== 'string' || !message.requestId || message.requestId.length > 128) return false;
-      const { requestId, path, line, column } = message;
+      const { requestId, path, line, column, attachment } = message;
       if (pending.has(requestId)) return true;
       pending.add(requestId);
       void (async () => {
@@ -34,6 +34,14 @@ export function bindProjectPathOpen(webview: vscode.Webview, baseUri?: vscode.Ur
             if (typeof line === 'number') {
               const position = new vscode.Position(line - 1, (typeof column === 'number' ? column : 1) - 1);
               await vscode.window.showTextDocument(uri, { selection: new vscode.Range(position, position) });
+            } else if (attachment === true) {
+              const kind = documentPreviewKind(uri.path);
+              let previewed = false;
+              if (kind && stat.size <= (kind === 'latex' ? LATEX_PREVIEW_LIMIT : DOCUMENT_PREVIEW_LIMIT)) {
+                try { await vscode.commands.executeCommand('vscode.openWith', uri, documentPreviewView(uri.path)); previewed = true; }
+                catch { /* If the editor cannot open the attachment, reveal the original instead. */ }
+              }
+              if (!previewed && !disposed) await vscode.commands.executeCommand('revealFileInOS', uri);
             } else if (documentPreviewKind(uri.path)) await vscode.commands.executeCommand('vscode.openWith', uri, documentPreviewView(uri.path));
             else await vscode.commands.executeCommand('vscode.open', uri);
           } else throw new Error(t('Only files and folders can be opened.'));

@@ -291,19 +291,21 @@ html:has(#app[data-conversation-presentation=composer]),body:has(#app[data-conve
 .message-content img { max-width: 100%; height: auto; border-radius: 6px; }
 .attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .attachment { display: flex; align-items: center; gap: 8px; max-width: min(260px, 100%); padding: 4px 8px 4px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--vscode-editor-background); }
-.attachment > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.path-reference { gap: 4px; padding: 3px 6px; max-width: min(240px, 100%); min-width: 0; border-radius: 4px; }
-.path-reference-open { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: start; user-select: text; cursor: pointer; }
-.path-reference:has(.path-reference-open:hover) { background: var(--vscode-toolbar-hoverBackground); }
-.path-reference-open:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 3px; }
+.attachment-file { gap: 6px; padding: 4px 6px; max-width: min(240px, 100%); min-width: 0; border-radius: 4px; }
+.path-reference-open { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: start; user-select: text; cursor: pointer; }
+.attachment-file:has(.path-reference-open:hover) { background: var(--vscode-toolbar-hoverBackground); }
+.path-reference-open:focus-visible { outline: none; }
+.attachment-file:has(.path-reference-open:focus-visible) { outline: 1px solid var(--muted, currentColor); outline-offset: -1px; }
 .path-reference-icon { flex: 0 0 16px; }
 .file-theme-icon { display: inline-grid; place-items: center; width: 16px; height: 16px; flex-shrink: 0; font-size: 16px; font-weight: normal; font-style: normal; line-height: 1; color: var(--muted); }
 .file-theme-icon .codicon { font-size: 16px; }
 .file-theme-icon > img, .file-theme-mask { width: 16px; height: 16px; object-fit: contain; }
 .file-theme-mask { display: block; background-color: currentColor; mask-size: contain; mask-repeat: no-repeat; mask-position: center; }
 .path-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; }
-.path-reference > .icon-button { width: 16px; height: 16px; border-radius: 3px; }
-.path-reference > .icon-button .codicon { font-size: 12px; }
+.attachment-file-label { display: grid; min-width: 0; }
+.attachment-file-metadata { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; line-height: 15px; }
+.attachment-file > .icon-button { width: 20px; height: 20px; flex-shrink: 0; border-radius: 3px; }
+.attachment-file > .icon-button .codicon { font-size: 12px; }
 main.file-drop-active .composer { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .attachment-preview { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 4px; background: var(--vscode-toolbar-hoverBackground); padding: 0; overflow: hidden; }
 .attachment-preview img { width: 100%; height: 100%; object-fit: cover; }
@@ -390,6 +392,10 @@ main.file-drop-active .composer { outline: 2px solid var(--vscode-focusBorder); 
 .conversation-dialog > header { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
 .conversation-dialog h2 { flex: 1; min-width: 0; margin: 0; font-size: 14px; }
 .dialog-body { max-height: calc(100vh - 108px); overflow: auto; padding: 16px; }
+.conversation-dialog.attachment-details-dialog { width: min(420px, calc(100vw - 32px)); }
+.attachment-details-dialog .dialog-body { overflow-wrap: anywhere; }
+.attachment-details-dialog .dialog-body > p { color: var(--muted); margin: 6px 0 0; }
+.attachment-details-dialog .dialog-body > button { margin-top: 12px; }
 .conversation-dialog.image-dialog { width: min(960px, calc(100vw - 32px)); }
 .image-dialog .dialog-body { overflow: hidden; padding: 8px 12px 12px; }
 .image-preview-panel { display: grid; grid-template-rows: 32px minmax(0, 1fr); gap: 8px; height: min(70vh, calc(100vh - 136px)); min-height: 0; }

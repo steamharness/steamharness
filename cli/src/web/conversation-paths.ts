@@ -1,12 +1,13 @@
 import { t } from './localization';
-export interface PathReference { path: string; name: string; kind: 'file' | 'directory' }
+export interface PathReference { path: string; name: string; kind: 'file' | 'directory'; size?: number }
 
 export function pathReferences(value: unknown = []): PathReference[] {
   if (!Array.isArray(value) || value.length > 32) throw new Error(t("Invalid path references."));
   const references = value.map(reference => {
     if (!reference || typeof reference.path !== 'string' || reference.path.length > 4096 || /[\0\r\n]/.test(reference.path)
       || !/^(?:\/|[a-z]:[\\/]|\\\\)/i.test(reference.path) || !['file', 'directory'].includes(reference.kind)) throw new Error(t("Invalid path reference."));
-    return { path: reference.path, kind: reference.kind, name: reference.path.split(/[\\/]/).filter(Boolean).at(-1) || reference.path } as PathReference;
+    return { path: reference.path, kind: reference.kind, name: reference.path.split(/[\\/]/).filter(Boolean).at(-1) || reference.path,
+      ...(reference.kind === 'file' && Number.isSafeInteger(reference.size) && reference.size >= 0 ? { size: reference.size } : {}) } as PathReference;
   });
   return [...new Map(references.map(reference => [reference.path, reference])).values()];
 }

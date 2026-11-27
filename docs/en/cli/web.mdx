@@ -27,6 +27,8 @@ Use ↑/↓ to select, Enter or Tab to insert, Esc to dismiss, and Shift+Enter f
 
 Referencing an entry neither switches windows nor runs it. Existing `/` commands remain available.
 
+File cards in the composer show the file name, format, and size when available. On macOS, you can also copy files in Finder and paste them into the Studio composer. Click a file card to preview a supported format such as XLSX, PDF, or DOCX in Studio, or to reveal an unsupported file in Finder or your system file manager. In standalone CLI Web, clicking the card shows file details; uploaded attachments can be downloaded.
+
 Core Agents use built-in/custom models from Settings in Studio by default or with `modelSource: "user-settings"`, hiding project AI models. Standalone `steamharness web` lacks model settings and automatically uses project models; Configure model opens project configuration with System AI and Third-party AI sources. An empty Studio catalogue still opens Settings. Explicit `modelSource: "project"` always uses project models.
 
 When an execution worker unexpectedly exits under a live host, Core Agent entries automatically recover up to three times with the original tasks, child conversations and checkpoints. Local execution locks release when the old process exits. Explicit Server storage can wait up to 35 seconds for an old execution lease to expire. Recovery responds to cancellation and neither takes over another active owner nor replays committed writes.

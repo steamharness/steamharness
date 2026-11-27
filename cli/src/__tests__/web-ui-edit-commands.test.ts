@@ -39,6 +39,17 @@ it('mixed clipboard data retains both image bytes and text for the existing atta
   expect(data.get('text/plain')).toBe('mixed text'); expect(execCommand).toHaveBeenCalledWith('insertText', false, 'mixed text');
 });
 
+it('native file selections pass local file URLs and never add the Finder icon as an image', () => {
+  const { data, files, cancel, execCommand } = fixture();
+  cancel();
+  pasteHostClipboard({ text: 'table.xlsx\narchive.zip', image: new Uint8Array([1, 2, 3]), fileUrls: [
+    'file:///tmp/table%20%23.xlsx', 'file:///tmp/archive.zip', 'https://example.invalid/link', 'file:///tmp/line\ninvalid',
+  ] });
+  expect(data.get('text/uri-list')).toBe('file:///tmp/table%20%23.xlsx\r\nfile:///tmp/archive.zip');
+  expect(files).toHaveLength(0);
+  expect(execCommand).not.toHaveBeenCalled();
+});
+
 it('image-only and cancelled paste never insert text or bypass the input paste handler', () => {
   const { files, execCommand, cancel } = fixture();
   pasteHostClipboard({ text: '', image: new Uint8Array([1, 2, 3]) });

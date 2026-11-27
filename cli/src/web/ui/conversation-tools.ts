@@ -82,7 +82,7 @@ export class ConversationTools {
   }
   private show(title: string): void {
     const opener = this.open ? this.opener : document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-    this.close(); this.opener = opener; this.dialog.classList.remove('image-dialog', 'project-information-dialog');
+    this.close(); this.opener = opener; this.dialog.classList.remove('image-dialog', 'project-information-dialog', 'attachment-details-dialog');
     this.title.textContent = title; this.body.replaceChildren(); this.body.setAttribute('aria-busy', 'false'); this.dialog.showModal();
   }
 
@@ -95,6 +95,14 @@ export class ConversationTools {
     this.show(title || t("Image")); this.dialog.classList.add('image-dialog');
     const preview = imagePreview(src, title); this.disposeImage = preview.dispose; this.body.append(preview.element);
     this.body.querySelector<HTMLElement>('.image-preview-viewport')!.focus({ preventScroll: true });
+  }
+
+  attachmentDetails(name: string, details: string, download?: () => void): void {
+    this.show(t('File details')); this.dialog.classList.add('attachment-details-dialog');
+    const heading = document.createElement('strong'); heading.textContent = name;
+    const metadata = document.createElement('p'); metadata.textContent = details;
+    this.body.append(heading, metadata);
+    if (download) this.body.append(iconButton('cloud-download', t('Download file'), download));
   }
 
   projectInfo(project: Project, initialTab: ProjectSettingsSection = 'overview'): void {

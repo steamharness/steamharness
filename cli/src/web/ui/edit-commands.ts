@@ -37,13 +37,16 @@ export function selectedText(target: Element | null = document.activeElement): s
   return window.getSelection()?.toString() ?? '';
 }
 
-export function pasteHostClipboard(clipboard: { text?: unknown; image?: unknown }): void {
+export function pasteHostClipboard(clipboard: { text?: unknown; image?: unknown; fileUrls?: unknown }): void {
   if (typeof clipboard.text !== 'string' || clipboard.image !== undefined && !ArrayBuffer.isView(clipboard.image)) { return; }
   const target = document.activeElement;
   if (!(target instanceof HTMLElement) || !target.matches('textarea, input, [contenteditable=true]') || target.matches(':disabled, [readonly]')) { return; }
   const transfer = new DataTransfer();
   transfer.setData('text/plain', clipboard.text);
-  if (clipboard.image && clipboard.image.byteLength) {
+  if (Array.isArray(clipboard.fileUrls)) {
+    const urls = clipboard.fileUrls.slice(0, 33).filter(url => typeof url === 'string' && url.startsWith('file://') && url.length <= 4096 && !/[\0\r\n]/.test(url));
+    if (urls.length) transfer.setData('text/uri-list', urls.join('\r\n'));
+  } else if (clipboard.image && clipboard.image.byteLength) {
     const image = new Uint8Array(clipboard.image.buffer, clipboard.image.byteOffset, clipboard.image.byteLength);
     transfer.items.add(new File([new Uint8Array(image)], 'clipboard.png', { type: 'image/png' }));
   }

@@ -11,6 +11,10 @@ interface Entry {
 const formats = ['files', 'codefiles', 'resourceurls', 'codeeditors', 'text/uri-list'];
 export function isFileDrop(transfer: DataTransfer): boolean { return Array.from(transfer.types).some(type => formats.includes(type.toLowerCase())); }
 
+export function transferredFileUrls(transfer: Pick<DataTransfer, 'getData'>): string[] {
+  return transfer.getData('text/uri-list').split(/\r?\n/).filter(line => line.startsWith('file:'));
+}
+
 /** Capture protected drag data synchronously, before awaiting directory reads. */
 export function captureFileDrop(transfer: DataTransfer): FileImport {
   const paths: string[] = [];
@@ -27,7 +31,7 @@ export function captureFileDrop(transfer: DataTransfer): FileImport {
       }
     } catch { /* Other applications use different transfer formats. */ }
   }
-  for (const line of transfer.getData('text/uri-list').split(/\r?\n/)) if (!line.startsWith('#') && line.startsWith('file:')) add(line);
+  for (const url of transferredFileUrls(transfer)) add(url);
   const files = Array.from(transfer.files);
   for (const file of files) add((file as File & { path?: string }).path);
   const entries = Array.from(transfer.items ?? []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.() as Entry | null);
