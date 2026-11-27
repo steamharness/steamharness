@@ -8,7 +8,7 @@ import { i18n } from '@steamharness/i18n';
 import { createInterface } from 'node:readline';
 import { createWebRuntime } from './web/runtime';
 import { parseHostConfiguration, parseHostAuthentication, parseHostResourceProjects } from './web/host-config';
-import { createBotCredentialHost } from './web/bot-credential-host';
+import { createBotCredentialHost, credentialCaptureReceiptVersion } from './web/bot-credential-host';
 import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-project';
 import { parseUserSettings } from 'steamharness';
 import { formatOnlineHelp, parseOnlineOptions, resolveOnlineConnections } from './online';
@@ -84,6 +84,7 @@ export async function main(argv: string[]): Promise<number> {
   const workflowScheduleProtocolVersion = input && host?.workflowScheduleKey && process.env.STEAMHARNESS_WEB_HOST === 'studio' ? 1 : undefined;
   console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, studioPreviewProtocolVersion: host ? 1 : undefined,
     managedProjectStorageVersion: host?.assistant?.storageScope === 'managed-project' ? 1 : undefined,
+    botCredentialCaptureReceiptVersion: credentials ? credentialCaptureReceiptVersion : undefined,
     hostConversationProtocolVersion, workflowScheduleProtocolVersion, folderBotProtocolVersion: host?.folderBot ? 1 : undefined, folderBotProfileVersion: host?.folderBot?.profileRecord ? 1 : undefined, botArtifactProtocolVersion: host?.localBotArtifacts ? 1 : undefined, botMemoryProtocolVersion: host?.localBotArtifacts ? 1 : undefined, botCredentialProtocolVersion: credentials ? 1 : undefined, accountProtocolVersion: 1, webAppProtocolVersion: 1, ...(publishWebAppConfigurations ? { webAppConfigurationProtocolVersion: 1, webAppLoginProtocolVersion: 1, webAppConfigurations: app.webAppConfigurations } : {}), systemAiConnectionProtocolVersion: 2, restrictedConfigurationEntries: app.restrictedConfigurationEntries, entriesProtocolVersion: 1, traceProtocolVersion: 1, traceModelRequestProtocolVersion: host?.surface === 'editor' ? 1 : undefined, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {

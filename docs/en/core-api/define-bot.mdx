@@ -160,13 +160,15 @@ In a local Studio Bot conversation, go to **Project information → Overview** a
 
 Neither screen can show, copy, or export a saved secret value. If you no longer have the original, reset the password or obtain a replacement key or token at the source, then use **Replace credential** in Studio. Do not paste the new value into the conversation.
 
-An Agent Bot can call `bot_credentials_request` with a `name` (alias) and `kind` (`api-key`, `password`, `ssh-private-key`, or `structured`). Select **Open secure input** on the conversation card to enter the credential in Studio or confirm an existing one. The Bot receives only the alias, type, and status: `saved`, `existing`, or `declined`.
+An Agent Bot can call `bot_credentials_request` with a `name` (alias) and `kind` (`api-key`, `password`, `ssh-private-key`, or `structured`). Select **Open secure input** on the conversation card to enter the credential in Studio. An existing entry with the same alias and type is neither prompted for again nor overwritten.
 
-To save several values together, choose **Structured credential** (`structured`). The Bot can specify field names in `fields`, such as `['tenant', 'clientId', 'clientSecret']`, and Studio will show those keys in the placeholder. If `fields` is omitted, the user can paste JSON with their own keys.
+Choose **Structured credential** (`structured`) to save several values together. The `fields` option supplies an input example; your keys do not need to match it. Studio saves what you submit as entered, including non-JSON text or a single character. Each credential can be up to 64 KiB.
 
-Enter a single-line JSON object in the secure prompt, with up to 16 fields, non-empty string values, and a total size of at most 16 KiB. When the request names fields, the keys must match exactly. Studio does not reuse or overwrite an existing entry with a different set of keys. You can still replace or delete legacy entries in Bot credentials.
+The receipt contains the alias, type, status, and a description with values hidden. For a JSON object, it shows up to 16 safe top-level field names with their original casing and value types. It does not show values or nested content. When there are no fields to report, the receipt only says the content is hidden.
 
-Studio uses operating-system-protected storage, separate from memory, conversations, project folders, and artifacts. The original Bot and each instance have separate stores. A request does not overwrite an existing credential, and credentials are excluded from templates, project archives, and conversation exports. Studio refuses to save them if protected storage is unavailable.
+The Bot can map the actual field names when it uses the credential. If required fields are missing or the format is unsuitable, the operation fails without sending the credential. To re-enter a credential, the Bot can ask you and then request `replace: true` on the same alias. Cancelling leaves the existing value untouched.
+
+Studio uses operating-system-protected storage, separate from memory, conversations, project folders, and artifacts. The original Bot and each instance have separate stores. Secret values are excluded from templates, project archives, and conversation exports. Studio refuses to save them if protected storage is unavailable.
 
 Credential tools require a local Studio Agent Bot that supports secure input. They are unavailable in Plan and paired Web. A background conversation can use them only if the local host explicitly authorizes it. Project code can use a [credential input node](./create-user-input-node.mdx#bot-credential-input) to receive the save status.
 

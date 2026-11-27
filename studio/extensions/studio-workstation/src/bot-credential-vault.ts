@@ -4,6 +4,8 @@ import { mkdir, open, readdir, readFile, realpath, stat } from 'node:fs/promises
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as wait } from 'node:timers/promises';
+import { BOT_CREDENTIAL_MAX_FIELDS, isBotCredentialFieldName, parseBotCredentialSlot,
+  type BotCredentialCaptureReceipt, type BotCredentialFieldType, type BotCredentialStructure } from '../../../../harness/src/types/bot-credential';
 import { parseBotCredentialUse, type BotCredentialUse, type BotCredentialUseResult } from '../../../../harness/src/types/bot-credential-use';
 import { DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
 
@@ -12,21 +14,14 @@ const legacyPairKind = 'access-key-pair';
 const legacyPairFields = ['AccessKeyId', 'AccessKeySecret'] as const;
 export type BotCredentialKind = typeof botCredentialKinds[number] | typeof legacyPairKind;
 export type BotCredentialSummary = { name: string; kind: BotCredentialKind };
-export type BotCredentialSlot = BotCredentialSummary & { fields?: readonly string[] };
+export type BotCredentialSlot = BotCredentialSummary & { fields?: readonly string[]; replace?: true };
 export interface BotCredentialScope { projectId: string; entryId: string; projectDirectory: string; instanceId?: string; workdir?: string }
 type BotCredentialApproval = { scopeId: string; mode: 'prompt' | 'reuse' } | { mode: 'auto' };
 export type BotCredentialAction = { action: 'capture'; slot: BotCredentialSlot } | { action: 'manage' }
   | { action: 'use'; use: BotCredentialUse; approval?: BotCredentialApproval };
-export type BotCredentialResult = 'saved' | 'existing' | 'declined' | 'managed' | 'busy' | 'unavailable' | 'approval-required' | BotCredentialUseResult;
+export type BotCredentialResult = 'declined' | 'managed' | 'busy' | 'unavailable' | 'approval-required' | BotCredentialCaptureReceipt | BotCredentialUseResult;
 export const validBotCredentialName = (value: unknown): value is string => typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value);
 const validKind = (value: unknown): value is BotCredentialKind => value === legacyPairKind || botCredentialKinds.some(kind => kind === value);
-const MAX_FIELDS = 16;
-// Match Core's credential descriptor, validating again at the native boundary.
-const fieldPattern = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/;
-const reservedFields = new Set(['__proto__', 'constructor', 'prototype']);
-const validField = (field: unknown): field is string => typeof field === 'string' && fieldPattern.test(field) && !reservedFields.has(field);
-const validFields = (fields: unknown): fields is readonly string[] => Array.isArray(fields) && fields.length > 0 && fields.length <= MAX_FIELDS
-  && new Set(fields).size === fields.length && [...fields].every(validField);
 
 export function parseBotCredentialAction(value: Record<string, unknown>): BotCredentialAction | undefined {
   const actionFields = value.action === 'use' ? ['use', 'approval'] : value.action === 'capture' ? ['slot'] : [];
@@ -45,12 +40,9 @@ export function parseBotCredentialAction(value: Record<string, unknown>): BotCre
     catch { return; }
   }
   if (value.action === 'manage') return { action: 'manage' };
-  const slot = value.slot as Partial<BotCredentialSlot> | undefined;
-  if (value.action !== 'capture' || !slot || typeof slot !== 'object' || Array.isArray(slot) || Object.keys(slot).some(key => !['name', 'kind', 'fields'].includes(key))
-    || !validBotCredentialName(slot.name) || !validKind(slot.kind) || slot.kind === legacyPairKind) return;
-  if (slot.fields === undefined) return { action: 'capture', slot: { name: slot.name, kind: slot.kind } };
-  if (slot.kind !== 'structured' || !validFields(slot.fields)) return;
-  return { action: 'capture', slot: { name: slot.name, kind: slot.kind, fields: [...slot.fields] } };
+  if (value.action !== 'capture') return;
+  try { return { action: 'capture', slot: parseBotCredentialSlot(value.slot) }; }
+  catch { return; }
 }
 
 export function botCredentialNamespace(profile: string, projectId: string, entryId: string, projectPath: string, instanceId?: string, workdir?: string): string {
@@ -130,27 +122,41 @@ export async function listBotCredentialSummaries(store: Pick<SecretStore, 'keys'
   }).sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind));
 }
 
-const MAX_SECRET_BYTES = 64 * 1024;
-const MAX_TEXT_BYTES = 16 * 1024;
+export const MAX_BOT_CREDENTIAL_BYTES = 64 * 1024;
 const invalidCredential = () => new Error('Invalid Bot credential.');
+const oversizedCredential = () => Object.assign(new Error('Bot credential exceeds the storage limit.'), { code: 'BOT_CREDENTIAL_TOO_LARGE' });
 
-export function validBotCredentialText(value: string): boolean {
-  return !!value.trim() && !/[\0\r\n]/.test(value) && Buffer.byteLength(value, 'utf8') <= MAX_TEXT_BYTES;
-}
+const usableText = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && !/[\u0000-\u001f\u007f]/u.test(value);
+const fitsStorage = (value: string) => Buffer.byteLength(value, 'utf8') <= MAX_BOT_CREDENTIAL_BYTES;
 
 export function structuredCredentialFields(slot: BotCredentialSlot): readonly string[] | undefined {
   return slot.kind === legacyPairKind ? legacyPairFields : slot.fields;
 }
 
-export function parseStructuredCredential(value: string, fields?: readonly string[]): Record<string, string> | undefined {
-  if (!validBotCredentialText(value)) return;
+function readObject(value: string): Record<string, unknown> | undefined {
+  if (!fitsStorage(value)) return;
   try {
     const parsed: unknown = JSON.parse(value);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
-    const keys = Object.keys(parsed);
-    if (!validFields(keys) || fields && (keys.length !== fields.length || !fields.every(key => Object.hasOwn(parsed, key)))) return;
-    if (Object.values(parsed).every(text => typeof text === 'string' && validBotCredentialText(text))) return parsed as Record<string, string>;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
   } catch { /* Never surface JSON parser errors, which may quote the value. */ }
+}
+
+/** Report shape without samples, values, nested content, parser errors, or arbitrary property names. */
+export function describeBotCredential(slot: BotCredentialSlot, value: string): BotCredentialStructure {
+  const object = slot.kind === 'structured' || slot.kind === legacyPairKind ? readObject(value) : undefined;
+  const entries = Object.entries(object ?? {});
+  if (!entries.length) return { format: 'hidden' };
+  const values = new Set(entries.flatMap(([, field]) => typeof field === 'string' ? [field, field.trim()] : []));
+  const fields = entries.filter(([name]) => isBotCredentialFieldName(name) && !values.has(name)).slice(0, BOT_CREDENTIAL_MAX_FIELDS)
+    .map(([name, field]) => ({ name, type: (field === null ? 'null' : Array.isArray(field) ? 'array' : typeof field) as BotCredentialFieldType }));
+  return { format: 'object', fields, ...(fields.length < entries.length && { partial: true }) };
+}
+
+export function parseStructuredCredential(value: string): Record<string, string> | undefined {
+  const object = readObject(value);
+  if (!object) return;
+  const fields = Object.entries(object).filter((entry): entry is [string, string] => isBotCredentialFieldName(entry[0]) && usableText(entry[1]));
+  return fields.length ? Object.fromEntries(fields) : undefined;
 }
 
 function isPrivateKeyText(value: string): boolean {
@@ -159,28 +165,27 @@ function isPrivateKeyText(value: string): boolean {
 
 /** Only called with a native file-picker result. No path from the Bot reaches here. */
 export async function readPickedSshKey(file: string): Promise<string> {
-  const buffer = Buffer.alloc(MAX_SECRET_BYTES + 1);
+  const buffer = Buffer.alloc(MAX_BOT_CREDENTIAL_BYTES + 1);
   const handle = await open(file, constants.O_RDONLY | (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK));
   try {
     const info = await handle.stat();
-    if (!info.isFile() || info.size < 1 || info.size > MAX_SECRET_BYTES) throw invalidCredential();
+    if (!info.isFile()) throw invalidCredential();
+    if (info.size > MAX_BOT_CREDENTIAL_BYTES) throw oversizedCredential();
     let length = 0;
     while (length < buffer.length) {
       const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
       if (!bytesRead) break;
       length += bytesRead;
     }
-    const value = buffer.toString('utf8', 0, length);
-    if (length > MAX_SECRET_BYTES || !isPrivateKeyText(value)) throw invalidCredential();
-    return value;
+    if (length > MAX_BOT_CREDENTIAL_BYTES) throw oversizedCredential();
+    return buffer.toString('utf8', 0, length);
   } finally { buffer.fill(0); await handle.close(); }
 }
 
 export function createBotCredentialVault(store: SecretStore, profile: string, prefixes: CredentialPrefixes, canPersist: () => Promise<boolean>) {
   const scope = credentialPrefixes(prefixes);
   const keysFor = (input: BotCredentialSlot) => {
-    if (!validBotCredentialName(input.name) || !validKind(input.kind) ||
-      input.fields !== undefined && (input.kind !== 'structured' || !validFields(input.fields))) throw invalidCredential();
+    if (!validBotCredentialName(input.name) || !validKind(input.kind)) throw invalidCredential();
     return scope.map(prefix => `${prefix}${input.kind}:${input.name}`);
   };
   const getSaved = async (slot: BotCredentialSlot, signal?: AbortSignal) => {
@@ -217,38 +222,35 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
   };
   const inspect = async (slot: BotCredentialSlot, signal?: AbortSignal) => {
     const available = new Set(await store.keys());
-    const key = keysFor(slot).find(key => available.has(key));
-    if (!key) return 'missing' as const;
-    if (slot.kind === 'structured' && slot.fields) {
-      const stored = await store.get(key);
-      signal?.throwIfAborted();
-      if (!stored || !parseStructuredCredential(stored, slot.fields)) return 'different-fields' as const;
-    }
-    return 'existing' as const;
+    signal?.throwIfAborted();
+    return keysFor(slot).some(key => available.has(key)) ? 'existing' as const : 'missing' as const;
   };
   return {
     async inspect(slot: BotCredentialSlot, signal?: AbortSignal) { await requireStorage(signal); return inspect(slot, signal); },
+    async describe(slot: BotCredentialSlot, signal: AbortSignal) {
+      await requireStorage(signal);
+      const stored = await getSaved(slot, signal);
+      signal.throwIfAborted();
+      return stored === undefined ? undefined : describeBotCredential(slot, stored);
+    },
     /** Only native, already authorized operations call this. No IPC exposes raw material. */
     async readForUse(slot: BotCredentialSlot, signal: AbortSignal) {
       await requireStorage(signal);
       const stored = await getSaved(slot, signal);
       signal.throwIfAborted();
       if (stored === undefined) return;
-      if (slot.kind === 'structured' || slot.kind === legacyPairKind) return parseStructuredCredential(stored, structuredCredentialFields(slot)) ?? null;
-      if (slot.kind === 'ssh-private-key') return Buffer.byteLength(stored, 'utf8') <= MAX_SECRET_BYTES && isPrivateKeyText(stored) ? stored : null;
-      return validBotCredentialText(stored) ? stored : null;
+      if (!fitsStorage(stored)) return null;
+      if (slot.kind === 'structured' || slot.kind === legacyPairKind) return parseStructuredCredential(stored) ?? null;
+      if (slot.kind === 'ssh-private-key') return isPrivateKeyText(stored) ? stored : null;
+      return usableText(stored) ? stored : null;
     },
     async list(signal?: AbortSignal): Promise<BotCredentialSummary[]> {
       await requireStorage(signal);
       return listBotCredentialSummaries(store, prefixes, signal);
     },
     async write(slot: BotCredentialSlot, value: string, replace: boolean, signal?: AbortSignal) {
-      if (slot.kind === 'structured' || slot.kind === legacyPairKind) {
-        if (slot.kind === legacyPairKind && !replace) throw invalidCredential();
-        const record = parseStructuredCredential(value, structuredCredentialFields(slot));
-        if (!record) throw invalidCredential();
-        value = JSON.stringify(record);
-      } else if (slot.kind === 'ssh-private-key' ? Buffer.byteLength(value, 'utf8') > MAX_SECRET_BYTES || !isPrivateKeyText(value) : !validBotCredentialText(value)) throw invalidCredential();
+      if (!fitsStorage(value)) throw oversizedCredential();
+      if (slot.kind === legacyPairKind && !replace) throw invalidCredential();
       return lock(signal, async () => {
         await requireStorage(signal);
         const present = await inspect(slot, signal);

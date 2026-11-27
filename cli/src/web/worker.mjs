@@ -226,7 +226,7 @@ try {
     await send('result', { projects, errors });
   } else if (request.project?.folderPath) {
     const { botMemoryDirectoryScope, createWebBotMemoryDirectories, runtimeDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
-    const dataDir = runtimeDataDirectory(request.storageDir, request.project.folderPath, request.project);
+    const dataDir = runtimeDataDirectory(request.storageDir, request.project, request.folderBot?.id);
     if (request.project.assistant) {
       const assistant = request.project.assistant;
       const primary = assistant.roots.find(root => root.folderPath === assistant.workdir);
@@ -241,8 +241,7 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
-      localKey: createHash('sha256').update(request.project.assistant?.storageScope === 'managed-project'
-        ? `managed-project:${request.project.id.toLowerCase()}` : request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
+      localKey: createHash('sha256').update(dataDir).digest('hex') };
     const { createLocalRuntimePersistence, BOT_MEMORY_DIRECTORY_VERSION } = await import(resolve('steamharness/runtime-storage', coreUrl));
     const runtimeDirectory = path.join(dataDir, 'runtime');
     runtimePersistence = createLocalRuntimePersistence({ directory: runtimeDirectory,
@@ -394,10 +393,13 @@ try {
             ? { ...(Array.isArray(core.BOT_CREDENTIAL_KINDS) && { credentialKinds: core.BOT_CREDENTIAL_KINDS.filter(kind =>
               ['api-key', 'password', 'ssh-private-key'].includes(kind) || kind === 'structured' && request.allowBotCredentialStructured === true) }),
               waitForCredential: async (input, signal) => {
-              const receipt = await waitForInput(input, signal);
-              if (receipt.requestId !== input.requestId || !core.isBotCredentialStatus(receipt.values?.status)) throw new Error('Invalid Bot credential receipt.');
-              return receipt.values.status;
-            }, ...(request.allowBotCredentialUse === true && core.BOT_CREDENTIAL_USE_VERSION === 1 && {
+                const receipt = await waitForInput(input, signal);
+                if (receipt.requestId !== input.requestId || !core.isBotCredentialStatus(receipt.values?.status)) throw new Error('Invalid Bot credential receipt.');
+                if (typeof core.parseBotCredentialCaptureReceipt !== 'function') return receipt.values.status;
+                const capture = core.parseBotCredentialCaptureReceipt(receipt.values);
+                if (!capture) throw new Error('Invalid Bot credential receipt.');
+                return capture;
+              }, ...(request.allowBotCredentialUse === true && core.BOT_CREDENTIAL_USE_VERSION === 1 && {
               ...(core.BOT_CREDENTIAL_HOST_USE_VERSION === 1 && { credentialUseOperations: core.parseBotCredentialUseOperations([
                 ...(request.botCredentialUseOperations ?? []),
                 ...(core.BOT_CREDENTIAL_HOST_SCOPES_VERSION === 1 ? request.botCredentialScopedOperations ?? [] : []),

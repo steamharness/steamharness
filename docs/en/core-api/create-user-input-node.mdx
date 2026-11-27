@@ -110,7 +110,7 @@ If `format` is passed in, the return value must still inherit `RunPayload`, usin
 
 Trusted Bot project code can set `credential` to request native secure input in a supported local Studio conversation. `name` is an alias of up to 64 characters. Use a lowercase letter or digit first, then lowercase letters, digits, dots, underscores, or hyphens.
 
-Set `kind` to `api-key`, `password`, `ssh-private-key`, or `structured`. The `structured` kind requires a Studio host that supports structured credentials. Pass 1 to 16 unique key names in `credential.fields`, each matching `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`, or omit `fields` to let the user choose the keys. Never pass values or defaults in the request.
+Set `kind` to `api-key`, `password`, `ssh-private-key`, or `structured`. The `structured` kind requires a Studio host that supports structured credentials. You can pass 1 to 16 unique key names in `credential.fields`, each matching `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`. They are hints, not input constraints. Never pass values or defaults in the request.
 
 ```ts
 const requestDeployKey = steamharness.createUserInputNode({
@@ -120,7 +120,9 @@ const requestDeployKey = steamharness.createUserInputNode({
 });
 ```
 
-You can also return `credential` from `resolveRequest`. Do not include ordinary fields or defaults. A credential request waits in the active run, supports cancellation, and does not replay an earlier form response. The default payload's `values` contains only `status` (`saved`, `existing`, or `declined`), never the credential value. Unsupported hosts fail without showing an ordinary form.
+You can also return `credential` from `resolveRequest`. Do not include ordinary fields or defaults. Set `credential.replace: true` only after the user agrees to re-enter a credential. A credential request waits in the active run, supports cancellation, and does not replay an earlier form response.
+
+The default payload's `values` contains `status` (`saved`, `existing`, or `declined`). Supported hosts also include a `structure` with values hidden. The credential value itself is never returned. Unsupported hosts fail without showing an ordinary form.
 
 ## Runtime behavior
 

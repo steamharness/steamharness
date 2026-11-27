@@ -153,7 +153,7 @@ try {
         const prefix = 'web-bot-credentials:v1:' + '1'.repeat(64) + ':';
         const vault = new StudioWebSecretStorageProvider('/credential-fixture');
         window.credentialActions = [];
-        window.readFixtureCredential = alias => vault.get(`${prefix}password:${alias}`);
+        window.readFixtureCredential = alias => vault.get(`${prefix}structured:${alias}`);
         new StudioWebBotCredentials('fixture', { mainContainer: document.querySelector('.monaco-workbench') }, { async executeCommand(command, id, ...args) {
           if (args.length) throw new Error('Credential values or extra arguments crossed the command bridge');
           if (command === 'studio.internalCloseWebBotCredentials') return;
@@ -268,27 +268,29 @@ try {
     const alias = 'fixture-credential-' + 'long-'.repeat(8);
     await credentialDialog.getByRole('button', { name: zh ? '添加凭据' : 'Add credential' }).click();
     await credentialDialog.getByLabel(zh ? '别名' : 'Alias').fill(alias);
-    await credentialDialog.getByLabel(zh ? '类型' : 'Type').selectOption('password');
+    await credentialDialog.getByLabel(zh ? '类型' : 'Type').selectOption('structured');
     const secret = credentialDialog.locator('input[type=password]');
-    await secret.fill('fixture-value');
+    await secret.fill('x');
     await credentialDialog.getByRole('button', { name: zh ? '保存' : 'Save', exact: true }).click();
     await credentialDialog.getByRole('cell', { name: alias, exact: true }).waitFor();
-    assert.equal(await page.evaluate(alias => window.readFixtureCredential(alias), alias), 'fixture-value');
+    assert.equal(await page.evaluate(alias => window.readFixtureCredential(alias), alias), 'x');
     assert.deepEqual(await credentialDialog.getByRole('columnheader').allTextContents(), zh ? ['别名', '类型', '操作'] : ['Alias', 'Type', 'Actions']);
     await page.setViewportSize({ width: 410, height: 840 });
     assert.equal(await credentialDialog.locator('.studio-credentials-content').evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1), true);
     await credentialDialog.getByRole('button', { name: `${zh ? '替换凭据' : 'Replace credential'}: ${alias}`, exact: true }).click();
     assert.equal(await secret.inputValue(), '');
-    await secret.fill('fixture-replacement');
+    const replacement = '{"accessKeyId" : " fixture-id", "AccessKeySecret" : "fixture-secret"}';
+    await secret.fill(replacement);
     await credentialDialog.getByRole('button', { name: zh ? '保存' : 'Save', exact: true }).click();
     const removeCredential = credentialDialog.getByRole('button', { name: `${zh ? '删除凭据' : 'Delete credential'}: ${alias}`, exact: true });
     await removeCredential.waitFor();
-    assert.equal(await page.evaluate(alias => window.readFixtureCredential(alias), alias), 'fixture-replacement');
+    assert.equal(await page.evaluate(alias => window.readFixtureCredential(alias), alias), replacement);
+    assert.doesNotMatch(await credentialDialog.innerText(), /fixture-secret|fixture-id/);
     await removeCredential.click();
     await credentialDialog.getByRole('button', { name: zh ? '删除凭据' : 'Delete credential', exact: true }).click();
     await credentialDialog.getByText(zh ? '暂无已保存的凭据。' : 'No saved credentials.', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.credentialActions), [
-      ['set', 'fixture-value'.length], ['set', 'fixture-replacement'.length], ['delete'],
+      ['set', 1], ['set', replacement.length], ['delete'],
     ]);
     await page.keyboard.press('Escape');
     await credentialDialog.waitFor({ state: 'detached' });

@@ -110,7 +110,7 @@ interface UserInputPayload extends RunPayload {
 
 在支持凭据功能的本地 Studio Bot 对话中，受信任的 Bot 项目代码可以用 `credential` 请求原生安全输入。`name` 是别名，最多 64 个字符；以小写字母或数字开头，之后可以用小写字母、数字、点、下划线或连字符。
 
-`kind` 可用 `api-key`、`password`、`ssh-private-key` 或 `structured`。`structured` 要求宿主支持结构化凭据。可以在 `credential.fields` 中传 1 到 16 个互不重复的字段名，每个匹配 `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`。省略 `fields` 时，用户可自选键名；不要在请求里传实际值或默认值。
+`kind` 可用 `api-key`、`password`、`ssh-private-key` 或 `structured`。`structured` 要求宿主支持结构化凭据。`credential.fields` 可传 1 到 16 个互不重复的提示字段名，每个匹配 `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`。这些字段名不校验用户输入，不要在请求里传值或默认值。
 
 ```ts
 const requestDeployKey = steamharness.createUserInputNode({
@@ -120,7 +120,9 @@ const requestDeployKey = steamharness.createUserInputNode({
 });
 ```
 
-也可以从 `resolveRequest` 返回 `credential`。不要混用普通字段或默认值。这个模式只在当前运行中等待，可取消；它不会从历史表单重放。默认 payload 的 `values` 只包含 `status`（`saved`、`existing` 或 `declined`），没有凭据内容。不支持安全输入的宿主会报错，不会改用普通表单。
+也可以从 `resolveRequest` 返回 `credential`，但不要混用普通字段或默认值。只有用户同意重新录入时才设 `credential.replace: true`。凭据节点只在当前运行中等待，可取消，不从历史表单重放。
+
+默认 payload 的 `values` 包含 `status`（`saved`、`existing` 或 `declined`），支持的宿主还会返回脱敏 `structure`，不会返回凭据原值。不支持安全输入的宿主会报错，不会改用普通表单。
 
 ## Runtime 行为
 

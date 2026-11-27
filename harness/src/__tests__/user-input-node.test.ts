@@ -213,6 +213,18 @@ test("credential nodes use only the native status handler and never replay the o
     return "existing";
   } }));
   assert.deepEqual(provided.values, { status: "existing" });
+  const replacement = { ...structured, replace: true as const };
+  const safeReceipt = { status: "saved" as const, structure: { format: "object" as const, fields: [{ name: "AccessKeyId", type: "string" as const }] } };
+  const retried = await runNode(createUserInputNode({ params: [], credential: replacement }), {}, createTestProjectContext({
+    ...ordinary, credentialKinds: [structured.kind], async waitForCredential(request) {
+      assert.deepEqual(request.credential, replacement);
+      return safeReceipt;
+    },
+  }));
+  assert.deepEqual(retried.values, safeReceipt);
+  await assert.rejects(() => runNode(structuredNode, {}, createTestProjectContext({ ...ordinary, credentialKinds: [structured.kind],
+    async waitForCredential() { return { ...safeReceipt, structure: { ...safeReceipt.structure, fields: [{ name: "user", type: "string", value: "fixture-private" }] } } as never; },
+  })), /Invalid Bot credential receipt/);
   for (const fields of [[], ["account", "account"], ["__proto__"], [" "], [{ name: "token", value: "fixture-value" }], Array.from({ length: 17 }, (_, index) => `field-${index}`)]) {
     assert.throws(() => createUserInputNode({ params: [], credential: { ...structured, fields: fields as string[] } }), /Invalid Bot credential field names/);
   }

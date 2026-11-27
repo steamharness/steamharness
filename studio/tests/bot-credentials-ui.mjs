@@ -74,6 +74,7 @@ async function launch(language, native, structured = native, useEnabled = struct
   try {
     const app = await ready, url = new URL(app.url);
     assert.equal(app.botCredentialProtocolVersion, native ? 1 : undefined);
+    assert.equal(app.botCredentialCaptureReceiptVersion, native ? 1 : undefined);
     const token = new URLSearchParams(url.hash.slice(1)).get('session');
     const post = async (message, headers = {}) => {
       const response = await fetch(new URL('api/message', url), { method: 'POST', body: JSON.stringify(message),
@@ -108,7 +109,7 @@ try {
     const models = createModels(); models.setProvider(model.provider);
     const readReceipt = result => {
       const value = JSON.parse(result.content[0].text);
-      if (Object.keys(value).sort().join(',') !== 'kind,name,status') throw new Error('Unexpected credential result');
+      if (Object.keys(value).some(key => !['kind','name','status','structure'].includes(key)) || JSON.stringify(value).includes('fixture-only-')) throw new Error('Unexpected credential result');
       return value;
     };
     const query = (request, args = ${JSON.stringify(use)}) => getCurrentTools(request.messages).some(tool => tool.name === 'bot_credentials_use')
@@ -131,7 +132,7 @@ try {
         : fauxAssistantMessage('No structured credential support');
     }, request => {
       const receipts = request.messages.filter(message => message.role === 'toolResult').slice(-2).map(readReceipt);
-      return fauxAssistantMessage('Fixture follow-up: ' + receipts.map(({ name, status }) => name + '=' + status).join(', '));
+      return fauxAssistantMessage('Fixture follow-up: ' + receipts.map(({ name, status, structure }) => name + '=' + status + ':' + (structure?.fields?.map(field => field.name).join('/') ?? structure?.format)).join(', '));
     }, request => query(request), readQuery, request => query(request), readQuery, request => query(request), readQuery, fauxAssistantMessage('Fixture can continue')]);
     export const executor = steamharness.defineBot({ engine: 'agent', agent: { models, resolvedModel: models.getModel('faux', 'fixture'), tools: ['bash'], paramOptions: { fields: { provider: false, model: false } } } });
     export default executor;
@@ -195,21 +196,28 @@ try {
 
   await frame.locator('#message:enabled').fill('Save two credential records'); await frame.locator('#send').click();
   await prompt.getByText(`Structured credential: ${named.name}`, { exact: true }).waitFor();
-  await prompt.getByText(`Fields: ${named.fields.join(', ')}`, { exact: true }).waitFor();
+  await prompt.getByText(`Suggested fields: ${named.fields.join(', ')}`, { exact: true }).waitFor();
   assert.equal(await prompt.locator('input,textarea').count(), 0);
   await button.click();
   const namedRequest = await waitFor(() => local.sent.find(record => record.type === 'bot-credential-request' && record.slot?.name === named.name), 'Missing the structured credential request');
   assert.deepEqual(namedRequest, { type: 'bot-credential-request', id: namedRequest.id, entryId, action: 'capture', slot: named });
-  local.write({ type: 'bot-credential-result', id: namedRequest.id, status: 'saved' });
+  const namedShape = { format: 'object', fields: [{ name: 'accessKeyId', type: 'string' }, { name: 'AccessKeySecret', type: 'string' }] };
+  const hiddenShape = { format: 'hidden' };
+  local.write({ type: 'bot-credential-result', id: namedRequest.id, result: { status: 'saved', structure: namedShape } });
   await prompt.getByText(`Structured credential: ${other.name}`, { exact: true }).waitFor();
-  assert.equal(await prompt.getByText(/^Fields:/).count(), 0);
+  assert.equal(await prompt.getByText(/^Suggested fields:/).count(), 0);
   await button.click();
   const otherRequest = await waitFor(() => local.sent.find(record => record.type === 'bot-credential-request' && record.slot?.name === other.name), 'Missing the second request on the same reply');
   assert.deepEqual(otherRequest, { type: 'bot-credential-request', id: otherRequest.id, entryId, action: 'capture', slot: other });
-  local.write({ type: 'bot-credential-result', id: otherRequest.id, status: 'saved' });
-  await frame.getByText(`Fixture follow-up: ${named.name}=saved, ${other.name}=saved`, { exact: true }).waitFor();
+  local.write({ type: 'bot-credential-result', id: otherRequest.id, result: { status: 'saved', structure: hiddenShape } });
+  await frame.getByText(`Fixture follow-up: ${named.name}=saved:accessKeyId/AccessKeySecret, ${other.name}=saved:hidden`, { exact: true }).waitFor();
   await prompt.waitFor({ state: 'detached' });
   assert.equal(await frame.locator('.resolved-inputs .pending').count(), 0);
+  const saveCards = frame.locator('.result-card[aria-label="Credential saved securely"]');
+  await saveCards.getByRole('cell', { name: 'accessKeyId', exact: true }).waitFor();
+  await saveCards.getByRole('cell', { name: 'AccessKeySecret', exact: true }).waitFor();
+  await saveCards.getByText('Credential content is hidden. No fields to display.', { exact: true }).waitFor();
+  assert.equal(await saveCards.count(), 2);
 
   await frame.locator('#message:enabled').fill('Look up an account using the saved credential'); await frame.locator('#send').click();
   const approvedQuery = await waitFor(() => local.sent.find(record => record.action === 'use'), 'Missing native credential use request').catch(async error => {
@@ -226,7 +234,7 @@ try {
   assert.deepEqual(approvedQuery, { type: 'bot-credential-request', id: approvedQuery.id, entryId, action: 'use', use, approval: { scopeId, mode: 'prompt' } });
   local.write({ type: 'bot-credential-result', id: approvedQuery.id, result: queryResult });
   await frame.getByText('Fixture query: fixture-account', { exact: true }).waitFor();
-  assert.equal(await frame.locator('.result-card').count(), 0);
+  assert.equal(await frame.locator('.result-card').count(), 2, 'use does not add a card');
 
   await frame.locator('#message:enabled').fill('Look up the account again'); await frame.locator('#send').click();
   const miss = await waitFor(() => local.sent.find(record => record.approval?.mode === 'reuse'), 'Missing one-time approval lookup');
@@ -246,7 +254,7 @@ try {
   local.write({ type: 'bot-credential-result', id: reuse.id, result: { status: 'ok', data: { account: 'third-account' } } });
   await frame.getByText('Fixture query: third-account', { exact: true }).waitFor();
   await prompt.waitFor({ state: 'detached' });
-  assert.equal(await frame.locator('.result-card').count(), 0);
+  assert.equal(await frame.locator('.result-card').count(), 2);
   await frame.locator('#message:enabled').fill('Continue after saving'); await frame.locator('#send').click();
   await frame.getByText('Fixture can continue', { exact: true }).waitFor();
 
@@ -258,6 +266,7 @@ try {
   assert.equal(followUp.pendingInput, undefined);
   assert.equal(followUp.submittingInput, undefined);
   assert.deepEqual(followUp.resolvedInputs.map(input => input.request.credential), [named, other]);
+  assert.deepEqual(followUp.resolvedInputs.map(input => input.values.structure), [namedShape, hiddenShape]);
   const queryReply = settled.messages.find(item => item.role === 'assistant' && item.content === 'Fixture query: fixture-account');
   assert.equal(queryReply.status, 'success');
   assert.deepEqual(queryReply.resolvedInputs.map(input => input.values), [{ status: 'ok' }]);

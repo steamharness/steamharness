@@ -3,14 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { setImmediate as tick, setTimeout as wait } from 'node:timers/promises';
+import { setImmediate as tick } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { buildStudioNode as build } from '../scripts/node-extension-build.mjs';
 
 const source = new URL('../extensions/studio-workstation/src/bot-credential-vault.ts', import.meta.url);
 const { outputFiles } = await build({ entryPoints: [fileURLToPath(source)], bundle: true, format: 'esm', platform: 'node', write: false });
-const { botCredentialNamespace, resolveBotCredentialNamespaces, createBotCredentialVault, parseBotCredentialAction, parseStructuredCredential, readPickedSshKey } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+const { botCredentialNamespace, resolveBotCredentialNamespaces, createBotCredentialVault, describeBotCredential, parseBotCredentialAction, parseStructuredCredential, readPickedSshKey } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 
 function memoryStore(values) {
   return { async keys() { return [...values.keys()]; }, async get(key) { return values.get(key); }, async store(key, value) { values.set(key, value); }, async delete(key) { values.delete(key); } };
@@ -106,7 +106,7 @@ test('concurrent vault writes wait without overwriting; a cancelled waiter never
   } finally { release.resolve(); await writing; }
 });
 
-test('SSH entry reads only a bounded selected private-key file and the pipe accepts no value or file path', async t => {
+test('SSH capture checks file safety and size but defers key format checks until use', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-ssh-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, 'fixture');
@@ -117,28 +117,32 @@ test('SSH entry reads only a bounded selected private-key file and the pipe acce
     const alias = path.join(root, 'symlink'); await symlink(file, alias);
     await assert.rejects(readPickedSshKey(alias));
   }
-  await writeFile(file, 'ssh-ed25519 fixture-public-key');
-  await assert.rejects(readPickedSshKey(file), /Invalid Bot credential/);
-  await writeFile(file, Buffer.alloc(65537));
-  await assert.rejects(readPickedSshKey(file), /Invalid Bot credential/);
+  await writeFile(file, 'x');
+  const values = new Map(), prefix = botCredentialNamespace(root, 'fixture-project', 'main', root);
+  const vault = createBotCredentialVault(memoryStore(values), root, prefix, async () => true);
   const slot = { name: 'deploy', kind: 'ssh-private-key' };
+  assert.equal(await vault.write(slot, await readPickedSshKey(file), false), 'saved');
+  assert.equal(await vault.readForUse(slot, new AbortController().signal), null);
+  await assert.rejects(readPickedSshKey(root), /Invalid Bot credential/);
+  await writeFile(file, Buffer.alloc(65537));
+  await assert.rejects(readPickedSshKey(file), { code: 'BOT_CREDENTIAL_TOO_LARGE' });
   const host = { type: 'bot-credential-request', id: 'id', entryId: 'agent', action: 'capture', slot };
   assert.deepEqual(parseBotCredentialAction(host), { action: 'capture', slot });
   for (const input of [{ ...host, file }, { ...host, value: fixture }, { ...host, slot: { ...slot, name: '../other' } }]) assert.equal(parseBotCredentialAction(input), undefined);
 });
 
-test('structured credentials validate arbitrary fields and write the entire object to one vault entry', async t => {
+test('structured credentials preserve arbitrary input and expose a bounded value-free shape', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-pair-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const values = new Map(), prefix = botCredentialNamespace(root, 'project-id', 'main', root);
   const vault = createBotCredentialVault(memoryStore(values), root, prefix, async () => true);
   const slot = { name: 'fixture-sso', kind: 'structured', fields: ['tenant', 'client-id', 'client.secret'] };
   const first = { tenant: 'fixture-tenant', 'client-id': 'fixture-id', 'client.secret': 'fixture-secret' };
-  const invalid = [
+  const varied = [
     '{"tenant":', '{}', JSON.stringify({ tenant: first.tenant }),
     JSON.stringify({ ...first, tenant: 123 }), JSON.stringify({ ...first, 'client.secret': ' ' }),
     JSON.stringify({ ...first, 'client.secret': 'broken\nvalue' }), JSON.stringify({ ...first, extra: 'extra' }), JSON.stringify([first]),
-    JSON.stringify({ ...first, 'client.secret': 'x'.repeat(16 * 1024) }),
+    JSON.stringify({ ...first, 'client.secret': 'x'.repeat(16 * 1024) }), 'x', '',
   ];
   const capture = { type: 'bot-credential-request', action: 'capture', slot };
   assert.deepEqual(parseBotCredentialAction(capture), { action: 'capture', slot });
@@ -146,17 +150,21 @@ test('structured credentials validate arbitrary fields and write the entire obje
     assert.equal(parseBotCredentialAction({ ...capture, slot: { ...slot, fields } }), undefined);
   }
   assert.equal(parseBotCredentialAction({ ...capture, slot: { ...slot, kind: 'api-key' } }), undefined);
-  for (const value of invalid) await assert.rejects(vault.write(slot, value, false), { message: 'Invalid Bot credential.' });
+  for (const value of varied) {
+    assert.equal(await vault.write(slot, value, false), 'saved');
+    assert.deepEqual([...values.values()], [value]);
+    await vault.remove(slot);
+  }
   assert.equal(values.size, 0);
   assert.equal(await vault.write(slot, JSON.stringify(first), false), 'saved');
   assert.deepEqual(await vault.list(), [{ name: slot.name, kind: slot.kind }]);
   assert.equal(values.size, 1);
   const next = { ...first, 'client.secret': 'next-fixture-secret' };
   assert.equal(await vault.inspect({ ...slot, fields: [...slot.fields].reverse() }), 'existing');
-  assert.equal(await vault.inspect({ ...slot, fields: ['user', 'password'] }), 'different-fields');
-  assert.equal(await vault.write({ ...slot, fields: ['token'] }, '{"token":"fixture-another"}', false), 'different-fields');
+  assert.equal(await vault.inspect({ ...slot, fields: ['user', 'password'] }), 'existing');
+  assert.equal(await vault.write({ ...slot, fields: ['token'] }, '{"token":"fixture-another"}', false), 'existing');
   assert.equal(await vault.write(slot, JSON.stringify(next), false), 'existing');
-  await assert.rejects(vault.write(slot, invalid[0], true), { message: 'Invalid Bot credential.' });
+  await assert.rejects(vault.write(slot, 'x'.repeat(65_537), true), { code: 'BOT_CREDENTIAL_TOO_LARGE' });
   assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [first]);
   assert.equal(await vault.write(slot, JSON.stringify(next), true), 'saved');
   assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [next]);
@@ -168,7 +176,17 @@ test('structured credentials validate arbitrary fields and write the entire obje
   assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [pair]);
   assert.equal(parseStructuredCredential('{"__proto__":"invalid"}'), undefined);
   assert.equal(parseStructuredCredential('{"token":{"nested":"unsupported"}}'), undefined);
-  assert.equal(parseStructuredCredential(JSON.stringify(Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`field-${index}`, 'fixture'])))), undefined);
+  assert.deepEqual(parseStructuredCredential('{"name":"fixture","other":123,"empty":" ","control":"bad\\r\\ntext"}'), { name: 'fixture' });
+  const oversizedShape = JSON.stringify(Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`field-${index}`, 'fixture'])));
+  assert.equal(describeBotCredential(untyped, oversizedShape).fields.length, 16);
+  assert.equal(describeBotCredential(untyped, oversizedShape).partial, true);
+  assert.deepEqual(describeBotCredential(untyped, 'q'), { format: 'hidden' });
+  const mixed = '{"accessKeyId":" fixture-id","AccessKeySecret":"fixture-secret","Extra":{"secret-inner":"hidden-inner"},"other":9,"fixture-secret":true,"__proto__":"test"}';
+  const description = describeBotCredential(untyped, mixed);
+  assert.deepEqual(description, { format: 'object', fields: [
+    { name: 'accessKeyId', type: 'string' }, { name: 'AccessKeySecret', type: 'string' }, { name: 'Extra', type: 'object' }, { name: 'other', type: 'number' },
+  ], partial: true });
+  assert.doesNotMatch(JSON.stringify(description), /fixture-id|fixture-secret|secret-inner|hidden-inner/);
   await vault.remove(untyped);
   // Old entries stay in the original key space. Only the user can replace or delete them.
   const legacy = { name: 'fixture-legacy', kind: 'access-key-pair' };
@@ -212,7 +230,7 @@ function fixtureInputBox(show) {
   };
 }
 
-test('native credential prompts reset validation on clear, require valid input on accept, and keep values masked', { timeout: 8000 }, async t => {
+test('native input accepts any shape, supports secure replacement, and checks usability only during use', { timeout: 8000 }, async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'studio-vault-prompts-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const native = new URL('../extensions/studio-workstation/src/bot-credentials.ts', import.meta.url);
@@ -272,48 +290,37 @@ test('native credential prompts reset validation on clear, require valid input o
   assert.equal(input.password, true);
   assert.equal(input.value, '');
   assert.equal(input.validationMessage, undefined);
-  input.changeValue('{"tenant":"fixture-secret"}');
-  await wait(125);
-  assert.match(input.validationMessage, /tenant, clientId, clientSecret/);
-  assert.doesNotMatch(input.validationMessage, /fixture-secret/);
-  input.accept();
-  assert.equal(input.disposed, undefined);
   input.changeValue('{');
   input.changeValue('');
-  assert.equal(input.validationMessage, undefined, 'clearing removes the error immediately');
-  await wait(125);
-  assert.equal(input.validationMessage, undefined, 'a queued validation cannot restore the old error');
-  input.accept();
-  assert.match(input.validationMessage, /Enter JSON/);
-  assert.equal(input.disposed, undefined);
-  assert.equal(values.size, 0, 'invalid and empty submissions must not save');
-  input.changeValue(typed);
-  await wait(125);
   assert.equal(input.validationMessage, undefined);
+  const differentlyCased = '{"AccessKeyId":" fixture-id","AccessKeySecret":"fixture-secret"}';
+  input.changeValue(differentlyCased);
   input.accept();
-  assert.equal(await result, 'saved');
+  const shape = { format: 'object', fields: [{ name: 'AccessKeyId', type: 'string' }, { name: 'AccessKeySecret', type: 'string' }] };
+  assert.deepEqual(await result, { status: 'saved', structure: shape });
   assert.equal(input.disposed, true);
-  assert.equal(await capture({ ...slot, fields: ['user', 'password'] }), 'declined');
-  assert.equal(warnings.length, 1);
-  assert.equal(await capture(slot), 'existing');
+  assert.deepEqual(await capture({ ...slot, fields: ['unrelated'] }), { status: 'existing', structure: shape });
   assert.equal(prompts.length, 1);
-  assert.deepEqual([...values.values()], [typed]);
-  typed = '{"username":"fixture-user","password":"fixture-secret"}';
-  assert.equal(await capture({ name: 'fixture-unspecified', kind: 'structured' }), 'saved');
-  assert.deepEqual(JSON.parse(prompts[1].placeholder), { field: '' });
+  assert.deepEqual([...values.values()], [differentlyCased]);
+  const replacement = await openCapture({ ...slot, replace: true });
+  assert.match(replacement.input.title, /Replace the saved credential/);
+  assert.equal(replacement.input.value, '', 'do not prefill old secret');
+  replacement.input.changeValue(typed); replacement.input.accept();
+  assert.equal((await replacement.result).status, 'saved');
+  typed = 'x';
+  assert.deepEqual(await capture({ name: 'fixture-unspecified', kind: 'structured' }), { status: 'saved', structure: { format: 'hidden' } });
+  assert.deepEqual(JSON.parse(prompts[2].placeholder), { field: '' });
   assert.equal(values.size, 2);
+  assert.equal(warnings.length, 0);
 
   const abort = new AbortController();
-  const cancelled = await openCapture({ kind: 'password', name: 'cancelled-fixture' }, abort.signal);
-  cancelled.input.changeValue(' ');
-  cancelled.input.accept();
-  assert.match(cancelled.input.validationMessage, /non-empty/);
-  cancelled.input.changeValue('');
-  assert.equal(cancelled.input.validationMessage, undefined);
+  const cancelled = await openCapture({ ...slot, replace: true }, abort.signal);
+  const previous = [...values.values()];
+  cancelled.input.changeValue('will not replace');
   abort.abort();
   assert.equal(await cancelled.result, 'declined');
   assert.equal(cancelled.input.disposed, true);
-  assert.equal(values.size, 2);
+  assert.deepEqual([...values.values()], previous);
 
   const parsed = parseBotCredentialAction({ type: 'bot-credential-request', id: 'id', entryId: 'main', action: 'use', use: {
     name: slot.name, connector: 'host', operation: 'https.get-json', args: {
@@ -368,6 +375,9 @@ test('native credential prompts reset validation on clear, require valid input o
   policy = 'auto';
   assert.equal((await ask('auto')).status, 'ok');
   assert.equal(approvals.length, pickCount, 'matching auto approval needs no native prompt');
+  const beforeMalformed = httpCalls.length;
+  assert.deepEqual(await ask('auto', { operation: { ...parsed.use, name: 'fixture-unspecified' } }), { status: 'failed', reason: 'invalid-credential' });
+  assert.equal(httpCalls.length, beforeMalformed, 'malformed saved content never reaches the transport');
   const withCeiling = permissionCeiling => ({ ...project, folderBot: { id: 'im-fixture', directory: root, background: true, permissionCeiling } });
   const beforeCeiling = reads;
   assert.equal(await ask('auto', { target: withCeiling('workspace') }), 'approval-required');

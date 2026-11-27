@@ -133,7 +133,7 @@ export class InputPrompt {
     const focusName = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.id : '';
     this.form.replaceChildren();
     if (this.request.credential) {
-      const { name, kind } = this.request.credential;
+      const { name, kind, replace } = this.request.credential;
       const alias = document.createElement('p');
       alias.textContent = t('{0}: {1}', t(kind === 'ssh-private-key' ? 'SSH private key' : kind === 'password' ? 'Password'
         : kind === 'structured' ? 'Structured credential' : 'API key or token'), name);
@@ -141,10 +141,10 @@ export class InputPrompt {
       this.form.append(alias);
       if (this.request.credential.fields?.length) {
         const fields = document.createElement('p');
-        fields.textContent = t('Fields: {0}', this.request.credential.fields.join(', '));
+        fields.textContent = t('Suggested fields: {0}', this.request.credential.fields.join(', '));
         fields.style.overflowWrap = 'anywhere'; this.form.append(fields);
       }
-      this.form.append(this.securePromptButton(t('Open secure input')));
+      this.form.append(this.securePromptButton(t(replace ? 'Open secure replacement' : 'Open secure input')));
     } else if (this.request.metadata?.type === 'agent-plan-approval') { this.renderPlan(); }
     else if (this.request.metadata?.type === 'tool-approval') {
       if (this.request.metadata.toolArguments !== undefined) { const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = t("Tool input"); const pre = document.createElement('pre'); pre.textContent = JSON.stringify(this.request.metadata.toolArguments, null, 2); details.append(summary, pre); this.form.append(details); }

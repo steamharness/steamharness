@@ -6,7 +6,8 @@ import { getUserSettings, parseBotCredentialSlot, parseUserSettings, type UserSe
 import { conversationPrompt, isInlineConversationImage, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
-import { credentialStatus, credentialUnavailable, credentialUseSupported, parseBotCredentialUse, parseBotCredentialUseResult, type BotCredentialApproval, type BotCredentialHost } from './bot-credential-host';
+import { credentialUnavailable, credentialUseSupported, parseBotCredentialUse, parseBotCredentialUseResult, parseCredentialCapture, type BotCredentialApproval, type BotCredentialHost } from './bot-credential-host';
+import { credentialCaptureCard } from './bot-credential-capture-card';
 import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, conversationMessageRequestId, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
@@ -1488,12 +1489,15 @@ export class ConversationController {
         reply = { status: 'denied', reason: 'blocked-policy' };
       }
       const queryResult = operation && parseBotCredentialUseResult(reply, operation);
-      const receipt = operation ? queryResult : credentialStatus(reply) ? { status: reply } : undefined;
+      const capture = !operation ? parseCredentialCapture(reply) : undefined;
+      const receipt = operation ? queryResult : capture;
       if (!receipt) throw credentialUnavailable();
-      const resolved = { requestId, nodeName: request.nodeName, values: receipt, submittedAt: new Date().toISOString(), request };
-      if (!operation) { answer.submittingInput = resolved; this.changed(); }
+      const resolved = { requestId, nodeName: request.nodeName, values: { ...receipt }, submittedAt: new Date().toISOString(), request };
+      const resultCard = slot && capture && credentialCaptureCard(slot, capture);
+      const submitting = resultCard ? { ...resolved, resultCard, precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) } : resolved;
+      if (!operation) { answer.submittingInput = submitting; this.changed(); }
       try { await this.runtime.resolveLiveInput(runId, resolved); }
-      catch (error) { if (answer.submittingInput === resolved) { delete answer.submittingInput; this.changed(); } throw error; }
+      catch (error) { if (answer.submittingInput === submitting) { delete answer.submittingInput; this.changed(); } throw error; }
       return true;
     } finally { this.credentialPrompts.delete(promptKey); }
   }

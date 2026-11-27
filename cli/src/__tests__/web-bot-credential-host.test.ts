@@ -62,3 +62,23 @@ it('treats a missing conversation approval as a private fallback only for reuse'
   broker.reply({ type: 'bot-credential-result', id: messages[1].id, status: 'approval-required' });
   await expect(interactive).rejects.toThrow();
 });
+
+it('accepts capture structure metadata but rejects credential values anywhere in the reply', async () => {
+  const messages: Record<string, unknown>[] = [];
+  const host = createBotCredentialHost(message => messages.push(message as Record<string, unknown>));
+  const slot = { name: 'fixture', kind: 'structured', fields: ['one'], replace: true } as const;
+  const structure = { format: 'object', fields: [{ name: 'AccessKeyId', type: 'string' }, { name: 'accessKeySecret', type: 'string' }] };
+  const good = host.open('main', { action: 'capture', slot });
+  host.reply({ type: 'bot-credential-result', id: messages[0].id, result: { status: 'saved', structure } });
+  await expect(good).resolves.toEqual({ status: 'saved', structure });
+  for (const result of [
+    { status: 'saved', value: 'fixture-secret' },
+    { status: 'saved', structure: { format: 'hidden', raw: 'fixture-secret' } },
+    { status: 'saved', structure: { ...structure, fields: [{ name: 'one', type: 'string', value: 'fixture-secret' }] } },
+    { status: 'saved', structure: { ...structure, fields: [{ name: '__proto__', type: 'string' }] } },
+  ]) {
+    const pending = host.open('main', { action: 'capture', slot });
+    host.reply({ type: 'bot-credential-result', id: messages.at(-1)!.id, result });
+    await expect(pending).rejects.not.toThrow(/fixture-secret/);
+  }
+});

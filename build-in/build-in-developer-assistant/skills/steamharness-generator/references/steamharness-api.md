@@ -1038,9 +1038,11 @@ Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条
 
 记忆只提供查证线索。回答部署位置、运行状态、版本或配置等现状前，Bot 应在已有权限内用只读工具核对实际目标；现场结果与记忆冲突时，以现场为准。无法核实就说明是上次记录，不把再次读取记忆当成现场检查，也不为查证扩大权限或修改系统。
 
-支持安全输入的本地 Studio Agent Bot 可用 `bot_credentials_request({ name, kind, fields? })` 请求保存凭据。`name` 是小写别名，`kind` 为 `api-key`、`password`、`ssh-private-key`，或宿主支持时的 `structured`。多个字段用 `structured` 一次请求；知道键名时传 `fields`（仅字段名），不知道时省略，让用户在原生窗口粘贴自选字段的 JSON。不要为某个服务假定固定字段。结构化凭据最多 16 个键，值须为非空字符串，整组写入一条凭据。
+支持安全输入的本地 Studio Agent Bot 可用 `bot_credentials_request({ name, kind, fields?, replace? })` 请求保存。`name` 是小写别名，`kind` 为 `api-key`、`password`、`ssh-private-key` 或 `structured`。`fields` 只是占位示例；输入不要求是 JSON，也不要求按提示匹配键名。单条最多 64 KiB，原样保存。
 
-保存工具只返回别名、类型和 `saved` / `existing` / `declined`，不表示已发起查询。支持凭据查询的本地 Studio Agent Bot 还提供 `bot_credentials_use`。用 `name` 引用当前范围内的凭据，普通宿主操作传 `connector: "host"`、宿主声明的 `operation` 和对应 `args`。操作目录由宿主提供，项目和模型不能注册。传别名、字段名和非机密目标，不传原值。
+保存结果包含状态和可选的脱敏 `structure`。对象提供最多 16 个安全的顶层键名及值类型，保留大小写；未识别到字段时返回 `format: "hidden"`，从不返回值。按实际键名调整调用映射。格式不适用或缺字段时，先询问是否重录，用户同意后才请求 `replace: true`，取消则保留原值。
+
+`saved` 不表示操作成功。用 `bot_credentials_use` 和 `name` 取用当前范围的凭据，传 `connector: "host"`、宿主声明的 `operation` 及非机密 `args`。项目和模型不能注册宿主操作，也不能传原值。
 
 Studio 提供通用的 `https.get-json`（Bearer、Basic 或自定义请求头）、`ssh.authenticate` 和 `ssh.list-directory`（需要可信的服务端指纹），以及受信任本地会话的 `command.run`。不再提供厂商专用的 DNS 操作。
 
@@ -1048,7 +1050,7 @@ Studio 提供通用的 `https.get-json`（Bearer、Basic 或自定义请求头�
 
 使用本地 CLI 或 SDK 时调用 `command.run`，传 `args: {kind, program, argv, env}`。`env` 的键是子进程变量名，值为结构化凭据的字段名；单值凭据传 `true`。临时变量随本次子进程使用，原值不进入参数、聊天或记忆。命令工具必须已启用，工作区模式单次授权，自动批准不弹窗。客户端缺失时说明需要准备客户端，不要要求重新录入凭据。
 
-受信任 Bot 代码可以声明 `createUserInputNode({ params: [], credential: { name, kind } })`，也可以从 `resolveRequest` 返回 `credential`。必须省略默认值；节点在当前运行等待 Studio 的原生录入，`values` 只返回 `status`。不支持时直接报错，不使用普通表单，也不重放历史答案。
+受信任 Bot 代码可以声明 `createUserInputNode({ params: [], credential: { name, kind } })`，也可以从 `resolveRequest` 返回 `credential`。不要传默认值。节点等待当前运行的原生录入，`values` 只含 `status` 和宿主提供的脱敏 `structure`。不支持时直接报错，不使用普通表单，也不重放历史答案。
 
 `agent` 保留 Core 的模型来源、提示词、技能、权限、工具与 session 配置。Model、Effort、Plan、权限参数自动继承；用 `agent.paramOptions` 定制默认值、分组、显隐和固定值，顶层 `params` 仅追加业务字段，不覆盖保留字段。固定参数在输入钩子后仍生效。
 

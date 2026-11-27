@@ -5,7 +5,7 @@ import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-m
 import { readReleaseStructureSync } from "@steamharness/project-manifest/release-node";
 import { randomUUID } from "node:crypto";
 import { createRuntimeStateStorage } from "../runtime-storage/state";
-import { isBotCredentialStatus, LEGACY_BOT_CREDENTIAL_KINDS, parseBotCredentialSlot, type BotCredentialKind } from "../types/bot-credential";
+import { LEGACY_BOT_CREDENTIAL_KINDS, parseBotCredentialCaptureReceipt, parseBotCredentialSlot, type BotCredentialKind } from "../types/bot-credential";
 import { parseBotCredentialUse, parseBotCredentialUseResult } from "../types/bot-credential-use";
 import { getUserSettings } from "../user-settings";
 import type { RuntimePersistence } from "../runtime-storage/history";
@@ -788,11 +788,12 @@ function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "em
       metadata: { type: "bot-credential", title: "Bot credential", version: "1.0.0",
         ...(typeof request.metadata?.botRequestId === "string" && { botRequestId: request.metadata.botRequestId }) } };
     const waiting = input.waitForCredential!(safeRequest, signal);
-    const [status] = await Promise.all([waiting, events.emitUserInputRequested(safeRequest)]);
+    const [reply] = await Promise.all([waiting, events.emitUserInputRequested(safeRequest)]);
     signal?.throwIfAborted();
-    if (!isBotCredentialStatus(status)) throw new Error("Invalid Bot credential receipt.");
-    await events.emitUserInputResolved({ requestId: safeRequest.requestId, nodeName: safeRequest.nodeName, request: safeRequest, values: { status }, submittedAt: new Date() });
-    return status;
+    const receipt = parseBotCredentialCaptureReceipt(reply);
+    if (!receipt) throw new Error("Invalid Bot credential receipt.");
+    await events.emitUserInputResolved({ requestId: safeRequest.requestId, nodeName: safeRequest.nodeName, request: safeRequest, values: { ...receipt }, submittedAt: new Date() });
+    return receipt;
   } }), ...(input.waitForCredentialUse && { credentialUseOperations: input.credentialUseOperations, async waitForCredentialUse(request, signal) {
     signal?.throwIfAborted();
     const userPolicy = getUserSettings().agent.permissionPolicy;

@@ -283,7 +283,8 @@ export async function startProjectCli(options: {
             if (reply.type === 'bot-credential-cancel') { credentialRequests.get(reply.id)?.abort(); return; }
             if (credentialRequests.has(reply.id)) return;
             const respond = (result: BotCredentialResult) => {
-              if (!closing && !finished && child.stdin?.writable) child.stdin.write(`${JSON.stringify({ type: 'bot-credential-result', id: reply.id, ...(typeof result === 'string' ? { status: result } : { result }) })}\n`);
+              const status = typeof result === 'string' ? result : reply.action === 'capture' && ready.botCredentialCaptureReceiptVersion !== 1 ? result.status : undefined;
+              if (!closing && !finished && child.stdin?.writable) child.stdin.write(`${JSON.stringify({ type: 'bot-credential-result', id: reply.id, ...(status === undefined ? { result } : { status }) })}\n`);
             };
             const entry = ready.project.entries.find(entry => entry.entryId === reply.entryId && entry.type === 'bot');
             const background = options.backgroundBotCredentials;

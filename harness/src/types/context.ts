@@ -83,12 +83,12 @@ export interface UserInputContext {
   requestInput(request: UserInputRequest): Promise<void> | void;
   /** Resume an active run without restarting it. Hosts without live input leave this unset. */
   waitForInput?(request: UserInputRequest, signal?: AbortSignal): Promise<UserInputResolved>;
-  /** Native host interaction. Only its status, never the credential value, crosses this boundary. */
-  waitForCredential?(request: UserInputRequest & { credential: NonNullable<UserInputRequest["credential"]> }, signal?: AbortSignal): Promise<import("./bot-credential").BotCredentialStatus>;
+  /** Native host interaction. Only status and safe structure cross this boundary. */
+  waitForCredential?(request: UserInputRequest & { credential: NonNullable<UserInputRequest["credential"]> }, signal?: AbortSignal): Promise<import("./bot-credential").BotCredentialStatus | import("./bot-credential").BotCredentialCaptureReceipt>;
   waitForCredentialUse?(request: UserInputRequest & { credentialUse: NonNullable<UserInputRequest["credentialUse"]> }, signal?: AbortSignal): Promise<import("./bot-credential-use").BotCredentialUseResult>;
   /** Omit for the original API key, password and SSH private key types. */
   credentialKinds?: readonly import("./bot-credential").BotCredentialKind[];
-  /** Private catalog from the native host. Omit for DNS-only hosts. */
+  /** Private catalog from the native host. */
   credentialUseOperations?: readonly import("./bot-credential-use").BotCredentialUseOperation[];
 }
 

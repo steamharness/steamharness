@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { createHmac, randomBytes } from 'node:crypto';
 import { parseBotCredentialUseResult } from '../../../../harness/src/types/bot-credential-use';
 import { t } from './localization';
-import { botCredentialKinds, resolveBotCredentialNamespaces, createBotCredentialVault, parseStructuredCredential, readPickedSshKey, structuredCredentialFields, validBotCredentialName, validBotCredentialText,
+import { botCredentialKinds, resolveBotCredentialNamespaces, createBotCredentialVault, describeBotCredential, readPickedSshKey, structuredCredentialFields, validBotCredentialName,
   type BotCredentialAction, type BotCredentialResult, type BotCredentialSlot } from './bot-credential-vault';
 import type { Project } from './workflow-types';
 import { botCredentialTransports, prepareBotCredentialOperation } from './bot-credential-operations';
@@ -11,14 +11,13 @@ import { botCredentialKindLabel, canAccessBotCredentialStorage } from './bot-cre
 import { readUserSettings } from './user-settings';
 
 type CredentialInputOptions = Pick<vscode.InputBoxOptions, 'title' | 'prompt' | 'placeHolder' | 'password' | 'ignoreFocusOut'> & {
-  validateInput(value: string): string | undefined;
+  validateInput?(value: string): string | undefined;
 };
 type CredentialProject = Pick<Project, 'id' | 'folderPath'> & {
   assistant?: Pick<NonNullable<Project['assistant']>, 'workdir'>;
   folderBot?: Pick<NonNullable<Project['folderBot']>, 'id' | 'directory' | 'permissionCeiling'>;
 };
 
-/** A cleared field is neutral while editing, but is still required on accept. */
 function showCredentialInput(options: CredentialInputOptions, token: vscode.CancellationToken): Promise<string | undefined> {
   if (token.isCancellationRequested) return Promise.resolve(undefined);
   return new Promise(resolve => {
@@ -28,30 +27,21 @@ function showCredentialInput(options: CredentialInputOptions, token: vscode.Canc
     input.placeholder = options.placeHolder;
     input.password = options.password ?? false;
     input.ignoreFocusOut = options.ignoreFocusOut ?? false;
-    let validation: ReturnType<typeof setTimeout> | undefined;
-    const setMessage = (message?: string) => {
-      if (input.validationMessage !== message) input.validationMessage = message;
-    };
     const listeners = [
-      input.onDidChangeValue(value => {
-        clearTimeout(validation);
-        if (!value.trim()) setMessage();
-        else validation = setTimeout(() => setMessage(options.validateInput(input.value)), 100);
-      }),
+      ...(options.validateInput ? [input.onDidChangeValue(value => { input.validationMessage = value ? options.validateInput?.(value) : undefined; })] : []),
       input.onDidAccept(() => {
-        clearTimeout(validation);
         if (token.isCancellationRequested) { finish(); return; }
         const value = input.value;
-        const message = options.validateInput(value);
-        if (message) setMessage(message);
+        const message = options.validateInput?.(value);
+        if (message) input.validationMessage = message;
         else finish(value);
       }),
       input.onDidHide(() => finish()),
       token.onCancellationRequested(() => finish()),
     ];
     function finish(value?: string) {
-      clearTimeout(validation);
       for (const listener of listeners) listener.dispose();
+      input.value = '';
       input.dispose();
       resolve(value);
     }
@@ -141,7 +131,7 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
           return 'approval-required';
         }
         if (stored.includes(undefined)) return { status: 'missing' };
-        if (!ready) return { status: 'missing-fields' };
+        if (!ready) return { status: 'failed', reason: 'invalid-credential' };
         const beforeQuery = queryBlock();
         if (beforeQuery) return beforeQuery;
         const values = stored.filter(value => value != null);
@@ -164,37 +154,30 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
         return result;
       }
       const valueFor = async (slot: BotCredentialSlot): Promise<string | undefined> => {
-        if (slot.kind === 'structured' || slot.kind === 'access-key-pair') {
+        const inputTitle = slot.replace ? t('Replace the saved credential {0}', slot.name) : title;
+        if (slot.kind !== 'ssh-private-key') {
           const fields = structuredCredentialFields(slot);
-          return showCredentialInput({ title, prompt: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name), password: true, ignoreFocusOut: true,
-            placeHolder: fields ? JSON.stringify(Object.fromEntries(fields.map(field => [field, '']))) : '{"field":""}',
-            validateInput: value => parseStructuredCredential(value, fields) ? undefined : fields
-              ? t('Enter JSON with exactly these fields and non-empty string values: {0}', fields.join(', '))
-              : t('Enter a single-line JSON object with 1 to 16 named string values (up to 16 KiB).'),
-          }, cancellation.token);
+          return showCredentialInput({ title: inputTitle, prompt: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name), password: true, ignoreFocusOut: true,
+            ...(fields ? { placeHolder: JSON.stringify(Object.fromEntries(fields.map(field => [field, '']))) }
+              : slot.kind === 'structured' ? { placeHolder: '{"field":""}' } : {}) }, cancellation.token);
         }
-        if (slot.kind !== 'ssh-private-key') return showCredentialInput({ title, prompt: t('{0}: {1}', botCredentialKindLabel(slot.kind), slot.name), password: true, ignoreFocusOut: true,
-          validateInput: value => validBotCredentialText(value) ? undefined : t('Enter a non-empty single-line credential (up to 16 KiB).') }, cancellation.token);
-        const files = await vscode.window.showOpenDialog({ title: t('Choose the SSH private key for {0}', slot.name), canSelectFiles: true, canSelectFolders: false, canSelectMany: false });
+        const files = await vscode.window.showOpenDialog({ title: slot.replace ? inputTitle : t('Choose the SSH private key for {0}', slot.name), canSelectFiles: true, canSelectFolders: false, canSelectMany: false });
         signal.throwIfAborted();
         if (!files?.length) return;
-        if (files.length !== 1 || files[0].scheme !== 'file' || files[0].authority) throw new Error('Not a local file.');
-        try { return await readPickedSshKey(files[0].fsPath); }
-        catch { void vscode.window.showWarningMessage(t('Choose a local OpenSSH or PEM private key file (up to 64 KiB).')); throw new Error('SSH key validation failed.'); }
+        try {
+          if (files.length !== 1 || files[0].scheme !== 'file' || files[0].authority) throw new Error('Not a local file.');
+          return await readPickedSshKey(files[0].fsPath);
+        } catch { void vscode.window.showWarningMessage(t('Choose a readable local file (up to 64 KiB).')); return undefined; }
       };
       if (request.action === 'capture') {
         const { slot } = request;
-        const rejectDifferentFields = () => {
-          void vscode.window.showWarningMessage(t('This alias already has different fields. Choose another alias or replace it in Bot credentials.'));
-          return 'declined' as const;
-        };
         const before = await vault.inspect(slot, signal);
-        if (before === 'different-fields') return rejectDifferentFields();
-        if (before === 'existing') return 'existing';
+        if (before === 'existing' && !slot.replace) return { status: 'existing', structure: await vault.describe(slot, signal) };
+        if (before === 'missing' && slot.replace) return 'declined';
         const value = await valueFor(slot);
         if (value === undefined) return 'declined';
-        const result = await vault.write(slot, value, false, signal);
-        return result === 'different-fields' ? rejectDifferentFields() : result;
+        const status = await vault.write(slot, value, slot.replace === true, signal);
+        return { status, structure: status === 'saved' ? describeBotCredential(slot, value) : await vault.describe(slot, signal) };
       }
       const stored = await vault.list(signal);
       const add = { label: t('Add credential'), slot: undefined };
@@ -222,7 +205,11 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
         }
       }
       return 'managed';
-    } catch {
+    } catch (error) {
+      if (!signal.aborted && (error as { code?: string })?.code === 'BOT_CREDENTIAL_TOO_LARGE') {
+        void vscode.window.showWarningMessage(t('The credential is too large to save (maximum 64 KiB).'));
+        return request.action === 'capture' ? 'declined' : 'managed';
+      }
       return request.action === 'use' && !signal.aborted
         ? { status: 'failed', reason: 'storage-unavailable' } : 'unavailable';
     }
