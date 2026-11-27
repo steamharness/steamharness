@@ -27,11 +27,13 @@ Use ↑/↓ to select, Enter or Tab to insert, Esc to dismiss, and Shift+Enter f
 
 Referencing an entry neither switches windows nor runs it. Existing `/` commands remain available.
 
-In Studio desktop running locally, choose, drop, or paste files in any format. The Bot reads the original file by path without creating a conversation copy. If Studio cannot get the original path, use the attachment picker in the composer to choose the file again.
+When Studio desktop and the Bot run on the same machine, choosing, dropping, or pasting a disk file references its original path without copying it. If Studio cannot get the path, choose the file again using the attachment picker in the composer.
 
-If the browser only provides file contents, CLI Web sends supported images inline or imports a copy and marks its original location as unknown. A browser import can contain up to 50 MiB at a time. For larger files, send a path the Bot can access.
+In a browser, choose a file or folder with the attachment picker, or drag it into the composer. Uploads go into `.steamharness/conversation-uploads/` inside the project working directory. Assistant uses its bound working directory. Uploads keep the folder structure intact and are labeled **Uploaded copy**. The Bot gets the copy's path on the execution host, not the client's original path. Deleting the conversation does not remove these copies.
 
-File cards show the file name, format, and size when available. In desktop Studio, select a card to preview supported formats such as XLSX, PDF, and DOCX, or to reveal an unsupported file in your system file manager. In standalone CLI Web, select the card to see file details and download an uploaded attachment.
+Each import can contain up to 50 MiB. If the browser provides a path without the contents, select the file or folder again to upload it. For larger files, include a path the Bot can access in your message. Supported inline images still send as images.
+
+File cards show the file name, format, and size when available. In desktop Studio, select a card to preview supported formats such as XLSX, PDF, and DOCX, or to reveal an unsupported file in your system file manager. In standalone CLI Web, select a file or folder card to see its details.
 
 Core Agents use built-in/custom models from Settings in Studio by default or with `modelSource: "user-settings"`, hiding project AI models. Standalone `steamharness web` lacks model settings and automatically uses project models; Configure model opens project configuration with System AI and Third-party AI sources. An empty Studio catalogue still opens Settings. Explicit `modelSource: "project"` always uses project models.
 

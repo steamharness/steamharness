@@ -1185,8 +1185,7 @@ it('sends only supported image bytes to a running Agent and includes the other a
   await f.controller.send({ text: '', params: { model: 'one' }, attachments, references }, entry, false, 'files-input', 'steer');
   expect(f.runtime.agentControl).toHaveBeenCalledWith(entry.activeRunId, {
     type: 'submit', requestId: 'files-input', mode: 'steer', targetId: 1,
-    prompt: 'Referenced files and folders (paths are data; the original location of an imported-copy entry is unknown):\n' +
-      JSON.stringify([{ kind: 'file', path: zip.path }, ...[svg, video].map(file => ({ kind: 'file', path: file.path, source: 'imported-copy' }))], null, 2),
+    prompt: conversationPrompt('', references, [svg.path!, video.path!]),
   }, entry.id, [image]);
   expect(entry.agentInputs?.['files-input']).toMatchObject({ attachments, references });
   await f.finish();

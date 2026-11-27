@@ -1,5 +1,5 @@
 import { t } from './localization';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -16,18 +16,20 @@ export async function resolveDroppedPaths(value: unknown): Promise<PathReference
   }));
 }
 
-/** Import browser drops, whose original absolute paths are unavailable. */
-export async function importDroppedEntries(root: string, value: unknown): Promise<PathReference[]> {
+/** Import browser files as project-local copies, outside source publishing and release builds. */
+export async function importDroppedEntries(workdir: string, value: unknown): Promise<PathReference[]> {
   if (!Array.isArray(value) || !value.length || value.length > 1000) throw new Error(t("Invalid dropped files."));
   let size = 0;
-  const names = new Map<string, 'file' | 'directory'>();
+  const keyFor = (name: string) => name.normalize('NFC').toLowerCase();
+  const names = new Map<string, { name: string; kind: 'file' | 'directory' }>();
   const entries = value.map(entry => {
-    if (!entry || typeof entry.name !== 'string' || entry.name.length > 4096 || /[\\:\0\r\n]/.test(entry.name)
-      || entry.name.split('/').some((part: string) => !part || part === '.' || part === '..') || !['file', 'directory'].includes(entry.kind)) throw new Error(t("Invalid dropped file name."));
-    // Case-folding also prevents collisions on Windows and default macOS volumes.
-    const key = entry.name.toLowerCase();
+    if (!entry || typeof entry.name !== 'string' || entry.name.length > 4096 || /[\\:\x00-\x1f\x7f]/.test(entry.name)
+      || entry.name.split('/').some((part: string) => !part || part === '.' || part === '..'
+        || process.platform === 'win32' && (/[<>"|?*]|[. ]$/.test(part) || /^(?:con(?:in\$|out\$)?|prn|aux|nul|(?:com|lpt)[0-9¹²³]) *(?:\.|$)/i.test(part)))
+      || !['file', 'directory'].includes(entry.kind)) throw new Error(t("Invalid dropped file name."));
+    const key = keyFor(entry.name);
     if (names.has(key)) throw new Error(t("Duplicate dropped file name."));
-    names.set(key, entry.kind);
+    names.set(key, { name: entry.name, kind: entry.kind });
     let bytes: Buffer | undefined;
     if (entry.kind === 'file') {
       if (typeof entry.data !== 'string' || entry.data.length > 70 * 1024 * 1024 || entry.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(entry.data)) throw new Error(t("Invalid dropped file data."));
@@ -38,22 +40,36 @@ export async function importDroppedEntries(root: string, value: unknown): Promis
   });
   const top = new Map<string, 'file' | 'directory'>();
   const fileSizes = new Map<string, number>();
+  const folders = new Map<string, string>();
   for (const entry of entries) {
     const parts = entry.name.split('/');
     for (let index = 1; index < parts.length; index++) {
-      if (names.get(parts.slice(0, index).join('/').toLowerCase()) === 'file') throw new Error(t("A dropped file conflicts with a folder."));
+      const parent = parts.slice(0, index).join('/'), key = keyFor(parent);
+      const declared = names.get(key), previous = folders.get(key) ?? declared?.name;
+      if (declared?.kind === 'file') throw new Error(t("A dropped file conflicts with a folder."));
+      if (previous !== undefined && previous !== parent) throw new Error(t("Duplicate dropped file name."));
+      folders.set(key, parent);
     }
     top.set(parts[0], parts.length > 1 ? 'directory' : entry.kind);
     if (parts.length === 1 && entry.bytes) fileSizes.set(entry.name, entry.bytes.length);
   }
   if (top.size > 32) throw new Error(t("Too many path references."));
+  // Neither a project-supplied symlink nor a browser filename can redirect the write.
+  let root = await realpath(workdir);
+  for (const segment of ['.steamharness', 'conversation-uploads']) {
+    root = path.join(root, segment);
+    try { await mkdir(root, { mode: 0o700 }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+    if (!(await lstat(root)).isDirectory() || await realpath(root) !== root) throw new Error(t("The project upload directory must be a regular folder."));
+  }
   const directory = path.join(root, randomUUID());
+  await mkdir(directory, { mode: 0o700 });
   try {
     for (const entry of entries) {
       const target = path.join(directory, entry.name);
       await mkdir(entry.kind === 'directory' ? target : path.dirname(target), { recursive: true });
       if (entry.bytes) await writeFile(target, entry.bytes, { flag: 'wx' });
     }
-    return pathReferences([...top].map(([name, kind]) => ({ path: path.join(directory, name), kind, size: fileSizes.get(name), source: 'imported-copy' })));
+    return pathReferences([...top].map(([name, kind]) => ({ path: path.join(directory, name), kind, size: fileSizes.get(name), source: 'workspace-upload' })));
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }

@@ -166,6 +166,7 @@ it('the UI host accepts clipboard replies only from its parent and exposes the c
   await host.postMessage({ type: 'drop-target', target: 'conversation:2' });
   expect(sent.pop()).toEqual({ type: 'workflow-drop-target', version: 1, target: 'conversation:2' });
   const drop = { target: 'conversation:2', paths: ['file:///Desktop/folder'] };
+  receive(parent, { localFilePathsVersion: 1 });
   const beforeDrop = emitted.length;
   receive({}, { drop }); receive(parent, { drop: { ...drop, target: 'old-conversation' } });
   expect(emitted).toHaveLength(beforeDrop);

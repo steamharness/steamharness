@@ -1,5 +1,6 @@
 export interface DroppedEntry { name: string; kind: 'file' | 'directory'; data?: string }
-export interface FileImport { paths: string[]; files?: File[]; directories?: boolean; read(): Promise<DroppedEntry[]> }
+export interface FileImport { paths: string[]; pathsOnHost?: true; files?: File[]; directories?: boolean; read(): Promise<DroppedEntry[]> }
+export function captureHostPaths(paths: string[]): FileImport { return { paths, pathsOnHost: true, read: async () => [] }; }
 interface PickedFile { kind: 'file'; name: string; getFile(): Promise<File> }
 export interface PickedDirectory { kind: 'directory'; name: string; values(): AsyncIterable<PickedDirectory | PickedFile> }
 interface Entry {
@@ -33,7 +34,10 @@ export function captureFileDrop(transfer: DataTransfer): FileImport {
   }
   for (const url of transferredFileUrls(transfer)) add(url);
   const files = Array.from(transfer.files);
-  for (const file of files) add((file as File & { path?: string }).path);
+  if (!paths.length) {
+    const nativePaths = files.map(file => (file as File & { path?: string }).path);
+    if (nativePaths.every(Boolean)) for (const nativePath of nativePaths) add(nativePath);
+  }
   const entries = Array.from(transfer.items ?? []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.() as Entry | null);
   return captureEntries([...new Set(paths)], files, entries);
 }
@@ -45,8 +49,8 @@ export function capturePickedFiles(files: File[], directories = false): FileImpo
 
 export function capturePastedFiles(transfer: DataTransfer): FileImport | undefined {
   const paths = transferredFileUrls(transfer);
-  if (paths.length) return captureEntries([...new Set(paths)], [], []);
   const files = Array.from(transfer.files ?? []);
+  if (paths.length) return captureEntries([...new Set(paths)], files, []);
   return files.length ? capturePickedFiles(files) : undefined;
 }
 

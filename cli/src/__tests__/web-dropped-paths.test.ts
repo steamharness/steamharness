@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -17,7 +17,9 @@ it('resolves files, folders and encoded file URIs using their actual filesystem 
   await mkdir(folder); await writeFile(file, 'actual bytes');
   const references = await resolveDroppedPaths([pathToFileURL(file).href, folder]);
   expect(references).toEqual([{ path: file, name: 'a b.txt', kind: 'file', size: 12 }, { path: folder, name: '资料 #1', kind: 'directory' }]);
+  expect(conversationPrompt('', references)).toContain('original on the execution host, with no copy made');
   expect(conversationPrompt('', references)).not.toContain('"size"');
+  expect(await readdir(root)).toEqual(['资料 #1']);
   await expect(resolveDroppedPaths(['relative/path'])).rejects.toThrow();
   await expect(resolveDroppedPaths([path.join(root, 'missing')])).rejects.toThrow();
   expect(pathReferences([{ path: 'C:\\Work\\a b.txt', kind: 'file', name: 'untrusted' }])[0].name).toBe('a b.txt');
@@ -32,9 +34,15 @@ it('imports browser directories with nested bytes, empty folders and top-level f
     { name: 'empty.txt', kind: 'file', data: '' },
   ]);
   expect(references.map(({ name, kind }) => ({ name, kind }))).toEqual([{ name: '目录', kind: 'directory' }, { name: 'empty.txt', kind: 'file' }]);
+  expect(references.every(reference => reference.source === 'workspace-upload')).toBe(true);
+  expect(path.dirname(path.dirname(references[0].path))).toBe(path.join(await realpath(root), '.steamharness', 'conversation-uploads'));
   expect(references[1].size).toBe(0);
   expect(await readFile(path.join(references[0].path, 'nested/file.txt'), 'utf8')).toBe('文档内容');
   expect(await readdir(path.join(references[0].path, '空目录'))).toEqual([]);
+  expect(await readFile(references[1].path, 'utf8')).toBe('');
+  const second = await importDroppedEntries(root, [{ name: 'empty.txt', kind: 'file', data: 'YQ==' }]);
+  expect(second[0].path).not.toBe(references[1].path);
+  expect(await readFile(second[0].path, 'utf8')).toBe('a');
   expect(await readFile(references[1].path, 'utf8')).toBe('');
 });
 
@@ -42,9 +50,18 @@ it.each([
   [{ name: '../escape', kind: 'file', data: '' }], [{ name: '/absolute', kind: 'directory' }],
   [{ name: 'a\\b', kind: 'directory' }], [{ name: 'a', kind: 'file', data: 'invalid' }],
   [{ name: 'A', kind: 'file', data: '' }, { name: 'a', kind: 'file', data: '' }],
+  [{ name: 'A/file', kind: 'file', data: '' }, { name: 'a/second', kind: 'file', data: '' }],
   [{ name: 'a', kind: 'file', data: '' }, { name: 'a/child', kind: 'file', data: '' }],
 ].map(entries => ({ entries })))('rejects invalid or ambiguous browser drop entries before writing any bytes ($entries)', async ({ entries }) => {
   const root = await directory(); await expect(importDroppedEntries(root, entries)).rejects.toThrow(); expect(await readdir(root)).toEqual([]);
+});
+
+it.each(['.steamharness', '.steamharness/conversation-uploads'])('does not follow a symlink at %s', async relative => {
+  const root = await directory(), outside = await directory(), target = path.join(root, relative);
+  await mkdir(path.dirname(target), { recursive: true });
+  await symlink(outside, target, process.platform === 'win32' ? 'junction' : 'dir');
+  await expect(importDroppedEntries(root, [{ name: 'outside.txt', kind: 'file', data: 'YQ==' }])).rejects.toThrow(/regular folder/);
+  expect(await readdir(outside)).toEqual([]);
 });
 
 it('keeps path-only input through initial Core arguments, queues, draft edits and retries', async () => {

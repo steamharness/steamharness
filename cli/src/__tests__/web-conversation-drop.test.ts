@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { captureFileDrop, capturePickedFiles } from '../web/ui/conversation-drop';
+import { captureFileDrop, captureHostPaths, capturePickedFiles } from '../web/ui/conversation-drop';
 import { nativeClipboardImageFormat } from '../web/ui/edit-commands';
 import type { Attachment, ConversationSession, Project } from '../web/workflow-types';
 
@@ -73,10 +73,11 @@ it.each(['en', 'zh-CN'])('selects files and folders without an attachment declar
   expect(document.querySelector('[data-kind=folders]')!.textContent).toBe(language === 'en' ? 'Choose folders' : '选择文件夹');
   const selected = f.choose('folders');
   expect(f.requests('attach')).toEqual([]); expect(selected).toMatchObject({ kind: 'folders', projectUri: project.uri, sessionId: 'first' });
-  f.emit({ ...selected, type: 'files-selected', selection: { paths: ['file:///workspace/folder'], read: async () => [] } });
+  f.emit({ ...selected, type: 'files-selected', selection: captureHostPaths(['file:///workspace/folder']) });
   const resolved = f.requests('resolve-paths')[0]; expect(resolved.requestId).toBe(selected.requestId);
   f.emit({ type: 'path-references', requestId: resolved.requestId, projectUri: project.uri, sessionId: 'first', references });
   f.acknowledgeDraft();
+  host.resolveLocalFiles = vi.fn(async () => undefined);
   f.drop(transfer({ CodeFiles: JSON.stringify(['/workspace/资料']) }));
   expect(f.requests('resolve-paths').at(-1).requestId).not.toBe(selected.requestId);
   f.emit({ type: 'path-references', requestId: f.requests('resolve-paths').at(-1).requestId, projectUri: project.uri, sessionId: 'first', references: [references[0]] });
@@ -126,7 +127,7 @@ it('supports keyboard file-menu selection and keeps native image choices as orig
   menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   expect(document.activeElement).toBe(trigger); expect(trigger.getAttribute('aria-expanded')).toBe('false');
   const selected = f.choose('files');
-  f.emit({ ...selected, type: 'files-selected', selection: { paths: ['file:///Desktop/image.png'], read: async () => [] } });
+  f.emit({ ...selected, type: 'files-selected', selection: captureHostPaths(['file:///Desktop/image.png']) });
   expect(f.requests('resolve-paths')[0].paths).toEqual(['file:///Desktop/image.png']);
   expect(f.requests('upload')).toEqual([]);
 });
@@ -158,6 +159,7 @@ it('keeps browser image selection and image drops on the same thumbnail upload p
 
 it.each(['en', 'zh-CN'])('renders compact removable file/folder tags, persists a path-only draft and submits it (%s)', async language => {
   const f = await fixture(language);
+  host.resolveLocalFiles = vi.fn(async () => undefined);
   const event = f.drop(transfer({ ResourceURLs: JSON.stringify(['file:///workspace/%E8%B5%84%E6%96%99', 'file:///tmp/a%20b.txt']) }));
   expect(event.defaultPrevented).toBe(true);
   const request = f.requests('resolve-paths')[0]; expect(request.paths).toHaveLength(2);
@@ -203,7 +205,7 @@ it('restores compact reference tags above the text in the same user bubble witho
 it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while keeping removal and text selection independent (%s)', async language => {
   const f = await fixture(language), selected = f.choose('files');
   const paths = [{ path: '/Desktop/preview-sample.DOCX', name: 'preview-sample.DOCX', kind: 'file' }, references[0]];
-  f.emit({ ...selected, type: 'files-selected', selection: { paths: paths.map(file => file.path), read: async () => [] } });
+  f.emit({ ...selected, type: 'files-selected', selection: captureHostPaths(paths.map(file => file.path)) });
   f.emit({ type: 'path-references', requestId: selected.requestId, projectUri: project.uri, sessionId: 'first', references: paths });
   f.acknowledgeDraft();
   const cards = document.querySelectorAll<HTMLElement>('#draft-attachments .path-reference');
@@ -235,6 +237,7 @@ it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while ke
 
 it('pastes Finder file references ahead of filenames or image representations and opens the original file from its card', async () => {
   const f = await fixture();
+  host.resolveLocalFiles = vi.fn(async () => undefined);
   const fileUrls = ['file:///tmp/table%20%23.xlsx', 'file:///tmp/example.zip'];
   const event = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData: transfer({
     'text/uri-list': fileUrls.join('\r\n'), 'text/plain': 'table #.xlsx\nexample.zip',
@@ -282,6 +285,7 @@ it.each([
 
 it.each([true, false])('pastes one large native file by path, using the URI list when available (%s)', async uriList => {
   const f = await fixture('en', { ...project, conversation: { attachments: { images: true } } });
+  const resolve = host.resolveLocalFiles = vi.fn(async () => undefined);
   const file = Object.assign(new File(['unused'], 'archive.zip', { type: 'application/zip' }), { path: '/tmp/archive.zip' });
   Object.defineProperty(file, 'size', { value: 51 * 1024 * 1024 });
   const read = vi.spyOn(FileReader.prototype, 'readAsDataURL');
@@ -292,8 +296,40 @@ it.each([true, false])('pastes one large native file by path, using the URI list
   document.querySelector('#message')!.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
   expect(f.requests('resolve-paths')).toMatchObject([{ paths: [uriList ? 'file:///tmp/archive.zip' : file.path] }]);
+  expect(resolve).not.toHaveBeenCalled();
   expect(f.requests('upload')).toEqual([]); expect(f.requests('import-drop')).toEqual([]); expect(read).not.toHaveBeenCalled();
   expect(document.querySelector<HTMLElement>('#error')!.hidden).toBe(true);
+});
+
+it.each(['drop', 'paste'])('uploads browser %s bytes even when the payload includes a client file URI', async gesture => {
+  const f = await fixture('zh-CN', project, false);
+  const file = new File(['bytes'], 'book.xlsx');
+  vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+    Object.defineProperty(this, 'result', { value: 'data:application/octet-stream;base64,Ynl0ZXM=' });
+    this.onload?.(new ProgressEvent('load') as ProgressEvent<FileReader>);
+  });
+  const data = transfer({ 'text/uri-list': 'file:///Desktop/book.xlsx' }, { files: [file] });
+  if (gesture === 'drop') f.drop(data);
+  else document.querySelector('#message')!.dispatchEvent(Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData: data }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.requests('resolve-paths')).toEqual([]);
+  const [upload] = f.requests('import-drop');
+  expect(upload.entries).toEqual([{ name: 'book.xlsx', kind: 'file', data: 'Ynl0ZXM=' }]);
+  const uploaded = { path: '/project/.steamharness/conversation-uploads/batch/book.xlsx', name: 'book.xlsx', kind: 'file', size: 5, source: 'workspace-upload' };
+  f.emit({ type: 'path-references', projectUri: project.uri, sessionId: 'first', requestId: upload.requestId, references: [uploaded] });
+  const card = document.querySelector<HTMLButtonElement>('#draft-attachments .path-reference-open')!;
+  expect(card.title).toContain(uploaded.path);
+  expect(card.textContent).toContain('已上传副本');
+  card.click(); expect(dialogs.attachmentDetails).toHaveBeenCalledWith(uploaded.name, expect.stringContaining('已上传副本'));
+  document.querySelector<HTMLButtonElement>('#send')!.click();
+  expect(f.requests('send').at(-1)).toMatchObject({ references: [uploaded] });
+});
+
+it('asks for the file or folder contents instead of treating a browser-only URI as a host path', async () => {
+  const f = await fixture('zh-CN', project, false);
+  f.drop(transfer({ 'text/uri-list': 'file:///Desktop/folder' })); await vi.advanceTimersByTimeAsync(0);
+  expect(f.requests('resolve-paths')).toEqual([]); expect(f.requests('import-drop')).toEqual([]);
+  expect(document.querySelector('#error')!.textContent).toContain('浏览器没有提供文件内容');
 });
 
 it.each([true, false])('never reads or imports a desktop drop while resolving the original path (%s)', async found => {
@@ -348,7 +384,7 @@ it.each([true, false])('shows managed attachment metadata, keeps genuine image p
 
 it('renders path names as copyable text without interpreting markup', async () => {
   const f = await fixture(), selected = f.choose('files'), path = '/tmp/<img src=x onerror=alert(1)>.docx';
-  f.emit({ ...selected, type: 'files-selected', selection: { paths: [path], read: async () => [] } });
+  f.emit({ ...selected, type: 'files-selected', selection: captureHostPaths([path]) });
   f.emit({ type: 'path-references', requestId: selected.requestId, projectUri: project.uri, sessionId: 'first', references: [{ path, kind: 'file' }] });
   const card = document.querySelector('#draft-attachments .path-reference')!;
   expect(card.querySelector('img')).toBeNull();
@@ -374,7 +410,8 @@ it('keeps a draft attachment clickable through an unrelated conversation update'
 });
 
 it('ignores a late drop result after switching away and back, and accepts a new drop for the current draft', async () => {
-  const f = await fixture(); f.drop(transfer({ 'text/uri-list': 'file:///tmp/old' })); const old = f.requests('resolve-paths')[0];
+  const f = await fixture(); host.resolveLocalFiles = vi.fn(async () => undefined);
+  f.drop(transfer({ 'text/uri-list': 'file:///tmp/old' })); const old = f.requests('resolve-paths')[0];
   f.receive('second'); f.receive('first');
   f.emit({ type: 'path-references', requestId: old.requestId, projectUri: project.uri, sessionId: 'first', references });
   expect(document.querySelectorAll('.path-reference')).toHaveLength(0);

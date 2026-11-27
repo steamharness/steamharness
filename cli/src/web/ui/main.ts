@@ -32,7 +32,7 @@ import { childConversationSubagent, ChildConversationStatus, conversationSubagen
 import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, isInlineConversationImage, pathReferences, type PathReference } from '../conversation-paths';
-import { captureFileDrop, capturePastedFiles, capturePickedFiles, isFileDrop, type FileImport } from './conversation-drop';
+import { captureFileDrop, captureHostPaths, capturePastedFiles, capturePickedFiles, isFileDrop, type FileImport } from './conversation-drop';
 import { nativeClipboardImageFormat } from './edit-commands';
 import { ConversationFileMenu } from './conversation-file-menu';
 import { FileIcons } from './file-icons';
@@ -1065,10 +1065,10 @@ function initialize(): void {
     }
     for (const reference of references) {
       const item = document.createElement('div'); item.className = 'attachment attachment-file path-reference'; item.dataset.path = reference.path;
-      item.append(fileCard(reference.name, reference.path, reference.kind, reference.kind === 'file' ? attachmentDetails(reference) : '', details => {
-        if (reference.kind === 'directory') post({ type: 'open-path', path: reference.path });
-        else if (vscode.canOpenAttachments) post({ type: 'open-path', path: reference.path, attachment: true });
-        else dialogs.attachmentDetails(reference.name, details);
+      const details = [reference.kind === 'file' ? attachmentDetails(reference) : '', reference.source === 'workspace-upload' ? t('Uploaded copy') : ''].filter(Boolean).join(' · ');
+      item.append(fileCard(reference.name, reference.path, reference.kind, details, () => {
+        if (vscode.canOpenAttachments) post({ type: 'open-path', path: reference.path, ...(reference.kind === 'file' ? { attachment: true } : {}) });
+        else dialogs.attachmentDetails(reference.name, details || t('Folder'));
       }));
       if (removable) item.append(iconButton('close', t("Remove path reference"), () => {
         draftReferences = draftReferences.filter(entry => entry.path !== reference.path); renderDraftAttachments(); saveDraft(); updateControls();
@@ -1088,7 +1088,7 @@ function initialize(): void {
 
   function fileCard(name: string, path: string, kind: PathReference['kind'], details: string, open: (details: string) => void): HTMLButtonElement {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'path-reference-open';
-    const action = kind === 'directory' ? t('Open folder in file manager') : vscode.canOpenAttachments ? t('Open file') : t('File details');
+    const action = !vscode.canOpenAttachments ? t('File details') : kind === 'directory' ? t('Open folder in file manager') : t('Open file');
     button.title = `${action}\n${path}${details ? `\n${details}` : ''}`; button.ariaLabel = `${action}: ${path}${details ? `, ${details}` : ''}`;
     const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; fileIcons.bind(symbol, path, kind);
     symbol.title = kind === 'directory' ? t('Folder') : t('File');
@@ -1111,9 +1111,10 @@ function initialize(): void {
     operationError.show();
     if (!selectedRequestId) { pendingDrops.add(requestId); uploading++; updateControls(); }
     try {
-      let paths = drop.paths;
-      const resolveLocalFiles = vscode.resolveLocalFiles;
-      if (!paths.length && resolveLocalFiles && !nativeClipboardImage) {
+      const resolveLocalFiles = nativeClipboardImage ? undefined : vscode.resolveLocalFiles;
+      // Browser drag data can contain a client URI that also happens to exist on the host.
+      let paths = drop.pathsOnHost || resolveLocalFiles ? drop.paths : [];
+      if (!paths.length && resolveLocalFiles) {
         if (drop.files && drop.files.length > 32) throw new Error('Too many path references.');
         paths = drop.files?.length ? await resolveLocalFiles(drop.files) ?? [] : [];
         if (scope !== dropScope() || !pendingDrops.has(requestId)) return;
@@ -1124,7 +1125,8 @@ function initialize(): void {
       if (images && draftFiles.length + images.length > 32) throw new Error('A message can contain up to 32 uploaded attachments.');
       const entries = paths.length ? undefined : await (images ? capturePickedFiles(images) : drop).read();
       if (scope !== dropScope() || !pendingDrops.has(requestId)) return;
-      if (!paths.length && !entries?.length) throw new Error('No files or folders were found in the drop.');
+      if (!paths.length && !entries?.length) throw new Error(drop.paths.length
+        ? 'Select the file or folder to upload it. The browser did not provide its contents.' : 'No files or folders were found in the drop.');
       const data = paths.length ? { type: 'resolve-paths', paths }
         : images ? { type: 'upload', files: images.map((file, index) => ({ name: file.name, mimeType: file.type, data: entries![index].data })) }
         : { type: 'import-drop', entries };
@@ -2007,7 +2009,7 @@ function initialize(): void {
         void applyFileImport(message.selection, message.requestId);
       } else { pendingDrops.delete(message.requestId); uploading = Math.max(0, uploading - 1); updateControls(); }
     } else if (message.type === 'paths-dropped' && message.target === advertisedDropTarget && Array.isArray(message.paths)) {
-      void applyFileImport({ paths: message.paths, read: async () => [] });
+      void applyFileImport(captureHostPaths(message.paths));
     } else if (message.type === 'path-references' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId) {
       if (!pendingDrops.delete(message.requestId)) return;
       uploading = Math.max(0, uploading - 1);

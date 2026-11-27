@@ -69,9 +69,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
     await build({ entryPoints: [path.join(ROOT, 'tests/start-page-ui-extension.mjs')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: path.join(extension, 'extension.cjs') });
     let workstation;
-    if (process.env.STEAMHARNESS_UI_FOCUS === 'new-tool-content') {
-      // Use the actual extension and CLI, with a deterministic offline executor
-      // installed only in this isolated workbench's Assistant template.
+    if (attachmentPreviewOnly || process.env.STEAMHARNESS_UI_FOCUS === 'new-tool-content') {
       workstation = path.join(directory, 'extensions/studio-workstation');
       await mkdir(workstation);
       for (const name of ['package.json', 'package.nls.json', 'package.nls.zh-cn.json', 'l10n', 'dist']) {
@@ -81,11 +79,14 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       const metadata = JSON.parse(await readFile(path.join(workstation, 'package.json'), 'utf8'));
       const version = metadata.version.split('.'); version[2] = String(Number(version[2]) + 1); metadata.version = version.join('.');
       await writeProjectFixture(path.join(workstation, 'package.json'), JSON.stringify(metadata));
-      const template = path.join(workstation, 'dist/developer-assistant');
-      await rm(template, { recursive: true, force: true }); await mkdir(template);
-      await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Offline Assistant', type: 'module',
-        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'bot',name:'Assistant',root:'.',entry:'index.ts'}] }));
-      await copyFile(path.join(ROOT, 'tests/fixtures/assistant-new-tab/index.ts'), path.join(template, 'index.ts'));
+      if (!attachmentPreviewOnly) {
+        // The Assistant tab lifecycle test needs a deterministic executor.
+        const template = path.join(workstation, 'dist/developer-assistant');
+        await rm(template, { recursive: true, force: true }); await mkdir(template);
+        await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Offline Assistant', type: 'module',
+          version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'bot',name:'Assistant',root:'.',entry:'index.ts'}] }));
+        await copyFile(path.join(ROOT, 'tests/fixtures/assistant-new-tab/index.ts'), path.join(template, 'index.ts'));
+      }
     }
     const sourceMessages = await useCachedLanguagePack(directory, language);
     child = spawn(process.execPath, [path.join(upstream.directory, 'scripts/code-server.js'), '--host', '127.0.0.1', '--port', '0',
@@ -113,6 +114,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       // Exercise the desktop attachment-open path without desktop clipboard or dialogs.
       await context.addInitScript(() => {
         if (parent === window || !location.pathname.startsWith('/entries/')) return;
+        // Drive the directory input fallback through Playwright's browser file chooser.
+        Object.defineProperty(window, 'showDirectoryPicker', { value: undefined });
         addEventListener('message', event => {
           if (event.source === parent && event.data?.type === 'workflow-host' && event.data.attachmentOpenVersion !== undefined) {
             event.data.attachmentOpenVersion = 1;
@@ -333,7 +336,11 @@ export default executor;`);
     const toggleTools = page.locator('.studio-steam-toggle-tools');
     if (attachmentPreviewOnly) {
       const name = 'assistant-attachment.xlsx', cell = 'Assistant XLSX preview';
-      const file = path.join(folder, name), workbook = XLSX.utils.book_new();
+      const client = path.join(directory, 'browser-input'), clientFolder = path.join(client, 'browser-folder');
+      await mkdir(path.join(clientFolder, 'nested'), { recursive: true });
+      await writeFile(path.join(clientFolder, 'nested/note.txt'), 'Browser folder contents');
+      const file = path.join(client, name), workspaceUploads = path.join(folder, '.steamharness', 'conversation-uploads');
+      const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([[cell, 42]]), 'Results');
       const original = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
       await writeFile(file, original);
@@ -342,16 +349,20 @@ export default executor;`);
           if (await candidate.locator('body[data-surface=assistant] #attach:enabled').isVisible().catch(() => false)) { return candidate; }
         }
       }, Boolean, 'Assistant composer did not open', 90_000);
-      const attach = async frame => {
+      const attach = async (frame, kind, source) => {
+        const cards = frame.locator('#draft-attachments .path-reference-open').filter({ hasText: path.basename(source) });
+        const previous = await cards.count();
         await frame.locator('#attach').click();
-        await frame.locator('#conversation-file-menu [data-kind=files]').click();
-        await page.locator('.quick-input-widget:visible .quick-input-list .monaco-list-row').getByText(name, { exact: true }).click();
-        const card = frame.locator('#draft-attachments .path-reference-open').filter({ hasText: name });
-        await card.waitFor();
-        assert.ok((await card.getAttribute('title')).includes(file), 'The draft must reference the original file');
-        return card;
+        const choosing = page.waitForEvent('filechooser');
+        await frame.locator(`#conversation-file-menu [data-kind=${kind}]`).click();
+        await (await choosing).setFiles(source);
+        const card = cards.nth(previous); await card.waitFor();
+        assert.match(await card.innerText(), /Uploaded copy|已上传副本/);
+        const copied = await card.locator('..').getAttribute('data-path');
+        assert.equal(path.dirname(path.dirname(copied)), workspaceUploads);
+        return { card, copied };
       };
-      const assertPreview = async (mode, editor, expected = 'opens') => {
+      const assertPreview = async (mode, editor, copied, expected = 'opens') => {
         await editor.locator('.tab.active').filter({ hasText: name }).waitFor();
         await until(async () => {
           for (const candidate of page.frames()) {
@@ -361,24 +372,30 @@ export default executor;`);
             }
           }
         }, Boolean, `${mode}: the XLSX tab did not render its cells`, 20_000);
-        const tabs = (await call({ action: 'state' })).groups.flatMap(group => group.tabs).filter(tab => tab.uri === pathToFileURL(file).href);
+        const tabs = (await call({ action: 'state' })).groups.flatMap(group => group.tabs).filter(tab => tab.uri === pathToFileURL(copied).href);
         assert.equal(tabs.length, 1, `${mode}: there must be exactly one tab for the attachment`);
         assert.equal(tabs[0].viewType, 'studio.documentPreview');
+        assert.deepEqual(await readFile(copied), original);
         await page.screenshot({ path: path.join(proof, `${language}-${mode}-attachment-${expected}.png`) });
-        check(`${language}: ${mode} ${expected} the original XLSX in a visible editor tab`);
+        check(`${language}: ${mode} ${expected} the uploaded XLSX in a visible editor tab`);
       };
       await command('studio.enterSteamMode'); await projectFrame();
       await command('studio.internalOpenSteamTool', 'assistant');
-      const steamAssistant = await assistant(), steamCard = await attach(steamAssistant);
+      const steamAssistant = await assistant(), steam = await attach(steamAssistant, 'files', file);
       const steamEditor = page.locator('.part.auxiliarybar .studio-steam-editors[data-tool=editor]:visible');
-      await steamCard.click(); await assertPreview('steam', steamEditor);
+      await steam.card.click(); await assertPreview('steam', steamEditor, steam.copied);
       await command('studio.internalOpenSteamTool', 'assistant');
-      await steamCard.press('Enter'); await assertPreview('steam', steamEditor, 'reopens');
+      await steam.card.press('Enter'); await assertPreview('steam', steamEditor, steam.copied, 'reopens');
       await command('workbench.action.closeActiveEditor');
       await command('studio.enterIdeMode'); await command('studio.openAssistant');
       const ideAssistant = await assistant();
-      await (await attach(ideAssistant)).click();
-      await assertPreview('ide', page.locator('.part.editor:not(.studio-steam-editors):visible'));
+      const uploadedFolder = await attach(ideAssistant, 'folders', clientFolder);
+      assert.equal(await readFile(path.join(uploadedFolder.copied, 'nested/note.txt'), 'utf8'), 'Browser folder contents');
+      check(`${language}: the browser folder keeps its hierarchy under the Assistant workspace`);
+      const ide = await attach(ideAssistant, 'files', file);
+      await ide.card.click();
+      await assertPreview('ide', page.locator('.part.editor:not(.studio-steam-editors):visible'), ide.copied);
+      assert.notEqual(ide.copied, steam.copied, 'Uploads of the same name must not overwrite one another');
       assert.deepEqual(await readFile(file), original, 'Opening the preview must not change the original');
       continue;
     }

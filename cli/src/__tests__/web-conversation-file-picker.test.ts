@@ -141,7 +141,7 @@ it('authenticates native picker replies, correlates requests, and drops obsolete
   f.receive({ pathSelection: { ...selected, target: 'other' } }); f.receive({ pathSelection: { ...selected, requestId: 'other' } });
   expect(f.messages()).toHaveLength(0);
   f.receive({ pathSelection: selected }); expect(f.messages()).toHaveLength(1);
-  expect(f.messages()[0].selection.paths).toEqual(selected.paths);
+  expect(f.messages()[0].selection).toMatchObject({ paths: selected.paths, pathsOnHost: true });
   f.receive({ pathSelection: selected }); expect(f.messages()).toHaveLength(1);
   await f.host.postMessage({ ...f.request, requestId: 'draft-sync' });
   await f.host.postMessage({ type: 'drop-target' });
@@ -153,6 +153,14 @@ it('authenticates native picker replies, correlates requests, and drops obsolete
   await f.host.postMessage({ ...f.request, requestId: 'closed', target: 'conversation:2' });
   f.close();
   f.receive({ pathSelection: { ...selected, requestId: 'closed', target: 'conversation:2' } }); expect(f.messages()).toHaveLength(2);
+});
+
+it('does not interpret an outer drop as a path unless the desktop and execution host share a filesystem', async () => {
+  const f = hostFixture(); await f.host.postMessage({ type: 'drop-target', target: f.request.target });
+  const drop = { target: f.request.target, paths: ['file:///Desktop/folder'] };
+  f.receive({ localFilePathsVersion: 0, drop }); expect(f.messages()).toHaveLength(0);
+  f.receive({ localFilePathsVersion: 1, drop }); expect(f.messages()).toMatchObject([{ type: 'paths-dropped', ...drop }]);
+  f.close();
 });
 
 it('emits native cancellation and errors with the original project and conversation identity', async () => {

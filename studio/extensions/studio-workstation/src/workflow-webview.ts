@@ -51,7 +51,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();postHost({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})});contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,projectDetails,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:isNative()?1:0,clipboardImageVersion:isNative()?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,attachmentOpenVersion:isNative()?1:0,localFilePathsVersion:localFilePaths()?1:0,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;const paths=localFilePaths()?1:0;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,projectDetails,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:isNative()?1:0,clipboardImageVersion:isNative()?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:paths,pathPickerVersion:paths,pathOpenVersion:1,attachmentOpenVersion:isNative()?1:0,localFilePathsVersion:paths,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
           if(event.origin!==origin)return;
@@ -93,16 +93,17 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
               contextMenu=true;frame.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y}));
             }
           }
-          if(message?.type==='workflow-drop-target'&&message.version===1){vscode.postMessage(message);}
+          if(['workflow-drop-target','workflow-path-picker'].includes(message?.type)&&message.version===1){if(localFilePaths())vscode.postMessage(message);}
           else if(message?.type==='workflow-resolve-local-files'&&message.version===1&&localFilePaths()){
             const {type,version,target,requestId,files}=message;
             if(typeof target==='string'&&typeof requestId==='string'&&Array.isArray(files)&&files.length>0&&files.length<=32&&files.every(file=>file instanceof File))vscode.postMessage({type,version,target,requestId,files});
           }
           else if(${features?.workflowDraft === true}&&message?.type==='workflow-save-draft'&&message.version===1){vscode.postMessage(message);}
-          else if(['workflow-open-entry','workflow-trace','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-path-picker','workflow-path-open','workflow-browser-open','workflow-user-settings','workflow-file-icons',...(${nativeDownload}?['workflow-download']:[]),...(${platform}?['workflow-server-project','workflow-account']:[]),...(${projectSetup}?['workflow-project-upload']:[])].includes(message?.type)&&message.version===1)vscode.postMessage(message.type==='workflow-project-upload'?{type:message.type,version:1}:message);
+          else if(['workflow-open-entry','workflow-trace','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-path-open','workflow-browser-open','workflow-user-settings','workflow-file-icons',...(${nativeDownload}?['workflow-download']:[]),...(${platform}?['workflow-server-project','workflow-account']:[]),...(${projectSetup}?['workflow-project-upload']:[])].includes(message?.type)&&message.version===1)vscode.postMessage(message.type==='workflow-project-upload'?{type:message.type,version:1}:message);
           return;
         }
         if(event.data?.type!=='workflow-host')return;
+        if((event.data.drop||event.data.pathSelection||event.data.localFilePaths)&&!localFilePaths())return;
         if(event.data.projectUsage&&event.data.projectUsage.revision!==projectDetails?.revision)return;
         if(event.data.theme==='dark'||event.data.theme==='light')theme=event.data.theme;
         if(event.data.windowChrome){windowChrome=event.data.windowChrome;if(!windowChrome.active)clearDragRegions();}

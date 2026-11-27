@@ -215,6 +215,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!['bot', 'workflow', 'kanban'].includes(descriptor.projectType)) throw new Error('Unsupported Workflow project type.');
   } catch (error) { unsubscribeLogin(); runtime.dispose(); throw error; }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
+  const attachmentWorkdir = folderBot?.directory ?? project.assistant?.workdir ?? projectDir;
   const credentialHost = hostKind === 'studio' && options.host?.localBotCredentials === true && !options.host?.backgroundBotCredentials && !folderBot?.background && !projectOnline && project.projectType === 'bot'
     ? options.botCredentialHost : undefined;
   const credentialInput = !!credentialHost && project.conversation?.engine === 'agent' && descriptor.runtime?.botCredentialInputVersion === 1;
@@ -1034,7 +1035,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'resolve-paths':
       case 'import-drop': {
         const references = message.type === 'resolve-paths' ? await resolveDroppedPaths(message.paths)
-          : await importDroppedEntries(path.join(storageDir, key, 'conversation-imports', current.id), message.entries);
+          : await importDroppedEntries(attachmentWorkdir, message.entries);
         replies.push({ type: 'path-references', projectUri: project.uri, sessionId: current.id, requestId: message.requestId, references });
         break;
       }

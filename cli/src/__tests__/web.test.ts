@@ -145,18 +145,44 @@ describe('steamharness web', () => {
     await post({ type: 'draft', text: '', attachments: [], references });
     expect(app.controller!.current.draft).toMatchObject({ text: '', references });
     await post({ type: 'send', text: '', params: {}, attachments: [], references }); await app.controller!.idle();
-    expect(vi.mocked(runtime.run).mock.calls[0][0].args.join('\n')).toContain(folder);
+    const originalPrompt = vi.mocked(runtime.run).mock.calls[0][0].args.join('\n');
+    expect(originalPrompt).toContain(folder);
+    expect(originalPrompt).toContain('original on the execution host, with no copy made');
     expect(app.controller!.current.messages[0]).toMatchObject({ content: '', references });
     const imported = await (await post({ type: 'import-drop', entries: [{ name: 'browser/nested.txt', kind: 'file', data: Buffer.from('browser bytes').toString('base64') }, { name: 'browser/empty', kind: 'directory' }], requestId: 'import-drop' })).json();
     const reference = imported.messages.find((message: any) => message.type === 'path-references').references[0];
-    expect(reference.source).toBe('imported-copy');
+    expect(reference.source).toBe('workspace-upload');
+    expect(path.dirname(path.dirname(reference.path))).toBe(path.join(await realpath(directory), '.steamharness', 'conversation-uploads'));
     expect(await readFile(path.join(reference.path, 'nested.txt'), 'utf8')).toBe('browser bytes');
-    await post({ type: 'send', text: 'Read the imported folder', params: {}, attachments: [], references: [reference] }); await app.controller!.idle();
-    expect(vi.mocked(runtime.run).mock.calls[1][0].args.join('\n')).toContain(reference.path);
+    const mixed = [...references, reference];
+    await post({ type: 'draft', text: 'Compare the directories', attachments: [], references: mixed });
+    expect(app.controller!.current.draft?.references).toEqual(mixed);
+    await post({ type: 'send', text: 'Compare the directories', params: {}, attachments: [], references: mixed }); await app.controller!.idle();
+    const args = vi.mocked(runtime.run).mock.calls[1][0].args;
+    const prompt = args[args.indexOf('--message') + 1];
+    expect(prompt).toContain('use the listed path, not the original on the client');
+    expect(JSON.parse(prompt.slice(prompt.indexOf('\n[') + 1))).toEqual([
+      { kind: 'directory', path: folder, source: 'local-reference' }, { kind: 'directory', path: reference.path, source: 'workspace-upload' },
+    ]);
     expect((await post({ type: 'import-drop', entries: [{ name: '../escape', kind: 'directory' }] })).status).toBeGreaterThanOrEqual(400);
     await post({ type: 'session-action', id: app.controller!.current.id, action: 'delete' });
-    await expect(readFile(path.join(reference.path, 'nested.txt'))).rejects.toThrow();
+    expect(await readFile(path.join(reference.path, 'nested.txt'), 'utf8')).toBe('browser bytes');
     expect(await readFile(path.join(folder, 'source.txt'), 'utf8')).toBe('original bytes');
+  });
+
+  it.each(['assistant', 'folder-bot'] as const)('imports into the bound %s workspace rather than its executor project', async surface => {
+    const workdir = await mkdtemp(path.join(os.tmpdir(), 'steamharness-workdir-')); folders.push(workdir);
+    const host: WebHostConfiguration = surface === 'assistant' ? { surface: 'assistant', assistantProjectDir: workdir,
+      assistant: { workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Workspace' }] } }
+      : { surface: 'editor', folderBot: { id: randomUUID(), projectId: randomUUID(), directory: workdir, background: false } };
+    const { directory, post } = await fixture(host);
+    const response = await post({ type: 'import-drop', entries: [{ name: 'nested/remote.txt', kind: 'file', data: 'YQ==' }], requestId: 'remote' });
+    expect(response.ok, await response.clone().text()).toBe(true);
+    const { messages } = await response.json();
+    const reference = messages.find((message: { type: string }) => message.type === 'path-references').references[0];
+    expect(path.dirname(path.dirname(reference.path))).toBe(path.join(await realpath(workdir), '.steamharness', 'conversation-uploads'));
+    expect(await readFile(path.join(reference.path, 'remote.txt'), 'utf8')).toBe('a');
+    await expect(realpath(path.join(directory, '.steamharness', 'conversation-uploads'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('sends an uploaded file of an undeclared type using its resolved path, not the client path', async () => {

@@ -10,7 +10,7 @@ import { ClipboardImages } from './clipboard-images';
 import { editText, pasteHostClipboard, selectedText, textEditShortcut, type TextEditCommand } from './edit-commands';
 import { ProjectWindowChrome } from './window-chrome';
 import { chooseConversationFiles } from './conversation-file-picker';
-import type { FileImport } from './conversation-drop';
+import { captureHostPaths, type FileImport } from './conversation-drop';
 import { webLinkTarget } from './output-file-links';
 import { ProjectServerCreateDialog } from './project-server-create';
 import { acquireHostKeyboard } from './host-keyboard';
@@ -268,13 +268,13 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       }
     }
     const pathSelection = event.data.pathSelection;
-    if (pathSelection?.version === 1) {
+    if (pathPickerHost && pathSelection?.version === 1) {
       const pending = pathPickers.get(pathSelection.requestId);
       if (pending && pending.target === pathSelection.target && Array.isArray(pathSelection.paths) && pathSelection.paths.every((path: unknown) => typeof path === 'string')) {
-        selectedFiles(pending, pathSelection.paths.length ? { paths: pathSelection.paths, read: async () => [] } : undefined, pathSelection.error);
+        selectedFiles(pending, pathSelection.paths.length ? captureHostPaths(pathSelection.paths) : undefined, pathSelection.error);
       }
     }
-    if (event.data.drop?.target === dropTarget && dropTarget && Array.isArray(event.data.drop.paths)) {
+    if (localFilePathsHost && event.data.drop?.target === dropTarget && dropTarget && Array.isArray(event.data.drop.paths)) {
       emit({ type: 'paths-dropped', target: dropTarget, paths: event.data.drop.paths });
     }
     if (event.data.projectSetupVersion !== undefined) { projectSetupHost = event.data.projectSetupVersion === 1; emit({ type: 'project-setup-available', upload: projectSetupHost }); }

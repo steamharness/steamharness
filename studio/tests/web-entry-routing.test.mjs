@@ -74,7 +74,7 @@ test('each Studio tab forwards its own open requests, host replies and editing w
   first.send(message); first.send(message);
   assert.equal(first.posted.filter(value => value.type === message.type).length, 2);
   assert.equal(second.posted.some(value => value.type === message.type), false);
-  const reply = { type: 'workflow-host', pathSelection: { requestId: 'pick' } };
+  const reply = { type: 'workflow-host', pathOpened: { requestId: 'open' } };
   first.host(reply);
   assert.equal(first.received.at(-1).message, reply);
   assert.equal(second.received.some(value => value.message === reply), false);

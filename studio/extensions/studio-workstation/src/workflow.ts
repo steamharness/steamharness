@@ -705,7 +705,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           const styling = vscode.window.onDidChangeActiveColorTheme(() => void panel.webview.postMessage({ type: 'workflow-host', theme: theme() }));
           panel.onDidDispose(() => { receive.dispose(); clipboard.dispose(); pick.dispose(); openPath.dispose(); browser.dispose(); download.dispose(); styling.dispose(); });
           panel.webview.html = projectFrameHtml(liveUrl, title, selected.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language,
-            undefined, undefined, false, false, true, undefined, { showScheduledRun: id });
+            undefined, undefined, false, false, true, undefined, { showScheduledRun: id, localFilePaths: !vscode.env.remoteName && !launcher.previewWeb });
           return;
         }
         await openProject(selected, undefined, undefined, true);
