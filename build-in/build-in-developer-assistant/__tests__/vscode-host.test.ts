@@ -187,12 +187,23 @@ describe("VS Code assistant host", () => {
     const directory = path.join(base, "selected"), other = path.join(base, "other");
     await Promise.all([mkdir(directory), mkdir(other)]);
     const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: other,
-      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: "" });
+      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(other, "stale-manifest.json") });
     const input = await host.prepareInput({ projectName: "developer-assistant", projectDir: import.meta.dirname,
       args: ["--message", "Read my project"], paramValues: {}, config: {}, abortSignal: new AbortController().signal }, { directory });
     expect(input).toMatchObject({ workdir: directory, allowedDirectories: [directory] });
     expect(input.systemPrompt).toContain(directory);
     expect(input.systemPrompt).not.toContain(other);
+  });
+
+  it("uses the absolute Core workdir as its only root when launched without a Studio workspace", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "assistant-standalone-"));
+    temporary.push(directory);
+    const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: "", STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: "" });
+    const input = await host.prepareInput({ args: ["--message", "Plan", "--workdir", directory], paramValues: {} } as unknown as ExecutorContext);
+    expect(input).toMatchObject({ workdir: directory, allowedDirectories: [directory] });
+    expect(input.systemPrompt).toContain(directory);
+    vi.stubEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR", directory);
+    await expect(host.prepareInput({ args: [], paramValues: {} } as unknown as ExecutorContext)).rejects.toThrow(/manifest/);
   });
 
   it.each(["conversation", "openai"])("inherits the user policy for %s input and rejects per-turn permission overrides", async kind => {

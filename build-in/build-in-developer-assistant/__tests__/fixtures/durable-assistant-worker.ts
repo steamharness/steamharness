@@ -40,7 +40,8 @@ globalThis.steamharness = { ...runtime, defineBot: options => options.engine !==
 } }) };
 const { executor: declaration } = await import("../../index");
 const executor = declaration as BotExecutorDefinition<AgentInput>;
-const projectId = "durable-assistant", conversationId = scenario, projectName = "developer-assistant";
+const { id: projectId, defaultEntry: entryId } = JSON.parse(await readFile(new URL("../../steamharness.json", import.meta.url), "utf8"));
+const conversationId = scenario, projectName = "developer-assistant";
 const runId = phase === "fresh" ? "fresh-run" : "original-run";
 const host = ["session", "extensions", "blocks", "approval-session", "skill-recovery"].includes(scenario) ? createAgentSessionHost(conversationId) : undefined;
 const keepAlive = host ? setInterval(() => undefined, 1_000) : undefined;
@@ -51,7 +52,7 @@ async function until(check: () => boolean): Promise<void> {
   while (!check()) { if (Date.now() > deadline) throw new Error("Assistant session did not settle."); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
 const persistence = createServerRuntimePersistence({ serverUrl: process.env.STEAMHARNESS_SERVER_URL!, token: process.env.STEAMHARNESS_SERVER_ADMIN_KEY!,
-  workspace: { kind: "assistant", projectId, entryId: "main", localKey: directory } });
+  workspace: { kind: "assistant", projectId, entryId, localKey: directory } });
 async function afterPreviousOwner<T>(open: () => Promise<T>): Promise<T> {
   const deadline = Date.now() + 5000;
   while (true) {
@@ -84,7 +85,8 @@ const userInput = {
   requestInput: async () => undefined,
 };
 const context = {
-  metadata: { project: projectName, runId, runtimePersistence: persistence },
+  projectId, entryId,
+  metadata: { project: projectName, runId, runtimePersistence: persistence, executionWorkdir: directory },
   providers: {},
   conversation, tokenUsage, userInput,
   toolPermissions: createProjectToolPermissionContext({ definitions: [...(executor.tools ?? []), ...(scenario === "extensions" ? [{ name: "checkpoint", enabled: true, autoApprove: true }] : [])], projectName, runId, userInput }),

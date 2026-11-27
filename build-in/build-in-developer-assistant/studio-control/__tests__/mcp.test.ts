@@ -9,7 +9,7 @@ import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real stdio MCP with the %s policy and authenticated host", async permissionPolicy => {
   const calls: unknown[] = [];
   const token = "isolated-mcp-test-token";
-  const dataDir = await mkdtemp(path.join(tmpdir(), "studio-control-mcp-"));
+  const home = await mkdtemp(path.join(tmpdir(), "studio-control-mcp-"));
   const server = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -28,9 +28,9 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
   let connection;
   try {
     connection = await runtime.connectMcpServer({
-      id: "workflow-studio", command: [process.execPath, path.resolve(path.dirname(cliManifest), cli.bin["steamharness"]), "mcp", path.resolve(import.meta.dirname, "../.."), "--entry", "studio-control", "--data-dir", dataDir],
+      id: "workflow-studio", command: [process.execPath, path.resolve(path.dirname(cliManifest), cli.bin["steamharness"]), "mcp", path.resolve(import.meta.dirname, "../.."), "--entry", "studio-control"],
       inheritEnvironment: keys,
-      environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy },
+      environment: { HOME: home, USERPROFILE: home, STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy },
     }, { allowedInheritedEnvKeys: keys, env: {
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${address.port}/studio-control`, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: token,
     } });
@@ -68,6 +68,6 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
     await connection?.close();
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-    await rm(dataDir, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
   }
 }, 30_000);

@@ -160,10 +160,15 @@ export const executor = steamharness.defineBot<AgentInput>({
   ],
 
   async prepareInput(input, context) {
-    const workdir = context.folderContext?.directory ?? readAssistantWorkdir();
-    const manifestPath = readHostEnvironment(ASSISTANT_WORKSPACE_MANIFEST_ENV);
+    const hostWorkdir = (readHostEnvironment(ASSISTANT_WORKDIR_ENV) ?? "").trim();
+    const manifestPath = readHostEnvironment(ASSISTANT_WORKSPACE_MANIFEST_ENV)?.trim();
+    const workdir = context.folderContext?.directory ?? (hostWorkdir || input.workdir);
+    if (!workdir || !path.isAbsolute(workdir) || (manifestPath && !hostWorkdir && !context.folderContext)) {
+      throw new steamharness.HarnessError({ type: "input_validation", message: "小助手缺少有效的工作目录。请更新项目运行时或重新选择工作区。" });
+    }
     const target = { kind: "folder", folderId: pathToFileURL(workdir).href };
-    const manifest = context.folderContext && !manifestPath ? parseDeveloperAssistantWorkspaceManifest({
+    const singleRoot = context.folderContext || (!manifestPath && !hostWorkdir);
+    const manifest = singleRoot ? parseDeveloperAssistantWorkspaceManifest({
       schemaVersion: 2, primaryTarget: target, warnings: [], roots: [{ target, rootPath: workdir,
         name: path.basename(workdir) || workdir, role: "primary", depth: 0 }],
     }, workdir) : await loadDeveloperAssistantWorkspaceManifest(workdir, manifestPath);
@@ -175,17 +180,6 @@ export const executor = steamharness.defineBot<AgentInput>({
 });
 
 export default executor;
-
-function readAssistantWorkdir(): string {
-  const workdir = (readHostEnvironment(ASSISTANT_WORKDIR_ENV) ?? "").trim();
-  if (workdir === "") {
-    throw new steamharness.HarnessError({
-      type: "input_validation",
-      message: "小助手缺少经过宿主校验的目标工作区目录。",
-    });
-  }
-  return workdir;
-}
 
 function readAssistantHost(): DeveloperAssistantHost {
   const host = (readHostEnvironment("STEAMHARNESS_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
