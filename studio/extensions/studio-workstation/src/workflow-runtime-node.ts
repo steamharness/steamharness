@@ -38,7 +38,8 @@ import { WorkflowScheduleRuntime } from './workflow-schedule-runtime';
 import { openProjectSchedules } from './workflow-schedule-view';
 import { createBotCredentialInteraction } from './bot-credentials';
 import { canAccessBotCredentialStorage } from './bot-credential-metadata';
-import { createBotCredentialListReader } from './bot-credential-list';
+import { createBotCredentialTargetResolver } from './bot-credential-list';
+import { registerWebBotCredentialManagement } from './bot-credential-management';
 import { registerBotManagementView } from './bot-management-view';
 import { prepareManagedProjectStorage } from './managed-project-storage';
 import type { AccountWorkspace } from './account-workspace-data';
@@ -241,6 +242,29 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       trusted: directory => vscode.commands.executeCommand<boolean>('studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false),
     },
   }));
+  const credentialOwner = () => account.workspace?.()?.owner ?? null;
+  const credentialFolderTrusted = (directory: string) => vscode.commands.executeCommand<boolean>(browser ? 'studio.internalIsWebBotFolderTrusted'
+    : 'studio.internalSidebarProjectTrust', vscode.Uri.file(directory).toString(), false);
+  const resolveCredentialTarget = createBotCredentialTargetResolver({ isBuiltinProjectDirectory, localAssistantDirectory: assistantDirectory,
+    resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
+    trusted: credentialFolderTrusted,
+  });
+  const showWebCredentials = browser ? registerWebBotCredentialManagement(context, credentialOwner) : undefined;
+  const openCredentials = !desktop && !browser ? undefined : async (input: unknown, owner: unknown) => {
+    const accountScope = await captureScope();
+    const signal = AbortSignal.any([controller.signal, accountScope.lifetime.signal]);
+    if (owner !== credentialOwner() || owner !== (accountScope.workspace?.owner ?? null)) return;
+    const target = await resolveCredentialTarget(input);
+    if (target === 'untrusted') throw new Error(t('Trust the current workspace first.'));
+    if (!target || signal.aborted || owner !== credentialOwner()) return;
+    if (showWebCredentials) { await showWebCredentials(target, accountScope.workspace?.owner ?? null, signal); return; }
+    const { projectId, entryId, projectDirectory, instanceId, workdir } = target.scope;
+    const result = await botCredentials({ id: projectId, folderPath: projectDirectory,
+      folderBot: instanceId && workdir ? { id: instanceId, directory: workdir } : undefined,
+      assistant: !instanceId && workdir ? { workdir } : undefined,
+    }, entryId, target.name, { action: 'manage' }, signal, undefined, async () => owner === credentialOwner() && await target.recheck());
+    if (result === 'busy') void vscode.window.showWarningMessage(t('A secure credential prompt is already open. Try again after closing it.'));
+  };
   const assertAvailable = (requiresWorkspaceTrust = true): void => {
     if (requiresWorkspaceTrust && !vscode.workspace.isTrusted) { throw new Error(t("Trust the current workspace first.")); }
     if (controller.signal.aborted) { throw new Error('Workflow host has stopped.'); }
@@ -402,9 +426,21 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     localAssistantDirectory: assistantDirectory,
     listBuiltinProjectDirectories: localDesktop ? listBuiltinProjectDirectories : undefined,
     isBuiltinProjectDirectory,
-    readBotCredentialList: desktop ? createBotCredentialListReader(context, { isBuiltinProjectDirectory, localAssistantDirectory: assistantDirectory,
-      resolveManaged: account.platform ? uri => vscode.commands.executeCommand<ManagedUsageTarget | undefined>('studio.internalResolveFolderBotUsage', uri) : undefined,
-      signal: controller.signal }) : undefined,
+    openBotCredentials: openCredentials,
+    openWebProjectCredentials: showWebCredentials ? async (project, signal) => {
+      const accountScope = await captureScope();
+      const lifetime = AbortSignal.any([controller.signal, accountScope.lifetime.signal, signal]);
+      const owner = accountScope.workspace?.owner ?? null;
+      const uri = project.folderBot ? project.uri : vscode.Uri.file(project.folderPath).toString();
+      const target = await resolveCredentialTarget({ uri, projectId: project.id, entryId: project.entryId });
+      if (!target || target === 'untrusted' || owner !== credentialOwner() || lifetime.aborted) return;
+      const workdir = !project.folderBot && project.assistant?.workdir;
+      await showWebCredentials(workdir ? { ...target, scope: { ...target.scope, workdir }, recheck: async () => {
+        try { assertAssistantWorkspace(project.assistant!); }
+        catch { return false; }
+        return await credentialFolderTrusted(workdir) && await target.recheck();
+      } } : target, owner, lifetime);
+    } : undefined,
     inspectAssistant: async (target, folders) => {
       assertAvailable();
       const assistant = { standalone: true, workdir: target.folderPath, roots: [target, ...folders.filter(folder => folder.uri !== target.uri)] };

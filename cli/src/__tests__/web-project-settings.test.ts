@@ -125,6 +125,24 @@ it.each(['en', 'zh-CN'] as const)('places Bot management in the details and leav
   expect(panel('overview')).toBe(overview); expect(overview.scrollTop).toBe(42); expect(declarations.open).toBe(false);
 });
 
+it('uses the paired browser host for the credential button without sending a project path or using the native action', () => {
+  const parent = { postMessage: vi.fn() };
+  vi.stubGlobal('parent', parent);
+  document.getElementById('project-information-dialog')!.remove();
+  dialogs = new ConversationTools({ credentials: { available: () => true, open: openCredentials } });
+  const message = new MessageEvent('message', { origin: 'https://studio.example' });
+  Object.defineProperties(message, {
+    source: { value: parent }, data: { value: { type: 'workflow-host', projectDetails: { version: 1, revision: 'current', localUsage: false, webCredentials: true } } },
+  });
+  window.dispatchEvent(message);
+  dialogs.projectInfo(project);
+  const trigger = click('Credential management', panel('overview'));
+  expect(parent.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'workflow-bot-credentials', version: 1, revision: 'current' }, 'https://studio.example');
+  expect(openCredentials).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(trigger);
+  expect(dialogs.open).toBe(true);
+});
+
 it('preserves configuration drafts, tool search and section scroll while navigating', async () => {
   dialogs.projectInfo(project, 'configurations');
   emit({ type: 'project-configuration-result', requestId: host.postMessage.mock.calls.at(-1)![0].requestId, value: state }); await settle();

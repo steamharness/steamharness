@@ -89,7 +89,8 @@ export interface Launcher {
   inspect(paths: string[], options?: { validationDetails?: boolean; signal?: AbortSignal }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   readSidebarEntries?(directory: string): Promise<SidebarProjectEntry[]>;
   readLibraryActivity?(projects: unknown): Promise<string[]>;
-  readBotCredentialList?(target: unknown): Promise<import('./bot-credential-list').BotCredentialListResult>;
+  openBotCredentials?(target: unknown, owner: unknown): Promise<void>;
+  openWebProjectCredentials?(project: Project, signal: AbortSignal): Promise<void>;
   readProjectUsage?(input: unknown): Promise<ProjectUsageSnapshot | undefined> | undefined;
   openHostedSidebar?: OpenHostedSidebar;
   previewWeb?: (url: string, kind: 'project' | 'hosted') => Promise<{ url: URL; mount: string; dispose(): Promise<void> }>;

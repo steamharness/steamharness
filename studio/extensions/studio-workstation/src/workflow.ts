@@ -262,7 +262,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const usageBinding = bindProjectUsage(panel.webview, {
         uri: project.folderBot ? project.uri : workingDirectory.toString(),
         identity: [project.id, project.distribution].join(':'), managed: !!project.folderBot,
-      }, () => !closed && projectAvailable(project), launcher.readProjectUsage);
+      }, () => !closed && projectAvailable(project), launcher.readProjectUsage,
+      launcher.openWebProjectCredentials && project.projectType === 'bot' && !project.folderBot?.background ? signal => launcher.openWebProjectCredentials!(project, signal)
+        .catch(() => { void vscode.window.showWarningMessage(t('System-protected credential storage is unavailable. No credential was saved.')); }) : undefined);
       const pickerBinding = bindProjectPathPicker(panel.webview, workingDirectory);
       const localFilePaths = !vscode.env.remoteName && !launcher.previewWeb;
       const pathOpenBinding = bindProjectPathOpen(panel.webview, workingDirectory, localFilePaths && vscode.env.uiKind === vscode.UIKind.Desktop);

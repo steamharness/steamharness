@@ -8,6 +8,10 @@ const codicons = fileURLToPath(new URL('../node_modules/@vscode/codicons/dist/co
 const bundle = await build({ stdin: { resolveDir: kernel, sourcefile: 'usage-fixture.ts', contents: `
   export { StudioStartView } from './src/vs/workbench/browser/parts/editor/studioStart.ts';
   export { StudioLaunchpadView } from './src/vs/workbench/browser/studioLaunchpadView.ts';
+  export { StudioWebBotCredentials } from './src/vs/workbench/browser/studioWebBotCredentials.ts';
+  export { StudioWebSecretStorageProvider } from './src/vs/workbench/services/secrets/browser/studioWebSecretStorageProvider.ts';
+  export { CommandsRegistry } from './src/vs/platform/commands/common/commands.ts';
+  export { Event } from './src/vs/base/common/event.ts';
   export { projectUsageBridge } from './src/vs/workbench/browser/studioProjectUsage.ts';
   export { InMemoryStorageService } from './src/vs/platform/storage/common/storage.ts';
   import ${JSON.stringify(codicons)};
@@ -45,7 +49,7 @@ try {
     await page.addStyleTag({ content: styles });
     await page.addScriptTag({ content: script });
     await page.evaluate(() => {
-      const { StudioLaunchpadView, StudioStartView, projectUsageBridge, InMemoryStorageService } = window.usageFixture;
+      const { StudioLaunchpadView, StudioStartView, StudioWebBotCredentials, StudioWebSecretStorageProvider, CommandsRegistry, Event, projectUsageBridge, InMemoryStorageService } = window.usageFixture;
       const projects = ['Aggregate', 'Other'].map(name => ({ name, kind: 'folder', uri: `file:///${name}`, path: `/${name}`, distribution: 'source',
         projectId: name, version: '1.2.3', entries: [{ entryId: 'agent', type: 'bot', name: 'Agent', primary: true }] }));
       const assistant = { name: 'Project Assistant', kind: 'folder', uri: 'file:///Assistant', path: '/Assistant', distribution: 'release', builtin: true,
@@ -138,14 +142,27 @@ try {
             ['export', zh ? '导出模板…' : 'Export template…', 'export'], ['import', zh ? '导入模板…' : 'Import template…', 'cloud-upload'],
           ] : [['contact', zh ? '添加到 IM 通讯录' : 'Add to IM contacts', 'comment-discussion']])
             .map(([id, label, icon]) => ({ id, label, icon })) : undefined,
-          readBotCredentials: async (project, entryId) => {
+          openBotCredentials: (project, entryId) => {
             requests.push([project.uri, entryId]);
-            return { status: 'ok', rows: [{ name: 'fixture-credential-' + 'long-'.repeat(8), type: zh ? '结构化凭据' : 'Structured credential' }] };
+            if (window.useWebCredentials) CommandsRegistry.getCommand('studio.internalShowWebBotCredentials').handler(undefined, crypto.randomUUID(), project.name);
           },
         });
         const parent = document.createElement('dialog'); parent.id = 'fixture-project-details'; parent.setAttribute('aria-label', 'Project details');
         parent.style.cssText = 'position:fixed; inset:0; margin:0; padding:0; border:0; width:100vw; height:100dvh; max-width:none; max-height:none';
         parent.append(library.element); document.getElementById('launchpad').append(parent); parent.showModal();
+        const prefix = 'web-bot-credentials:v1:' + '1'.repeat(64) + ':';
+        const vault = new StudioWebSecretStorageProvider('/credential-fixture');
+        window.credentialActions = [];
+        window.readFixtureCredential = alias => vault.get(`${prefix}password:${alias}`);
+        new StudioWebBotCredentials('fixture', { mainContainer: document.querySelector('.monaco-workbench') }, { async executeCommand(command, id, ...args) {
+          if (args.length) throw new Error('Credential values or extra arguments crossed the command bridge');
+          if (command === 'studio.internalCloseWebBotCredentials') return;
+          if (command !== 'studio.internalWebBotCredentialScope') throw new Error('Unexpected credential command');
+          return prefix;
+        } }, { onDidChangeTrust: Event.None, onDidChangeTrustedFolders: Event.None, isWorkspaceTrusted: () => true }, {}, {
+          type: 'persisted', keys: () => vault.keys(), set: async (key, value) => { window.credentialActions.push(['set', value.length]); await vault.set(key, value); },
+          delete: async key => { window.credentialActions.push(['delete']); await vault.delete(key); },
+        });
         library.update({ ...state, platform: true, account: { signedIn: true }, recent: [folderBot], builtinProjects: [assistant] });
         library.select('library', assistant.uri);
         window.showManagedActions = () => library.select('library', folderBot.uri);
@@ -243,15 +260,36 @@ try {
     const credentialButton = management.getByRole('button', { name: credentialTitle, exact: true });
     assert.equal(await page.evaluate(() => window.credentialRequests.length), 0);
     await credentialButton.click();
-    const credentialDialog = page.getByRole('dialog', { name: credentialTitle, exact: true });
-    const credentials = credentialDialog.locator('.lp-bot-credential-list');
-    await credentials.getByRole('cell', { name: 'fixture-credential-' + 'long-'.repeat(8), exact: true }).waitFor();
-    assert.deepEqual(await credentials.getByRole('columnheader').allTextContents(), zh ? ['别名', '类型'] : ['Alias', 'Type']);
-    assert.ok(await credentials.getByRole('cell', { name: zh ? '结构化凭据' : 'Structured credential', exact: true }).isVisible());
-    assert.equal(await credentials.locator('button,input,textarea').count(), 0);
+    assert.equal(await page.locator('.lp-bot-modal, .studio-web-bot-credentials').count(), 0);
     assert.deepEqual(await page.evaluate(() => window.credentialRequests), [['file:///Assistant', 'main']]);
+    await page.evaluate(() => { window.useWebCredentials = true; });
+    await credentialButton.click();
+    const credentialDialog = page.getByRole('dialog', { name: credentialTitle, exact: true });
+    const alias = 'fixture-credential-' + 'long-'.repeat(8);
+    await credentialDialog.getByRole('button', { name: zh ? '添加凭据' : 'Add credential' }).click();
+    await credentialDialog.getByLabel(zh ? '别名' : 'Alias').fill(alias);
+    await credentialDialog.getByLabel(zh ? '类型' : 'Type').selectOption('password');
+    const secret = credentialDialog.locator('input[type=password]');
+    await secret.fill('fixture-value');
+    await credentialDialog.getByRole('button', { name: zh ? '保存' : 'Save', exact: true }).click();
+    await credentialDialog.getByRole('cell', { name: alias, exact: true }).waitFor();
+    assert.equal(await page.evaluate(alias => window.readFixtureCredential(alias), alias), 'fixture-value');
+    assert.deepEqual(await credentialDialog.getByRole('columnheader').allTextContents(), zh ? ['别名', '类型', '操作'] : ['Alias', 'Type', 'Actions']);
     await page.setViewportSize({ width: 410, height: 840 });
-    assert.equal(await credentials.evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1), true);
+    assert.equal(await credentialDialog.locator('.studio-credentials-content').evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1), true);
+    await credentialDialog.getByRole('button', { name: `${zh ? '替换凭据' : 'Replace credential'}: ${alias}`, exact: true }).click();
+    assert.equal(await secret.inputValue(), '');
+    await secret.fill('fixture-replacement');
+    await credentialDialog.getByRole('button', { name: zh ? '保存' : 'Save', exact: true }).click();
+    const removeCredential = credentialDialog.getByRole('button', { name: `${zh ? '删除凭据' : 'Delete credential'}: ${alias}`, exact: true });
+    await removeCredential.waitFor();
+    assert.equal(await page.evaluate(alias => window.readFixtureCredential(alias), alias), 'fixture-replacement');
+    await removeCredential.click();
+    await credentialDialog.getByRole('button', { name: zh ? '删除凭据' : 'Delete credential', exact: true }).click();
+    await credentialDialog.getByText(zh ? '暂无已保存的凭据。' : 'No saved credentials.', { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.credentialActions), [
+      ['set', 'fixture-value'.length], ['set', 'fixture-replacement'.length], ['delete'],
+    ]);
     await page.keyboard.press('Escape');
     await credentialDialog.waitFor({ state: 'detached' });
     assert.equal(await credentialButton.evaluate(button => button === document.activeElement), true);
@@ -317,6 +355,6 @@ try {
     }
     assert.deepEqual(errors, []);
     await page.close();
-    console.log(`Project usage and credential list UI passed (${language}, ${light ? 'light' : 'dark'}, wide and 410px)`);
+    console.log(`Project usage and credential management UI passed (${language}, ${light ? 'light' : 'dark'}, wide and 410px)`);
   }
 } finally { await browser.close(); }

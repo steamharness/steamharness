@@ -217,8 +217,8 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   if (launcher.readProjectUsage) {
     context.subscriptions.push(vscode.commands.registerCommand('studio.internalProjectUsage', launcher.readProjectUsage));
   }
-  if (launcher.readBotCredentialList) {
-    context.subscriptions.push(vscode.commands.registerCommand('studio.internalReadBotCredentialList', launcher.readBotCredentialList));
+  if (launcher.openBotCredentials) {
+    context.subscriptions.push(vscode.commands.registerCommand('studio.internalOpenBotCredentials', launcher.openBotCredentials));
   }
   register('studio.refreshProjects', async () => { await recent.reconcile(); icons.refresh(); recent.refresh(); });
   register('studio.newFile', async () => {

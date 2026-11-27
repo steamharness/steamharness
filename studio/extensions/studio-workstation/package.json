@@ -28,7 +28,7 @@
     "onCommand:studio.internalStartPageVisibility",
     "onCommand:studio.internalRunProjectEntry",
     "onCommand:studio.internalProjectUsage",
-    "onCommand:studio.internalReadBotCredentialList"
+    "onCommand:studio.internalOpenBotCredentials"
   ],
   "extensionKind": [
     "workspace"

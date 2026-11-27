@@ -39,3 +39,25 @@ test('the embedded usage bridge is bound to its own project and cancels stale re
   request('runtime'); await Promise.resolve(); binding.dispose();
   assert.deepEqual(cancelled, [started[0].id, started[2].id]);
 });
+
+test('opening the browser vault carries no project or credential data from the iframe', () => {
+  const signals = [];
+  let active = true;
+  const binding = bindProjectUsage({ postMessage: () => assert.fail('Unexpected reply to the project frame') },
+    { uri: 'file:///project', identity: 'known:release', managed: false }, () => active, undefined, async signal => signals.push(signal));
+  const frame = binding.frame();
+  assert.equal(frame.webCredentials, true);
+  const message = { type: 'workflow-bot-credentials', version: 1, revision: frame.revision };
+  binding.receive({ ...message, revision: 'stale' });
+  assert.equal(signals.length, 0);
+  binding.receive(message);
+  assert.equal(signals.length, 1);
+  assert.equal(signals[0].aborted, false);
+  binding.frame();
+  assert.equal(signals[0].aborted, true);
+  binding.receive(message);
+  active = false;
+  binding.receive({ ...message, revision: binding.frame().revision });
+  assert.equal(signals.length, 1);
+  binding.dispose();
+});

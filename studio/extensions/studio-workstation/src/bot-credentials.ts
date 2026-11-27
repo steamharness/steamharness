@@ -14,6 +14,10 @@ import { readUserSettings } from './user-settings';
 type CredentialInputOptions = Pick<vscode.InputBoxOptions, 'title' | 'prompt' | 'placeHolder' | 'password' | 'ignoreFocusOut'> & {
   validateInput(value: string): string | undefined;
 };
+type CredentialProject = Pick<Project, 'id' | 'folderPath'> & {
+  assistant?: Pick<NonNullable<Project['assistant']>, 'workdir'>;
+  folderBot?: Pick<NonNullable<Project['folderBot']>, 'id' | 'directory' | 'permissionCeiling'>;
+};
 
 /** A cleared field is neutral while editing, but is still required on accept. */
 function showCredentialInput(options: CredentialInputOptions, token: vscode.CancellationToken): Promise<string | undefined> {
@@ -61,8 +65,9 @@ export function createBotCredentialInteraction(context: vscode.ExtensionContext,
   // Memory only, fenced by the Studio CLI host lease and the current vault contents.
   const approvals = new WeakMap<AbortSignal, Map<string, string>>();
   const fingerprintKey = randomBytes(32);
-  const canPersist = () => canAccessBotCredentialStorage(context);
-  return async (project: Project, entryId: string, label: string, request: BotCredentialAction, signal: AbortSignal, lifetime?: AbortSignal): Promise<BotCredentialResult> => {
+  return async (project: CredentialProject, entryId: string, label: string, request: BotCredentialAction, signal: AbortSignal, lifetime?: AbortSignal,
+    authorize?: () => Promise<boolean>): Promise<BotCredentialResult> => {
+    const canPersist = async () => await canAccessBotCredentialStorage(context) && (!authorize || await authorize());
     const reuse = request.action === 'use' && request.approval?.mode === 'reuse';
     const auto = request.action === 'use' && request.approval?.mode === 'auto';
     const metadata = request.action === 'use' && request.use.connector === 'host' && request.use.name === undefined;

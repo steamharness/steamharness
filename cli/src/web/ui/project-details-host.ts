@@ -1,6 +1,6 @@
 import { isProjectUsageSnapshot, projectUsageKey, type ProjectUsageBridge, type ProjectUsageSnapshot, type ProjectUsageSnapshots, type UsagePart } from '@steamharness/project-info/local-usage';
 
-interface DetailsHost { version: 1; revision: string; localUsage: boolean }
+interface DetailsHost { version: 1; revision: string; localUsage: boolean; webCredentials?: boolean }
 interface Pending {
   part: UsagePart;
   resolve(snapshot?: ProjectUsageSnapshot): void;
@@ -52,5 +52,14 @@ export function projectDetailsHost(copyText?: (text: string) => Promise<boolean>
     });
     window.addEventListener('pagehide', () => { for (const id of pending.keys()) bridge.cancel(id); });
   }
-  return { get studio() { return !!current; }, get usage() { return current?.localUsage ? bridge : undefined; } };
+  return {
+    get studio() { return !!current; },
+    get usage() { return current?.localUsage ? bridge : undefined; },
+    get webCredentials() { return current?.webCredentials === true; },
+    openWebCredentials() {
+      if (current?.webCredentials === true) {
+        window.parent.postMessage({ type: 'workflow-bot-credentials', version: 1, revision: current.revision }, origin === 'null' ? '*' : origin);
+      }
+    },
+  };
 }

@@ -121,7 +121,9 @@ export class ConversationTools {
     const { group, controls } = projectDetailActionGroup(document, projectBotManagementLabel(label), 'h4');
     const entry = project.entries.filter(entry => entry.type === 'bot').length > 1 ? project.name : undefined;
     for (const kind of ['artifacts', 'memory', 'credentials'] as const) {
-      const feature = this.settings[kind];
+      const feature = kind === 'credentials' && this.detailsHost?.webCredentials ? {
+        available: () => this.detailsHost?.webCredentials === true, open: () => this.detailsHost?.openWebCredentials(),
+      } : this.settings[kind];
       if (!feature?.available()) continue;
       const [title, icon] = projectBotAction(kind, label);
       const open = projectDetailButton(document, entry ? `${title} · ${entry}` : title, icon, button => {

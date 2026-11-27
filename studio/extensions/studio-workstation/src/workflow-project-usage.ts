@@ -6,8 +6,9 @@ type UsageReader = (input: { id: string; cancel: true } | {
 }) => Promise<ProjectUsageSnapshot | undefined> | undefined;
 
 export function bindProjectUsage(webview: Pick<Webview, 'postMessage'>, target: { uri: string; identity: string; managed: boolean },
-  active: () => boolean, read?: UsageReader) {
+  active: () => boolean, read?: UsageReader, openCredentials?: (signal: AbortSignal) => Promise<void>) {
   let revision = '', disposed = false;
+  let credentialView: AbortController | undefined;
   const pending = new Map<string, { id: string; part: UsagePart }>();
   const cancel = (requestId: string): void => {
     const request = pending.get(requestId);
@@ -17,10 +18,17 @@ export function bindProjectUsage(webview: Pick<Webview, 'postMessage'>, target: 
   return {
     frame() {
       clear(); revision = globalThis.crypto.randomUUID();
-      return { version: 1 as const, revision, localUsage: !!read };
+      credentialView?.abort(); credentialView = openCredentials ? new AbortController() : undefined;
+      return { version: 1 as const, revision, localUsage: !!read, ...(credentialView && { webCredentials: true }) };
     },
     clear,
     receive(message: Record<string, unknown> | undefined): boolean {
+      if (message?.type === 'workflow-bot-credentials') {
+        if (!disposed && credentialView && openCredentials && active() && message.version === 1 && message.revision === revision) {
+          void openCredentials(credentialView.signal).catch(() => undefined);
+        }
+        return true;
+      }
       if (message?.type !== 'workflow-project-usage') return false;
       const { requestId, part } = message;
       if (disposed || !read || message.version !== 1 || !revision || message.revision !== revision
@@ -38,6 +46,6 @@ export function bindProjectUsage(webview: Pick<Webview, 'postMessage'>, target: 
       void Promise.resolve().then(() => pending.get(requestId) === request ? read({ ...target, ...request, refresh: true }) : undefined).then(complete, () => complete());
       return true;
     },
-    dispose() { disposed = true; clear(); },
+    dispose() { disposed = true; credentialView?.abort(); clear(); },
   };
 }

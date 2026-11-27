@@ -1,6 +1,6 @@
 export interface ProjectWindowChrome { active: boolean; projectUri?: string; height: number; left: number; right: number; revision: number }
 interface ConversationSelection { id: string; revision: string }
-interface ProjectFrameDetails { version: 1; revision: string; localUsage: boolean }
+interface ProjectFrameDetails { version: 1; revision: string; localUsage: boolean; webCredentials?: boolean }
 const projectConversationPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 export const projectConversationId = (value: unknown): value is string => typeof value === 'string' && projectConversationPattern.test(value);
 
@@ -59,6 +59,11 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
           if(message?.type==='workflow-project-usage'){
             const {type,version,revision,requestId,part,cancel}=message;
             if(projectDetails?.localUsage===true&&version===1&&revision===projectDetails.revision)vscode.postMessage({type,version,revision,requestId,part,cancel});
+            return;
+          }
+          if(message?.type==='workflow-bot-credentials'){
+            if(projectDetails?.webCredentials===true&&message.version===1&&message.revision===projectDetails.revision&&document.activeElement===frame)
+              vscode.postMessage({type:message.type,version:1,revision:projectDetails.revision});
             return;
           }
           if(message?.type==='workflow-keyboard'&&message.version===1&&document.activeElement===frame){
