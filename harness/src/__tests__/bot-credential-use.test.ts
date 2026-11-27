@@ -6,21 +6,19 @@ import type { NodeContext, UserInputContext } from "../types/context";
 import { withUserSettings } from "../user-settings";
 import { createProjectToolPermissionContext } from "../tool-permissions";
 
-const input = { name: "my-dns", connector: "alibaba-cloud-dns", operation: "list-records",
-  fields: { accessKeyId: "user-key-name", accessKeySecret: "my.secret", securityToken: "my_token" }, domain: "Example.COM" };
+const input = { name: "fixture-token", connector: "host", operation: "fixture.inspect", args: { target: "example.test", field: "token" } };
+const advertised = [{ id: input.operation, description: "Inspect the fixture using a saved credential." }];
 
-test("credential use arguments contain only an alias, field mappings and a bounded read-only operation", () => {
+test("credential use accepts only generic host operations and bounded argument objects", () => {
   const use = parseBotCredentialUse(input);
-  assert.deepEqual(use, { ...input, domain: "example.com", page: 1 });
-  for (const value of [{ ...input, url: "https://example.test" }, { ...input, operation: "delete" }, { ...input, domain: "user@example.test" },
-    { ...input, operation: "list-domains" }, { ...input, page: 1001 }, { ...input, approval: { mode: "auto" } }, { ...input, fields: { ...input.fields, value: "fixture" } },
-    { ...input, fields: { accessKeyId: "same", accessKeySecret: "same" } }, { ...input, fields: { ...input.fields, securityToken: "__proto__" } }]) {
+  assert.deepEqual(use, input);
+  for (const value of [{ ...input, url: "https://example.test" }, { ...input, operation: "delete" }, { ...input, connector: "alibaba-cloud-dns" },
+    { ...input, operation: "list-domains" }, { ...input, approval: { mode: "auto" } }, { ...input, args: JSON.parse('{"__proto__":{}}') }]) {
     assert.throws(() => parseBotCredentialUse(value));
   }
-  const result = { status: "ok", page: 1, total: 1, rows: [{ name: "@", type: "A", value: "192.0.2.1", ttl: 600 }] };
+  const result = { status: "ok", data: { items: ["fixture-user"] } };
   assert.deepEqual(parseBotCredentialUseResult(result, use), result);
-  for (const reply of [{ ...result, page: 2 }, { ...result, rows: [{ ...result.rows[0], authorization: "fixture" }] },
-    { status: "denied", message: "no raw errors" }, { ...result, rows: [{ domain: "example.com" }] }]) {
+  for (const reply of [{ ...result, page: 2 }, { ...result, authorization: "fixture" }, { status: "denied", message: "no raw errors" }]) {
     assert.equal(parseBotCredentialUseResult(reply, use), undefined);
   }
 });
@@ -32,7 +30,7 @@ test("saved credential queries use the stricter user or Agent permission policy"
     assert.equal(readBotCredentialUsePolicy({ ...request, metadata: { type: "fixture", title: "Fixture", version: "1.0.0", credentialUsePolicy: "auto" } }), undefined);
     return { status: "declined" };
   };
-  const context = { userInput: { waitForCredentialUse } } as NodeContext;
+  const context = { userInput: { waitForCredentialUse, credentialUseOperations: advertised } } as unknown as NodeContext;
   for (const [user, agent, expected] of [
     ["read-only", "auto", undefined], ["auto", "read-only", undefined], ["workspace", "auto", "workspace"],
     ["auto", "workspace", "workspace"], ["workspace", "workspace", "workspace"], ["auto", "auto", "auto"],
@@ -49,7 +47,7 @@ test("saved credential queries use the stricter user or Agent permission policy"
 });
 
 test("credential use is host-only, non-replayable, and an invalid receipt is not shown to the model", async () => {
-  const context = (waitForCredentialUse?: UserInputContext["waitForCredentialUse"]) => ({ userInput: { waitForCredentialUse } } as NodeContext);
+  const context = (waitForCredentialUse?: UserInputContext["waitForCredentialUse"]) => ({ userInput: { waitForCredentialUse, credentialUseOperations: advertised } } as unknown as NodeContext);
   assert.equal(createBotCredentialUseTool(context()), undefined);
   const tool = createBotCredentialUseTool(context(async request => {
     assert.deepEqual(request.params, []);
@@ -85,11 +83,10 @@ test("a new host operation needs no Core connector, and is only offered for the 
     return receipt;
   };
   const context = { userInput: { waitForCredentialUse } } as NodeContext;
-  const legacy = createBotCredentialUseTool(context)!;
-  assert.doesNotMatch(JSON.stringify(legacy.parameters), /fixture.inspect/);
-  await assert.rejects(legacy.execute("test", use), /not supported/);
+  assert.equal(createBotCredentialUseTool(context), undefined);
   const modern = createBotCredentialUseTool({ ...context, userInput: { ...context.userInput!, credentialUseOperations: catalog } })!;
   assert.match(JSON.stringify(modern.parameters), /fixture\.inspect/);
+  assert.doesNotMatch(JSON.stringify(modern.parameters), /alibaba-cloud-dns|list-domains/);
   await assert.rejects(modern.execute("test", { ...use, operation: "fixture.unregistered" }), /not supported/);
   assert.deepEqual((await modern.execute("test", use)).content, [{ type: "text", text: JSON.stringify(receipt) }]);
   assert.equal(calls, 1);

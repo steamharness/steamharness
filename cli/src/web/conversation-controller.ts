@@ -7,7 +7,6 @@ import { conversationPrompt, isInlineConversationImage, type PathReference } fro
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
 import { credentialStatus, credentialUnavailable, credentialUseSupported, parseBotCredentialUse, parseBotCredentialUseResult, type BotCredentialApproval, type BotCredentialHost } from './bot-credential-host';
-import { credentialResultCard } from './bot-credential-result';
 import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName, conversationMessageRequestId, archivedConversation,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
@@ -1349,24 +1348,32 @@ export class ConversationController {
     const runId = entry.activeRunId;
     if (runId && this.credentialPrompts.has(JSON.stringify([runId, request.requestId]))) return;
     const task = runId && this.tasks.get(runId);
+    // Older workers may report a retired credential operation, but cannot execute it.
+    if (request.credentialUse && request.credentialUse.connector !== 'host') return;
     if (entry.origin === 'host' || !request.credentialUse || !runId || !task || anchor.runId !== runId) { this.bindUserInput(entry, anchor, request); return; }
-    const policy = this.credentialUsePolicy(request, task);
-    const local = this.options.credentialAutomaticHost && this.localCredentialTurn(entry, request, runId);
-    const automatic = policy === 'auto' && local;
-    const metadata = policy !== 'read-only' && local && request.credentialUse.connector === 'host' && request.credentialUse.name === undefined;
-    const scopeId = policy !== 'read-only' && !automatic && !metadata && this.conversationCredentialScope(entry, request, runId, false);
-    const host: BotCredentialHost | undefined = policy === 'read-only' ? async () => ({ status: 'failed' })
-      : automatic || metadata ? this.options.credentialAutomaticHost : scopeId ? this.options.credentialConversationHost : undefined;
-    if (!host) { this.bindUserInput(entry, anchor, request); return; }
     const target = this.bindUserInput(entry, anchor, request, false);
-    const fallback = () => {
-      if (entry.activeRunId !== runId || !task || task.cancelled || this.disposed || this.tasks.get(runId) !== task || this.removing.has(entry.id)
-        || target.status === 'aborted' || target.status === 'failed' || target.status === 'success' || target.submittingInput || target.pendingInput) return;
-      this.bindUserInput(entry, anchor, request); this.changed();
-    };
-    const approval: BotCredentialApproval | undefined = automatic ? { mode: 'auto' } : scopeId ? { scopeId, mode: 'reuse' } : undefined;
-    void this.resolveCredential(target, request, host, entry, approval, true)
-      .then(applied => { if (!applied) fallback(); }, fallback);
+    const resolve = (host: BotCredentialHost, approval?: BotCredentialApproval) => this.resolveCredential(target, request, host, entry, approval, true);
+    const unavailable: BotCredentialHost = async () => ({ status: 'failed', reason: 'storage-unavailable' });
+    const { credentialAutomaticHost, credentialConversationHost } = this.options;
+    void (async () => {
+      if (!this.localCredentialTurn(entry, request, runId)) {
+        await resolve(async () => ({ status: 'denied', reason: 'blocked-policy' })); return;
+      }
+      const host = credentialConversationHost ?? credentialAutomaticHost;
+      const policy = this.credentialUsePolicy(request, task);
+      if (policy === 'read-only' || !host) { await resolve(unavailable); return; }
+      if (request.credentialUse!.name === undefined) { await resolve(host); return; }
+      if (policy === 'auto') {
+        if (!credentialAutomaticHost) { await resolve(unavailable); return; }
+        if (await resolve(credentialAutomaticHost, { mode: 'auto' })) return;
+      }
+      const scope = this.conversationCredentialScope(entry, request, runId, false);
+      if (scope && await resolve(host, { scopeId: scope, mode: 'reuse' })) return;
+      const scopeId = this.conversationCredentialScope(entry, request, runId, true);
+      await resolve(host, scopeId ? { scopeId, mode: 'prompt' } : undefined);
+    })().catch(() => {
+      if (!this.disposed && !task.cancelled && this.tasks.get(runId) === task && !target.pendingInput) this.runtime.cancel(runId);
+    });
   }
   async resume(messageId: string, requestId: string, values: Record<string, unknown>, entry = this.current): Promise<void> {
     this.assertCurrentEngine(entry);
@@ -1404,9 +1411,8 @@ export class ConversationController {
   async captureCredential(messageId: string, requestId: string, host: BotCredentialHost, entry: ConversationSession): Promise<void> {
     const answer = entry.messages.find(message => message.id === messageId && message.pendingInput?.requestId === requestId);
     const request = answer?.pendingInput;
-    if (!request || !answer || !entry.activeRunId || answer.runId !== entry.activeRunId) throw credentialUnavailable();
-    const scopeId = this.conversationCredentialScope(entry, request, entry.activeRunId, true);
-    await this.resolveCredential(answer, request, host, entry, scopeId ? { scopeId, mode: 'prompt' } : undefined);
+    if (!request?.credential || !answer || !entry.activeRunId || answer.runId !== entry.activeRunId) throw credentialUnavailable();
+    await this.resolveCredential(answer, request, host, entry);
   }
 
   /** Start at most one native interaction without blocking the private host control pipe. */
@@ -1465,13 +1471,13 @@ export class ConversationController {
       const operation = use && parseBotCredentialUse(use);
       const policy = operation && this.credentialUsePolicy(request, task);
       let reply: Awaited<ReturnType<BotCredentialHost>>;
-      if (policy === 'read-only') reply = { status: 'failed', ...(operation?.connector === 'host' && { reason: 'blocked-policy' }) };
+      if (policy === 'read-only') reply = { status: 'failed', reason: 'blocked-policy' };
       else if (approval?.mode === 'auto' && policy !== 'auto') return false;
       else {
         try { reply = await host(this.project.entryId, operation ? { action: 'use', use: operation, ...(approval && { approval }) } : { action: 'capture', slot: parseBotCredentialSlot(slot) }, abort.signal); }
         catch (error) {
-          if (approval?.mode !== 'auto') throw error;
-          reply = { status: 'failed', ...(operation?.connector === 'host' && { reason: 'storage-unavailable' }) };
+          if (!operation) throw error;
+          reply = { status: 'failed', reason: 'storage-unavailable' };
         }
       }
       if (abort.signal.aborted || task.cancelled || this.disposed || this.tasks.get(runId) !== task || entry.activeRunId !== runId
@@ -1479,18 +1485,15 @@ export class ConversationController {
       if ((approval?.mode === 'auto' || approval?.mode === 'reuse') && reply === 'approval-required') {
         if (approval.mode === 'reuse' || this.credentialUsePolicy(request, task) !== 'auto') return false;
         // Older hosts may ask for interaction on an unsupported operation; Auto Approve does not open a prompt.
-        reply = { status: 'denied', ...(operation?.connector === 'host' && { reason: 'blocked-policy' }) };
+        reply = { status: 'denied', reason: 'blocked-policy' };
       }
       const queryResult = operation && parseBotCredentialUseResult(reply, operation);
       const receipt = operation ? queryResult : credentialStatus(reply) ? { status: reply } : undefined;
       if (!receipt) throw credentialUnavailable();
-      const resolved = { requestId, nodeName: request.nodeName,
-        values: queryResult && queryResult.status !== 'ok' ? queryResult : { status: receipt.status }, submittedAt: new Date().toISOString(), request };
-      const submitting = operation && queryResult ? { ...resolved, resultCard: credentialResultCard(operation, queryResult.status, queryResult),
-        precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) } : resolved;
-      answer.submittingInput = submitting; this.changed();
-      try { await this.runtime.resolveLiveInput(runId, { ...resolved, values: receipt }); }
-      catch (error) { if (answer.submittingInput === submitting) delete answer.submittingInput; this.changed(); throw error; }
+      const resolved = { requestId, nodeName: request.nodeName, values: receipt, submittedAt: new Date().toISOString(), request };
+      if (!operation) { answer.submittingInput = resolved; this.changed(); }
+      try { await this.runtime.resolveLiveInput(runId, resolved); }
+      catch (error) { if (answer.submittingInput === resolved) { delete answer.submittingInput; this.changed(); } throw error; }
       return true;
     } finally { this.credentialPrompts.delete(promptKey); }
   }

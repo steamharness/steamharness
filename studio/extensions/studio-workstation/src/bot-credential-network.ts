@@ -32,10 +32,10 @@ export async function resolveCredentialAddress(hostname: string, signal: AbortSi
 }
 
 /** Reject common reflections, including keys and encoded authorization data. */
-export function containsCredentialValue(data: BotCredentialQueryData, values: string[]): boolean {
+export function containsCredentialValue(data: BotCredentialQueryData, values: string[], minSubstringLength = 4): boolean {
   const needles = [...new Set(values.flatMap(value => value ? [value, Buffer.from(value).toString('base64'), Buffer.from(value).toString('base64url'),
-    new URLSearchParams({ v: value }).toString().slice(2)] : []))];
-  const match = (text: string) => needles.some(value => value.length < 4 ? text === value : text.includes(value));
+    new URLSearchParams({ v: value }).toString().slice(2), JSON.stringify(value).slice(1, -1)] : []))];
+  const match = (text: string) => needles.some(value => value.length < minSubstringLength ? text === value : text.includes(value));
   const check = (value: BotCredentialQueryData): boolean => {
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return match(String(value));
     if (Array.isArray(value)) return value.some(check);

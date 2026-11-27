@@ -1312,7 +1312,7 @@ function initialize(): void {
     if (signature !== view.extrasSignature) {
       view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false, message.references);
     }
-    if (!hostHistory() && message.pendingInput && view.prompt?.request.requestId !== message.pendingInput.requestId) {
+    if (!hostHistory() && message.pendingInput && !message.pendingInput.credentialUse && view.prompt?.request.requestId !== message.pendingInput.requestId) {
       const request = message.pendingInput;
       view.prompt?.root.remove(); view.prompt = new InputPrompt(request, {
         submit: (values) => post({ type: 'resume', messageId: message.id, requestId: request.requestId, values }),
@@ -1321,7 +1321,7 @@ function initialize(): void {
         files: (name) => post({ type: 'attach', messageId: message.id, requestId: message.pendingInput!.requestId, paramName: name, ...fileSelectionOptions(message.pendingInput!.params.find(field => field.name === name)) }),
       }); view.promptRoot.append(view.prompt.root);
       if (readOnly() || message.status === 'running') { view.prompt.setBusy(true); }
-    } else if (hostHistory() || !message.pendingInput) { view.prompt?.root.remove(); view.prompt = undefined; }
+    } else if (hostHistory() || !message.pendingInput || message.pendingInput.credentialUse) { view.prompt?.root.remove(); view.prompt = undefined; }
     else { view.prompt?.setBusy(readOnly() || message.status === 'running' || !!message.submittingInput, message.error ?? ''); }
   }
 

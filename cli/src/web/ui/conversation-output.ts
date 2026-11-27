@@ -100,7 +100,9 @@ export class ConversationOutput {
     const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && !isSilentAgentRetry(item) && (!this.options.composer || !isComposerOutputItem(item)));
     const cards = conversationResourceCards(items, projectId, entryId, conversationId, storageSource);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
-    const answers = [...new Map([...(message.resolvedInputs ?? []), ...(message.submittingInput ? [message.submittingInput] : [])].map((answer) => [answer.requestId, answer])).values()];
+    const answers = [...new Map([...(message.resolvedInputs ?? []), ...(message.submittingInput ? [message.submittingInput] : [])]
+      .filter(answer => !answer.request?.credentialUse && answer.nodeName !== 'bot-credential-use')
+      .map(answer => [answer.requestId, answer])).values()];
     const ordered: OutputEntry[] =
       (message.timers ?? []).map((timer) => ({ key: `timer:${timer.timerId}`, timer }));
     let remaining = items.map((item, index) => ({ key: item.id ?? String(index), item, card: cardByItem.get(item.id ?? String(index)) }));

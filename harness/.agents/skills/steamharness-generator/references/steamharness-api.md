@@ -1042,11 +1042,11 @@ Core 在模型请求前按当前输入提取关键词，静默检索最多 5 条
 
 保存工具只返回别名、类型和 `saved` / `existing` / `declined`，不表示已发起查询。支持凭据查询的本地 Studio Agent Bot 还提供 `bot_credentials_use`。用 `name` 引用当前范围内的凭据，普通宿主操作传 `connector: "host"`、宿主声明的 `operation` 和对应 `args`。操作目录由宿主提供，项目和模型不能注册。传别名、字段名和非机密目标，不传原值。
 
-Studio 提供 `https.get-json`（Bearer、Basic 或自定义请求头）以及 `ssh.authenticate` 和 `ssh.list-directory`（需要可信的服务端指纹）。既有阿里云 DNS 调用仍用 `connector: "alibaba-cloud-dns"`、`operation: "list-domains" | "list-records"` 和 `fields: { accessKeyId, accessKeySecret, securityToken? }`。`list-records` 另传 ASCII `domain`；`page` 从 1 开始，每页 20 条。
+Studio 提供通用的 `https.get-json`（Bearer、Basic 或自定义请求头）、`ssh.authenticate` 和 `ssh.list-directory`（需要可信的服务端指纹），以及受信任本地会话的 `command.run`。不再提供厂商专用的 DNS 操作。
 
-不清楚别名时用 `vault.list`，省略 `name`，只读取当前 Bot 的别名和类型。只读不提供凭据工具；工作区的查询支持「仅允许本次」和「本次对话允许」；自动批准直接执行宿主查询。Bot 不传审批模式或授权范围。
+不清楚别名时用 `vault.list`，省略 `name`，只读取当前 Bot 的别名和类型。取用及结果不插入聊天卡片；保存才需要安全输入。只读不提供凭据工具。工作区的授权在 Studio 原生窗口完成，自动批准直接执行允许的操作。Bot 不传审批模式或授权范围。
 
-优先使用宿主支持的查询操作；能用 `https.get-json` 完成的查询不应改走本地命令。自动批准模式不向任意进程交付凭据原值，请求会被拒绝，不弹审批。在支持的交互模式中，只有经过单次授权的 `command.run` 才能通过 `STEAMHARNESS_BOT_CREDENTIAL_FILE` 使用凭据。不要将原值放入聊天、普通表单、记忆或工具参数。
+使用本地 CLI 或 SDK 时调用 `command.run`，传 `args: {kind, program, argv, env}`。`env` 的键是子进程变量名，值为结构化凭据的字段名；单值凭据传 `true`。临时变量随本次子进程使用，原值不进入参数、聊天或记忆。命令工具必须已启用，工作区模式单次授权，自动批准不弹窗。客户端缺失时说明需要准备客户端，不要要求重新录入凭据。
 
 受信任 Bot 代码可以声明 `createUserInputNode({ params: [], credential: { name, kind } })`，也可以从 `resolveRequest` 返回 `credential`。必须省略默认值；节点在当前运行等待 Studio 的原生录入，`values` 只返回 `status`。不支持时直接报错，不使用普通表单，也不重放历史答案。
 

@@ -3,7 +3,7 @@ import type { BotCredentialHostResult, BotCredentialHostUse, BotCredentialUseOpe
 import type { BotCredentialSlot } from './bot-credential-vault';
 import { runBotCredentialHttpQuery, type StoredHttpCredential } from './bot-credential-http';
 import { runBotCredentialSshQuery } from './bot-credential-ssh';
-import { botCredentialCommandSupported, runBotCredentialCommand, type BotCredentialCommand } from './bot-credential-command';
+import { botCredentialFileSupported, credentialEnvName, runBotCredentialCommand, type BotCredentialCommand } from './bot-credential-command';
 import { t } from './localization';
 
 type TextKind = 'api-key' | 'password';
@@ -136,19 +136,30 @@ const scopedOperations: readonly RegistryEntry[] = [
       if (use.name !== undefined || !only(use.args, 'query') || query !== undefined && !text(query, 64)) throw invalid();
       return { list: true, ...(query && { query: query.toLowerCase() }) };
     } },
-  ...(botCredentialCommandSupported ? [{ id: 'command.run', requiresTool: 'bash',
-    description: 'Unavailable in Auto Approve. Use a host-managed query when offered. In an interactive run, pass name and args {kind,program,argv} for a command that needs explicit approval. The approved program can read the credential from the file descriptor path in STEAMHARNESS_BOT_CREDENTIAL_FILE; do not print, copy, or retain it.',
+  { id: 'command.run', requiresTool: 'bash',
+    description: 'Use a saved alias with a trusted local executable (an installed CLI or local SDK). Pass name and args {kind,program,argv,env}. Map child environment variables to saved field names, e.g. {APP_ID:"clientId",APP_SECRET:"clientSecret"}; for a single value use {APP_TOKEN:true}. Pass references, never values. This runs without a shell. Never print the environment or persist the secret. Requires an enabled command tool. If the executable is missing, report that separately from credential access.',
     prepare(use: BotCredentialHostUse): PreparedUse {
-      const { kind, program, argv } = use.args;
-      if (!use.name || !only(use.args, 'kind', 'program', 'argv')
+      const { kind, program, argv, env } = use.args;
+      if (!use.name || !only(use.args, 'kind', 'program', 'argv', 'env')
         || !text(program, 256) || program.startsWith('-') || !Array.isArray(argv) || argv.length > 48
         || !argv.every((value): value is string => typeof value === 'string' && value.length <= 2048 && !/[\u0000-\u001f\u007f]/u.test(value))) throw invalid();
       const slot: BotCredentialSlot = kind === 'access-key-pair' ? { name: use.name, kind } : parseBotCredentialSlot({ name: use.name, kind });
+      if (env === undefined && !botCredentialFileSupported) throw invalid();
       const command: BotCredentialCommand = { program, args: argv };
-      return { delivery: 'command', target: program, detail: t('Pass credential to local command: {0}', JSON.stringify(argv)),
+      if (env !== undefined) {
+        const mapping = record(env);
+        const entries = Object.entries(mapping ?? {});
+        if (!entries.length || entries.length > 16 || new Set(entries.map(([key]) => key.toUpperCase())).size !== entries.length
+          || !entries.every(([key]) => credentialEnvName(key))) throw invalid();
+        const structured = slot.kind === 'structured' || slot.kind === 'access-key-pair';
+        if (structured) fieldNames(...new Set(entries.map(([, field]) => field)));
+        else if (entries.some(([, field]) => field !== true)) throw invalid();
+        command.env = Object.fromEntries(entries) as NonNullable<BotCredentialCommand['env']>;
+      }
+      return { delivery: 'command', target: program, detail: t('Pass credential to local command: {0}', JSON.stringify(command.env ? { argv, env: command.env } : argv)),
         binding: { kind, ...command }, slots: [slot], run: ([value], signal, cwd) => value === undefined
           ? Promise.resolve({ status: 'missing' }) : runBotCredentialCommand(command, value, cwd, signal) };
-    } }] : []),
+    } },
 ];
 
 export const botCredentialUseOperations = operations.map(({ id, description }) => ({ id, description }));

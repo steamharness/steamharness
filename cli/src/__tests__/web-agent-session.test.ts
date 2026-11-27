@@ -75,18 +75,18 @@ it('limits conversation credential reuse to local turns and cancels a pending re
   let resolveReuse!: (value: 'approval-required') => void;
   const host = vi.fn<BotCredentialHost>(async (_entry, action) => {
     if (action.action === 'use' && action.approval?.mode === 'reuse') return new Promise(resolve => { resolveReuse = resolve; });
-    return { status: 'ok', page: 1, total: 0, rows: [] };
+    return { status: 'ok', data: { items: [] } };
   });
   const f = fixture(undefined, undefined, host); await f.start('placed', true);
   f.runtime.resolveLiveInput = vi.fn(async () => {});
   vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
   const entry = f.controller.current, answer = entry.messages[1], initial = f.snapshot();
   const request = (suffix: string, turn = initial.turns[0].requestId): InputRequest => ({ requestId: `credential:${suffix}`, nodeName: 'bot-credential-use', title: 'Use a saved Bot credential', params: [],
-    credentialUse: { name: 'fixture-dns', connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'id', accessKeySecret: 'secret' }, page: 1 },
+    credentialUse: { name: 'fixture-alias', connector: 'host', operation: 'fixture.read', args: {} },
     metadata: { type: 'bot-credential-use', botRequestId: turn } });
   const first = request('first');
   f.runs[0].emit({ type: 'user_input_requested', ...first });
-  await f.controller.captureCredential(answer.id!, first.requestId, host, entry);
+  await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(1));
   expect(host.mock.calls[0][1]).toMatchObject({ approval: { scopeId: expect.any(String), mode: 'prompt' } });
   f.runs[0].emit({ type: 'user_input_resolved', requestId: first.requestId, nodeName: first.nodeName, request: first, values: { status: 'ok' } });
   expect(answer.pendingInput).toBeUndefined();
@@ -94,8 +94,9 @@ it('limits conversation credential reuse to local turns and cancels a pending re
   const remote = request('remote', 'non-local-turn');
   f.runs[0].emit({ type: 'user_input_requested', ...remote });
   expect(host).toHaveBeenCalledTimes(1);
-  expect(answer.pendingInput?.requestId).toBe(remote.requestId);
-  f.runs[0].emit({ type: 'user_input_resolved', requestId: remote.requestId, nodeName: remote.nodeName, request: remote, values: { status: 'declined' } });
+  expect(answer.pendingInput).toBeUndefined();
+  await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenLastCalledWith(answer.runId, expect.objectContaining({ requestId: remote.requestId,
+    values: { status: 'denied', reason: 'blocked-policy' } })));
 
   const reuse = request('reuse');
   f.runs[0].emit({ type: 'user_input_requested', ...reuse });
@@ -108,20 +109,23 @@ it('limits conversation credential reuse to local turns and cancels a pending re
   await stopping;
   expect(answer.pendingInput).toBeUndefined();
   expect(answer.submittingInput).toBeUndefined();
-  expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(1);
+  expect(f.runtime.resolveLiveInput).toHaveBeenCalledTimes(2);
 });
 
-it('retains the confirmed result card on its turn without adding display data to the worker receipt', async () => {
-  const f = fixture(undefined, () => ({ agent: { permissionPolicy: 'workspace' } })); await f.start('placed', true);
+it('uses an automatic command without rendering or saving a credential result card', async () => {
+  const result = { status: 'ok', data: { exitCode: 0, stdout: 'fixture output', stderr: '' } } as const;
+  const host = vi.fn<BotCredentialHost>(async () => result);
+  const f = fixture(undefined, () => ({ agent: { permissionPolicy: 'auto' } }), host, host); await f.start('placed', true);
   const entry = f.controller.current, answer = entry.messages[1];
-  const request: InputRequest = { requestId: 'credential:records', nodeName: 'bot-credential-use', title: 'Query DNS', params: [],
-    credentialUse: { name: 'my-dns', connector: 'alibaba-cloud-dns', operation: 'list-records', page: 2, domain: 'example.test',
-      fields: { accessKeyId: 'fixtureKeyId', accessKeySecret: 'fixtureKeySecret' } },
-    metadata: { botRequestId: f.snapshot().turns[0].requestId } };
+  const request: InputRequest = { requestId: 'credential:command', nodeName: 'bot-credential-use', title: 'Use credential', params: [],
+    credentialUse: { name: 'saved-credential', connector: 'host', operation: 'command.run', args: { kind: 'structured', program: 'fixture', argv: ['list'], env: { APP_TOKEN: 'token' } } },
+    metadata: { botRequestId: f.snapshot().turns[0].requestId, credentialUsePolicy: 'auto' } };
   f.runtime.resolveLiveInput = vi.fn(async () => {});
   f.runs[0].emit({ type: 'user_input_requested', ...request });
-  const result = { status: 'ok', page: 2, total: 31, rows: [{ name: '@', type: 'TXT', value: '<em>plain text</em>', ttl: 600 }] } as const;
-  await f.controller.captureCredential(answer.id!, request.requestId, async () => ({ ...result, rows: [...result.rows] }), entry);
+  expect(answer.pendingInput).toBeUndefined();
+  expect(answer.submittingInput).toBeUndefined();
+  await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledOnce());
+  expect(host.mock.calls[0][1]).toEqual({ action: 'use', use: request.credentialUse, approval: { mode: 'auto' } });
   const [, workerReceipt] = vi.mocked(f.runtime.resolveLiveInput).mock.calls[0];
   expect(workerReceipt.values).toEqual(result);
   expect(workerReceipt.resultCard).toBeUndefined();
@@ -132,15 +136,11 @@ it('retains the confirmed result card on its turn without adding display data to
   expect(answer.resolvedInputs).toHaveLength(1);
   const [resolved] = answer.resolvedInputs!;
   expect(resolved.values).toEqual({ status: 'ok' });
-  expect(resolved.precedingOutputItemIds).toEqual(['first']);
-  expect(resolved.resultCard).toEqual({ title: 'Alibaba Cloud DNS records', status: { label: 'Completed', tone: 'success' }, fields: [
-    { label: 'Credential alias', value: 'my-dns' }, { label: 'Domain', value: 'example.test' }, { label: 'Page', value: 2 },
-    { label: 'Rows on this page', value: 1 }, { label: 'Total rows', value: 31 },
-  ], table: { columns: ['Record name', 'Type', 'Record value', 'TTL (seconds)'], rows: [['@', 'TXT', '<em>plain text</em>', 600]] } });
-  expect(JSON.stringify(resolved.resultCard)).not.toMatch(/fixtureKeyId|fixtureKeySecret/);
+  expect(resolved.resultCard).toBeUndefined();
   await f.finish();
   const saved = f.save.mock.lastCall?.[0];
-  expect(saved?.[0].messages[1].resolvedInputs?.[0].resultCard).toEqual(resolved.resultCard);
+  expect(saved?.[0].messages[1].resolvedInputs?.[0]).toMatchObject({ values: { status: 'ok' } });
+  expect(saved?.[0].messages[1].resolvedInputs?.[0].resultCard).toBeUndefined();
 });
 
 it.each([
@@ -153,30 +153,22 @@ it.each([
   ['auto', 'auto', undefined, 'prompt'],
 ] as const)('routes credential query: run %s, current %s, Core %s → %s', async (initial, current, corePolicy, expected) => {
   let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: initial } };
-  const host = vi.fn<BotCredentialHost>(async () => ({ status: 'ok', page: 1, total: 0, rows: [] }));
+  const host = vi.fn<BotCredentialHost>(async () => ({ status: 'ok', data: { items: [] } }));
   const f = fixture(undefined, () => settings, host, host); await f.start('placed', true);
   f.runtime.resolveLiveInput = vi.fn(async () => {});
   const entry = f.controller.current, answer = entry.messages[1];
   const request: InputRequest = { requestId: 'capture:policy', nodeName: 'bot-credential-use', title: 'Use a saved Bot credential', params: [],
-    credentialUse: { name: 'fixture-dns', connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'id', accessKeySecret: 'secret' }, page: 1 },
+    credentialUse: { name: 'fixture-alias', connector: 'host', operation: 'fixture.read', args: {} },
     metadata: { type: 'bot-credential-use', botRequestId: f.snapshot().turns[0].requestId, credentialUsePolicy: corePolicy } };
   settings = { agent: { permissionPolicy: current } };
   f.runs[0].emit({ type: 'user_input_requested', ...request });
-  if (expected === 'prompt') {
+  expect(answer.pendingInput).toBeUndefined();
+  await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledOnce());
+  if (expected === 'blocked') {
     expect(host).not.toHaveBeenCalled();
-    expect(answer.pendingInput?.requestId).toBe(request.requestId);
-    settings = { agent: { permissionPolicy: 'auto' } };
-    expect(host).not.toHaveBeenCalled();
-    await f.controller.captureCredential(answer.id!, request.requestId, host, entry);
-    expect(host.mock.calls[0][1]).toMatchObject({ approval: { mode: 'prompt' } });
+    expect(f.runtime.resolveLiveInput).toHaveBeenCalledWith(answer.runId, expect.objectContaining({ values: { status: 'failed', reason: 'blocked-policy' } }));
   } else {
-    expect(answer.pendingInput).toBeUndefined();
-    await vi.waitFor(() => expect(f.runtime.resolveLiveInput).toHaveBeenCalledOnce());
-    if (expected === 'automatic') expect(host.mock.calls[0][1]).toMatchObject({ approval: { mode: 'auto' } });
-    else {
-      expect(host).not.toHaveBeenCalled();
-      expect(f.runtime.resolveLiveInput).toHaveBeenCalledWith(answer.runId, expect.objectContaining({ values: { status: 'failed' } }));
-    }
+    expect(host.mock.calls[0][1]).toMatchObject({ approval: { mode: expected === 'automatic' ? 'auto' : 'prompt' } });
   }
   await f.finish();
 });
@@ -197,7 +189,7 @@ it.each(['auto', 'workspace'] as const)('lists vault metadata without prompting 
   await f.finish();
 });
 
-it('auto-approves a generic credential query and preserves safe failure details in the result card', async () => {
+it('auto-approves a credential query and returns safe failure details without a result card', async () => {
   const denial = { status: 'denied', reason: 'http-error', httpStatus: 401 } as const;
   const host = vi.fn<BotCredentialHost>(async () => denial);
   const f = fixture(undefined, () => ({ agent: { permissionPolicy: 'auto' } }), host, host);
@@ -209,9 +201,9 @@ it('auto-approves a generic credential query and preserves safe failure details 
   f.runs[0].emit({ type: 'user_input_requested', ...request });
   const answer = f.controller.current.messages[1];
   expect(answer.pendingInput).toBeUndefined();
-  await vi.waitFor(() => expect(answer.resolvedInputs?.[0]?.resultCard).toMatchObject({ fields: expect.arrayContaining([{ label: 'HTTP status', value: 401 }]) }));
+  await vi.waitFor(() => expect(answer.resolvedInputs?.[0]?.values).toEqual(denial));
   expect(host.mock.calls[0][1]).toMatchObject({ action: 'use', approval: { mode: 'auto' } });
-  expect(answer.resolvedInputs?.[0]?.values).toEqual(denial);
+  expect(answer.resolvedInputs?.[0]?.resultCard).toBeUndefined();
   await f.finish();
 });
 

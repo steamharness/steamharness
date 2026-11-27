@@ -176,11 +176,12 @@ test('structured credentials validate arbitrary fields and write the entire obje
   values.set(legacyKey, JSON.stringify(pair));
   assert.deepEqual(await vault.list(), [legacy]);
   const signal = new AbortController().signal;
-  assert.equal(await vault.readStructured(legacy.name, signal), undefined);
-  assert.deepEqual(await vault.readStructured(legacy.name, signal, true), pair);
+  assert.equal(await vault.readForUse({ ...legacy, kind: 'structured' }, signal), undefined);
+  assert.deepEqual(await vault.readForUse(legacy, signal), pair);
   const sameAlias = { name: legacy.name, kind: 'structured' };
   await vault.write(sameAlias, '{"otherField":"fixture"}', false);
-  assert.deepEqual(await vault.readStructured(legacy.name, signal, true), { otherField: 'fixture' });
+  assert.deepEqual(await vault.readForUse(sameAlias, signal), { otherField: 'fixture' });
+  assert.deepEqual(await vault.readForUse(legacy, signal), pair);
   await vault.remove(sameAlias);
   assert.equal(values.size, 1, 'reading the legacy alias does not migrate it');
   assert.equal(parseBotCredentialAction({ ...capture, slot: legacy }), undefined);
@@ -231,8 +232,8 @@ test('native credential prompts reset validation on clear, require valid input o
       ` }));
     } }] });
   const values = new Map(), prompts = [], warnings = [];
-  let typed, onShow, approve = true, policy = 'workspace';
-  const approvals = [], calls = [], httpCalls = [];
+  let typed, onShow, duringQuery, approve = true, policy = 'workspace';
+  const approvals = [], httpCalls = [];
   globalThis.botCredentialTest = { policy: () => policy, createInputBox: () => fixtureInputBox(input => {
     prompts.push(input);
     if (onShow) onShow(input);
@@ -249,13 +250,9 @@ test('native credential prompts reset validation on clear, require valid input o
   const store = memoryStore(values);
   let reads = 0;
   const interaction = createBotCredentialInteraction({ globalStorageUri: { fsPath: root }, secrets: { ...store, get: key => { reads++; return store.get(key); } } },
-    async (use, fields) => {
-      calls.push({ use, fields });
-      const rows = use.operation === 'list-domains' ? [{ domain: 'example.com' }] : [{ name: '@', type: 'A', value: '192.0.2.1', ttl: 300 }];
-      return { status: 'ok', page: use.page, total: rows.length, rows };
-    },
     { https: async (use, credential) => {
       httpCalls.push({ use, credential });
+      duringQuery?.();
       return { status: 'ok', data: use.url.endsWith('/echo') ? { echoed: credential } : { httpStatus: 200, body: { account: 'fixture-account' } } };
     }, ssh: () => assert.fail('Unexpected SSH use') });
   const capture = (slot, signal = new AbortController().signal) => interaction({ folderPath: root, id: 'fixture-project' }, 'main', 'Fixture Bot', { action: 'capture', slot }, signal);
@@ -319,7 +316,9 @@ test('native credential prompts reset validation on clear, require valid input o
   assert.equal(values.size, 2);
 
   const parsed = parseBotCredentialAction({ type: 'bot-credential-request', id: 'id', entryId: 'main', action: 'use', use: {
-    name: slot.name, connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'clientId', accessKeySecret: 'clientSecret' },
+    name: slot.name, connector: 'host', operation: 'https.get-json', args: {
+      url: 'https://fixture.example.test/account', auth: { kind: 'structured', scheme: 'headers', headers: { 'X-Client': 'clientId', 'X-Secret': 'clientSecret' } },
+    },
   } });
   assert.equal(parsed.action, 'use');
   const use = (entryId = 'main', instanceId, signal = new AbortController().signal) => interaction({ folderPath: root, id: 'fixture-project',
@@ -328,18 +327,19 @@ test('native credential prompts reset validation on clear, require valid input o
   approve = false;
   assert.deepEqual(await use(), { status: 'declined' });
   assert.equal(reads, readsBeforeUse, 'declining never reads the vault');
-  assert.equal(calls.length, 0);
-  assert.equal(approvals.at(-1).items[0].description, 'alidns.aliyuncs.com');
+  assert.equal(httpCalls.length, 0);
+  assert.equal(approvals.at(-1).items[0].description, 'https://fixture.example.test/account');
   assert.equal(approvals.at(-1).items[0].label, 'Allow once');
   assert.match(approvals.at(-1).options.title, /fixture-sso.*Fixture Bot/);
   approve = true;
   assert.deepEqual(await use('other'), { status: 'missing' });
   assert.deepEqual(await use('main', 'another-instance'), { status: 'missing' });
-  assert.equal(calls.length, 0);
-  assert.deepEqual(await use(), { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.com' }] });
-  assert.deepEqual(Object.keys(calls[0].fields), ['tenant', 'clientId', 'clientSecret']);
+  assert.equal(httpCalls.length, 0);
+  const response = { status: 'ok', data: { httpStatus: 200, body: { account: 'fixture-account' } } };
+  assert.deepEqual(await use(), response);
+  assert.deepEqual(Object.keys(httpCalls[0].credential), ['tenant', 'clientId', 'clientSecret']);
   await use('main', undefined, AbortSignal.abort());
-  assert.equal(calls.length, 1);
+  assert.equal(httpCalls.length, 1);
   assert.equal(approvals.some(item => JSON.stringify(item).includes('fixture-secret')), false);
 
   const profile = new AbortController(), scopeId = randomUUID(), project = { folderPath: root, id: 'fixture-project' };
@@ -358,12 +358,12 @@ test('native credential prompts reset validation on clear, require valid input o
   assert.equal((await ask('prompt')).status, 'ok');
   assert.deepEqual(approvals.at(-1).items.map(item => item.label), ['Allow once', 'Allow for this conversation']);
   const pickCount = approvals.length;
-  assert.equal((await ask('reuse', { operation: { ...parsed.use, operation: 'list-records', domain: 'example.com', page: 2 } })).status, 'ok');
-  assert.equal(approvals.length, pickCount, 'same conversation can switch read operations and paginate without prompting');
+  assert.equal((await ask('reuse')).status, 'ok');
+  assert.equal(approvals.length, pickCount, 'same conversation can reuse the exact approved request');
   const beforePolicyChange = reads;
   assert.equal(await ask('auto'), 'approval-required', 'workspace does not accept a silent auto-approval request');
   policy = 'read-only';
-  for (const mode of ['auto', 'reuse', 'prompt']) assert.deepEqual(await ask(mode), { status: 'failed' });
+  for (const mode of ['auto', 'reuse', 'prompt']) assert.deepEqual(await ask(mode), { status: 'failed', reason: 'blocked-policy' });
   assert.equal(reads, beforePolicyChange, 'read-only never touches the vault even with an existing grant');
   policy = 'auto';
   assert.equal((await ask('auto')).status, 'ok');
@@ -371,32 +371,32 @@ test('native credential prompts reset validation on clear, require valid input o
   const withCeiling = permissionCeiling => ({ ...project, folderBot: { id: 'im-fixture', directory: root, background: true, permissionCeiling } });
   const beforeCeiling = reads;
   assert.equal(await ask('auto', { target: withCeiling('workspace') }), 'approval-required');
-  for (const mode of ['auto', 'reuse', 'prompt']) assert.deepEqual(await ask(mode, { target: withCeiling('read-only') }), { status: 'failed' });
+  for (const mode of ['auto', 'reuse', 'prompt']) assert.deepEqual(await ask(mode, { target: withCeiling('read-only') }), { status: 'failed', reason: 'blocked-policy' });
   assert.equal(reads, beforeCeiling, 'the instance ceiling cannot be raised by the global auto setting');
   assert.equal(parseBotCredentialAction({ ...parsed, approval: { mode: 'auto', scopeId } }), undefined);
   policy = 'workspace';
-  const afterReuse = calls.length, afterReads = reads;
+  const afterReuse = httpCalls.length, afterReads = reads;
   assert.equal(await ask('reuse', { scope: randomUUID() }), 'approval-required');
   assert.equal(await ask('reuse', { lifetime: new AbortController().signal }), 'approval-required');
   assert.equal(await ask('reuse', { entry: 'other' }), 'approval-required');
   assert.equal(await ask('reuse', { target: { ...project, folderBot: { id: 'different-instance', directory: root } } }), 'approval-required');
-  assert.equal(await ask('reuse', { operation: { ...parsed.use, fields: { accessKeyId: 'tenant', accessKeySecret: 'clientSecret' } } }), 'approval-required');
+  assert.equal(await ask('reuse', { operation: { ...parsed.use, args: { ...parsed.use.args, url: 'https://elsewhere.example.test/account' } } }), 'approval-required');
   assert.equal(await ask('reuse', { operation: { ...parsed.use, name: 'fixture-unspecified' } }), 'approval-required');
   assert.equal(reads, afterReads);
   values.set([...values.keys()].find(key => key.endsWith(':fixture-sso')), '{"tenant":"fixture-tenant","clientId":"fixture-id","clientSecret":"rotated-fixture"}');
   assert.equal(await ask('reuse'), 'approval-required');
-  assert.equal(calls.length, afterReuse);
+  assert.equal(httpCalls.length, afterReuse);
   profile.abort();
   assert.equal(await ask('reuse'), 'approval-required');
 
-  const legacyUse = { ...parsed.use, name: 'old-dns', fields: { accessKeyId: 'AccessKeyId', accessKeySecret: 'AccessKeySecret' } };
+  const legacyUse = { ...parsed.use, name: 'old-pair', args: { ...parsed.use.args,
+    auth: { kind: 'access-key-pair', scheme: 'headers', headers: { 'X-Client': 'AccessKeyId', 'X-Secret': 'AccessKeySecret' } } } };
   const prefix = botCredentialNamespace(root, project.id, 'main', await realpath(root));
-  values.set(`${prefix}access-key-pair:old-dns`, '{"AccessKeyId":"fixture-old-id","AccessKeySecret":"fixture-old-secret"}');
+  values.set(`${prefix}access-key-pair:old-pair`, '{"AccessKeyId":"fixture-old-id","AccessKeySecret":"fixture-old-secret"}');
   approve = true;
   const legacy = (operation) => ask('prompt', { lifetime: new AbortController().signal, operation });
   assert.equal((await legacy(legacyUse)).status, 'ok');
-  assert.equal((await legacy({ ...legacyUse, fields: { ...legacyUse.fields, securityToken: 'sessionToken' } })).status, 'missing');
-  assert.equal(values.has(`${prefix}structured:old-dns`), false);
+  assert.equal(values.has(`${prefix}structured:old-pair`), false);
 
   const hosting = new AbortController();
   const token = 'fixture-only-git-token';
@@ -424,7 +424,7 @@ test('native credential prompts reset validation on clear, require valid input o
   assert.deepEqual(await callHost('prompt'), { status: 'declined' });
   assert.equal(reads, originalReads);
   approve = 'conversation';
-  const response = { status: 'ok', data: { httpStatus: 200, body: { account: 'fixture-account' } } };
+  const priorHttpCalls = httpCalls.length;
   policy = 'auto';
   const beforeAuto = approvals.length;
   assert.deepEqual(await callHost('auto'), response);
@@ -435,7 +435,7 @@ test('native credential prompts reset validation on clear, require valid input o
   assert.equal(selected.description, hostRequest.args.url);
   assert.match(selected.detail, /header=private-token/);
   assert.doesNotMatch(JSON.stringify(selected), new RegExp(token));
-  assert.equal(httpCalls[0].credential, token);
+  assert.equal(httpCalls[priorHttpCalls].credential, token);
   assert.deepEqual(await callHost('reuse'), response);
   const afterUse = reads;
   assert.equal(await callHost('reuse', { operation: { ...hostRequest, args: { ...hostRequest.args, url: 'https://unapproved.example.test/api/v4/user' } } }), 'approval-required');
@@ -448,18 +448,29 @@ test('native credential prompts reset validation on clear, require valid input o
   assert.equal(await callHost('reuse'), 'approval-required');
   approve = true;
   assert.deepEqual(await callHost('prompt', { operation: { ...hostRequest, args: { ...hostRequest.args, url: 'https://git.example.test/echo' } } }), { status: 'failed', reason: 'unsafe-response' });
-  assert.equal(httpCalls.length, 4);
-  if (process.platform === 'darwin' || process.platform === 'linux') {
-    const command = { connector: 'host', name: 'existing-token', operation: 'command.run',
-      args: { kind: 'api-key', program: process.execPath, argv: ['-e', 'process.stdout.write("ok")'] } };
-    policy = 'auto';
-    const beforeCommand = reads;
-    const beforeCommandPrompt = approvals.length;
-    assert.deepEqual(await callHost('auto', { operation: command }), { status: 'denied', reason: 'blocked-policy' });
-    assert.equal(reads, beforeCommand, 'Auto Approve does not deliver a credential to an arbitrary process');
-    assert.equal(approvals.length, beforeCommandPrompt, 'a blocked automatic operation does not prompt');
-    policy = 'workspace';
-    assert.deepEqual(await callHost('prompt', { operation: command }), { status: 'ok', data: { exitCode: 0, stdout: 'ok', stderr: '' } });
-    assert.deepEqual(approvals.at(-1).items.map(item => item.label), ['Allow once']);
-  }
+  assert.equal(httpCalls.length, priorHttpCalls + 4);
+
+  policy = 'auto';
+  duringQuery = () => { policy = 'workspace'; };
+  assert.deepEqual(await callHost('auto'), { status: 'denied', reason: 'blocked-policy' });
+  assert.equal(httpCalls.length, priorHttpCalls + 5, 'a completed operation does not ask to be run again');
+  duringQuery = undefined;
+
+  const env = { FIXTURE_ID: 'clientId', FIXTURE_SECRET: 'clientSecret' };
+  const client = 'const {FIXTURE_ID, FIXTURE_SECRET} = process.env; if (!FIXTURE_ID || !FIXTURE_SECRET) process.exit(1); process.stdout.write(process.argv[1]);';
+  const command = { connector: 'host', name: slot.name, operation: 'command.run',
+    args: { kind: 'structured', program: process.execPath, argv: ['-e', client, 'first-service'], env } };
+  policy = 'auto';
+  const beforeCommandPrompt = approvals.length;
+  assert.deepEqual(await callHost('auto', { operation: command }), { status: 'ok', data: { exitCode: 0, stdout: 'first-service', stderr: '' } });
+  assert.deepEqual(await callHost('auto', { operation: { ...command, args: { ...command.args, argv: ['-e', client, 'second-service'] } } }),
+    { status: 'ok', data: { exitCode: 0, stdout: 'second-service', stderr: '' } });
+  assert.deepEqual(await callHost('auto', { operation: command, target: withCeiling('auto') }), { status: 'missing' });
+  assert.equal(approvals.length, beforeCommandPrompt, 'Auto Approve never opens a command prompt');
+  policy = 'workspace';
+  assert.equal(await callHost('auto', { operation: command }), 'approval-required');
+  assert.deepEqual(await callHost('prompt', { operation: command }), { status: 'ok', data: { exitCode: 0, stdout: 'first-service', stderr: '' } });
+  assert.deepEqual(approvals.at(-1).items.map(item => item.label), ['Allow once']);
+  assert.match(approvals.at(-1).items[0].detail, /FIXTURE_SECRET.*clientSecret/);
+  assert.doesNotMatch(JSON.stringify(approvals.at(-1)), /rotated-fixture/);
 });

@@ -27,9 +27,8 @@ it.each([false, true])('carries sequential credential requests over real host st
   const core = await resolveHarnessRoot(), projectId = randomUUID(), entryId = 'main';
   const canary = `fixture-only-${randomUUID()}`;
   const slot = { name: 'fixture-fields', kind: 'structured', fields: ['account', 'token'] };
-  const use = { connector: 'alibaba-cloud-dns', name: slot.name, operation: 'list-domains', page: 1,
-    fields: { accessKeyId: 'account', accessKeySecret: 'token' } };
-  const result = { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.test' }] };
+  const use = { connector: 'host', name: slot.name, operation: 'fixture.read', args: { endpoint: 'example.test', fields: { account: 'account', token: 'token' } } };
+  const result = { status: 'ok', data: { account: 'fixture-account' } };
   const hostUse = { name: 'second-fixture', connector: 'host', operation: 'fixture.read', args: { endpoint: 'example.test' } };
   const hostResult = { status: 'ok', data: { username: 'fixture-user' } };
   let shutdown: (() => Promise<void>) | undefined;
@@ -57,7 +56,7 @@ it.each([false, true])('carries sequential credential requests over real host st
         },
         request => {
           const results = request.messages.filter(message => message.role === 'toolResult').map(message => JSON.parse(message.content[0].text));
-          return fauxAssistantMessage(results.map(receipt => receipt.status).join('/') + ' ' + results.at(-2)?.rows?.[0]?.domain + ' ' + results.at(-1)?.data?.username);
+          return fauxAssistantMessage(results.map(receipt => receipt.status).join('/') + ' ' + results.at(-2)?.data?.account + ' ' + results.at(-1)?.data?.username);
         },
       ]);
       export default steamharness.defineBot({ engine: 'agent', memory: { enabled: false }, agent: { models, resolvedModel: models.getModel('faux','fixture'), tools: [],
@@ -124,7 +123,7 @@ it.each([false, true])('carries sequential credential requests over real host st
       send({ type: 'bot-credential-result', id: prompt.id, ...(action === 'use' ? { result: index === 2 ? result : hostResult } : { status: 'saved' }) });
     }
     await expect.poll(async () => (await turn('turn')).status, { timeout: 10_000 }).toBe('success');
-    expect((await turn('turn')).items?.map(item => item.content).join(' ')).toContain('saved/saved/ok/ok example.test fixture-user');
+    expect((await turn('turn')).items?.map(item => item.content).join(' ')).toContain('saved/saved/ok/ok fixture-account fixture-user');
     await shutdown(); shutdown = undefined;
     expect(stdout.includes(canary) || stderr.includes(canary)).toBe(false);
     await checkFiles(dataDir, canary);

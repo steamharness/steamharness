@@ -13,13 +13,13 @@ const root = fileURLToPath(new URL('../extensions/studio-workstation/src/', impo
 const { outputFiles } = await build({ stdin: { resolveDir: root, contents: `
   export { runBotCredentialHttpQuery } from './bot-credential-http';
   export { runBotCredentialSshQuery } from './bot-credential-ssh';
-  export { botCredentialCommandSupported, runBotCredentialCommand } from './bot-credential-command';
+  export { botCredentialFileSupported, runBotCredentialCommand } from './bot-credential-command';
   export { resolveCredentialAddress } from './bot-credential-network';
   export { botCredentialUseOperations, prepareBotCredentialOperation } from './bot-credential-operations';
 ` }, bundle: true, format: 'esm', platform: 'node', write: false,
   banner: { js: "import {createRequire} from 'node:module'; const __dirname = process.cwd(); const require = createRequire(__dirname + '/package.json');" } });
 const { runBotCredentialHttpQuery, runBotCredentialSshQuery, resolveCredentialAddress, botCredentialUseOperations, prepareBotCredentialOperation,
-  botCredentialCommandSupported, runBotCredentialCommand } =
+  botCredentialFileSupported, runBotCredentialCommand } =
   await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString('base64')}`);
 const signal = new AbortController().signal;
 const exampleAddress = async () => ({ address: '203.0.113.10', family: 4 });
@@ -109,7 +109,7 @@ test('the address filter admits IPv4 and IPv6 targets without admitting special 
   }
 });
 
-test('approved command receives only an anonymous file handle and reflected values never make a receipt', { skip: !botCredentialCommandSupported }, async () => {
+test('legacy POSIX command receives only an anonymous file handle and reflected values never make a receipt', { skip: !botCredentialFileSupported }, async () => {
   const secret = 'fixture-only-command-secret';
   const run = script => runBotCredentialCommand({ program: process.execPath, args: ['-e', script] }, secret, process.cwd(), signal);
   const script = `const fs=require('node:fs'); const v=fs.readFileSync(process.env.STEAMHARNESS_BOT_CREDENTIAL_FILE, 'utf8');
@@ -120,6 +120,36 @@ test('approved command receives only an anonymous file handle and reflected valu
   assert.deepEqual(JSON.parse(result.data.stdout), { anonymous: true, private: true, length: secret.length, containsValue: false });
   assert.deepEqual(await run(`process.stdout.write(require('node:fs').readFileSync(process.env.STEAMHARNESS_BOT_CREDENTIAL_FILE))`),
     { status: 'failed', reason: 'unsafe-response' });
+});
+
+test('maps only selected secret fields into a single child without leaking into args, output or a later command', async () => {
+  const canary = 'fixture-only-child-secret', values = { id: 'fixture-id-value', secret: canary, unused: 'must-not-be-in-the-child' };
+  const env = { STEAM_TEST_ID: 'id', STEAM_TEST_TOKEN: 'secret' };
+  const run = (script, mapping = env, stored = values, program = process.execPath, callSignal = signal) => {
+    const operation = prepareBotCredentialOperation({ name: 'fixture', connector: 'host', operation: 'command.run', args: {
+      kind: typeof stored === 'string' ? 'api-key' : 'structured', program, argv: ['-e', script.replace(/\n\s*/g, ' ')], env: mapping,
+    } });
+    return operation.run([stored], callSignal, process.cwd());
+  };
+  const script = `const token = process.env.STEAM_TEST_TOKEN; process.stdout.write(JSON.stringify({
+    mapped: !!token && !!process.env.STEAM_TEST_ID, notInArgs: !process.argv.includes(token),
+    noFd: !process.env.STEAMHARNESS_BOT_CREDENTIAL_FILE, count: Object.keys(process.env).filter(key => key.startsWith('STEAM_TEST_')).length
+  }));`;
+  const result = await run(script);
+  assert.equal(result.status, 'ok');
+  assert.deepEqual(JSON.parse(result.data.stdout), { mapped: true, notInArgs: true, noFd: true, count: 2 });
+  assert.equal(process.env.STEAM_TEST_TOKEN, undefined);
+  assert.deepEqual(await run('process.stdout.write(String(!!process.env.STEAM_TEST_TOKEN))', { STEAM_TEST_NEW: true }, canary),
+    { status: 'ok', data: { exitCode: 0, stdout: 'false', stderr: '' } });
+  assert.deepEqual(await run('process.stdout.write(JSON.stringify(process.env))'), { status: 'failed', reason: 'unsafe-response' });
+  assert.deepEqual(await run('process.stderr.write("prefix=" + process.env.STEAM_TEST_TOKEN)', { STEAM_TEST_TOKEN: true }, 'abc'),
+    { status: 'failed', reason: 'unsafe-response' });
+  assert.deepEqual(await run('process.exit(0)', { STEAM_TEST_TOKEN: 'missing' }), { status: 'missing-fields' });
+  assert.deepEqual(await run('process.exit(0)', env, values, 'steamharness-fixture-nonexistent-program'), { status: 'failed', reason: 'command-not-found' });
+  assert.deepEqual(await run('process.exit(0)', env, values, process.execPath, AbortSignal.abort()), { status: 'failed', reason: 'timeout' });
+  for (const mapping of [{ PATH: 'secret' }, { NODE_OPTIONS: 'secret' }, { TEST: true }, { Test: 'id', TEST: 'secret' }, { TEST: 'actual value' }, {}]) {
+    assert.throws(() => run('process.exit(0)', mapping));
+  }
 });
 
 test('SSH verifies the pinned host key before authenticating and reads only SFTP directory entries', { timeout: 6_000 }, async () => {

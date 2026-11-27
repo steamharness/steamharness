@@ -68,20 +68,19 @@ describe('live conversation state', () => {
     expect(report.result?.data).toBeUndefined(); expect(source.messages[0].report.result?.data).toBe('Large duplicate result');
   });
 
-  it('presents old query receipts with their known status and scope but without inventing rows', () => {
+  it('does not synthesize a display card for a historical credential receipt', () => {
     const source = session([]), message = source.messages[0];
     const request = { requestId: 'old-query', nodeName: 'bot-credential-use', title: 'Query', params: [], credentialUse: {
-      name: 'old-dns', connector: 'alibaba-cloud-dns', operation: 'list-domains', page: 2, fields: { accessKeyId: 'id', accessKeySecret: 'secret' },
+      name: 'saved-token', connector: 'host', operation: 'fixture.read', args: {},
     } } as const;
     message.resolvedInputs = [
       { requestId: 'old-query', nodeName: 'bot-credential-use', request: { ...request, params: [] }, submittedAt: '', values: { status: 'ok' } },
       { requestId: 'old-failed', nodeName: 'bot-credential-use', request: { ...request, requestId: 'old-failed', params: [] }, submittedAt: '', values: { status: 'denied' } },
     ];
     const [ok, failed] = new ConversationState().sessions([source])[0].messages[0].resolvedInputs!;
-    expect(ok.resultCard).toMatchObject({ status: { tone: 'success' }, message: 'No result details in this receipt.',
-      fields: [{ label: 'Credential alias', value: 'old-dns' }, { label: 'Page', value: 2 }] });
-    expect(ok.resultCard?.table).toBeUndefined();
-    expect(failed.resultCard).toMatchObject({ status: { tone: 'danger' }, message: 'Credential query denied by provider' });
+    expect(ok).toMatchObject({ values: { status: 'ok' } });
+    expect(failed).toMatchObject({ values: { status: 'denied' } });
+    expect([ok.resultCard, failed.resultCard]).toEqual([undefined, undefined]);
     expect(message.resolvedInputs[0].resultCard).toBeUndefined();
   });
 });

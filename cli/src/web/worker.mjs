@@ -403,6 +403,7 @@ try {
                 ...(core.BOT_CREDENTIAL_HOST_SCOPES_VERSION === 1 ? request.botCredentialScopedOperations ?? [] : []),
               ]) }),
               waitForCredentialUse: async (input, signal) => {
+                if (input.credentialUse?.connector !== 'host') return { status: 'failed' };
                 const receipt = await waitForInput(input, signal);
                 const result = core.parseBotCredentialUseResult(receipt.values, input.credentialUse);
                 if (receipt.requestId !== input.requestId || !result) throw new Error('Invalid Bot credential use receipt.');

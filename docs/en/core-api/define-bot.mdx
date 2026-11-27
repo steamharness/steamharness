@@ -174,46 +174,46 @@ Credential tools require a local Studio Agent Bot that supports secure input. Th
 
 `saved` means Studio stored the credential; it does not mean a query succeeded. After updating Studio and the project runtime, use the saved alias in the same Bot, instance, or assistant working directory. You do not need to enter the secret again.
 
-For example, if you saved an `api-key` named `gitlab-token`, ask the Bot to look up your current GitLab account using that alias and specify your GitLab address. In Workspace mode, select **Review credential use** and check the address before approving it. In Auto approve mode, the query runs without a prompt. Do not put the token in the conversation.
+Give the Bot a task and the saved alias, for example, “List the storage buckets using my saved credential.” In Workspace mode, confirm in the native Studio dialog. Auto approve runs without a prompt. Listing aliases, using a credential, and receiving results do not add credential cards to the chat. Only entering a credential uses a secure input card.
 
 The Bot calls `bot_credentials_use` with `name`, `connector: "host"`, `operation`, and `args`. If the alias or type is uncertain, it can call `vault.list` first. The list includes aliases and types for the current Bot, never secret values.
 
-Studio advertises available operations and looks up the credential by alias at execution time. HTTPS works the same across services. This example sends the saved token in GitLab's `PRIVATE-TOKEN` header.
+### Pass a credential to a local command
+
+Use `command.run` with an installed CLI or a script that uses a local SDK. In `env`, each key is the environment variable the client reads and each value is a saved field name. This example maps two fields from the same structured credential:
 
 ```json
 {
-  "name": "gitlab-token",
+  "name": "storage-account",
   "connector": "host",
-  "operation": "https.get-json",
+  "operation": "command.run",
   "args": {
-    "url": "https://gitlab.example.com/api/v4/user",
-    "auth": { "kind": "api-key", "scheme": "header", "header": "PRIVATE-TOKEN" }
+    "kind": "structured",
+    "program": "storage-cli",
+    "argv": ["list"],
+    "env": { "CLIENT_ID": "clientId", "CLIENT_SECRET": "clientSecret" }
   }
 }
 ```
+
+Replace `storage-cli` and the variable names with those your client expects. For a single value, use a mapping such as `{"CLIENT_TOKEN": true}`; `true` means the whole value. For a legacy access key pair, choose `kind: "access-key-pair"` and map `AccessKeyId` and `AccessKeySecret`. You do not need to enter them again. The dedicated DNS operation has been removed; use the appropriate client for DNS or object storage with the same alias.
+
+Each call passes the selected values to that child process only, not to its arguments, Studio's global environment, or chat. The next call resolves the alias again. If the executable is missing, set up the client; re-entering the credential will not help. Use trusted programs, since Studio cannot control what they do with the values they receive.
 
 | Operation | Credentials | Arguments and limits |
 | --- | --- | --- |
 | `vault.list` | No secret values are read | Omit `name` and pass `args: {}`. Optionally filter aliases with `query`. |
 | `https.get-json` | API keys, tokens, passwords, structured credentials, and legacy access key pairs | Perform an HTTPS GET with Bearer, Basic, or custom header authentication. Pass `url` and `auth`, using field names for structured values. Redirects and write requests are not supported. |
 | `ssh.authenticate`, `ssh.list-directory` | SSH private keys; encrypted keys can reference a password alias in the same scope | Pass `host`, `username`, a trusted server `fingerprint`, and an optional `port` (default 22). For directory listings, also pass `path`. These operations do not start a remote shell. |
-| `command.run` | A saved credential in the same scope | Only in interactive local macOS or Linux sessions with the command tool enabled. Not available in Auto approve. Other eligible sessions must approve each command separately. |
-
-Existing Alibaba Cloud DNS calls still use `connector: "alibaba-cloud-dns"` and `operation` set to `list-domains` or `list-records`. In `fields`, map `accessKeyId`, `accessKeySecret`, and optional `securityToken` to the saved JSON keys. For `list-records`, pass the ASCII domain as `domain`. `page` starts at `1`, with 20 results per page.
-
-For a legacy access key pair, map the fields to `AccessKeyId` and `AccessKeySecret` and omit `securityToken`. If a structured credential has the same alias, Studio uses that entry and leaves the legacy entry unchanged.
+| `command.run` | A saved credential in the same scope | Trusted local sessions with the command tool enabled. Pass `program`, `argv`, and `env` to run a local client directly. Does not start a shell or run through background IM. |
 
 Credential queries follow **Settings → Permissions → Agent permissions**. If the Bot's current run has a stricter policy, the stricter policy applies:
 
 - **Read only**: Credential tools are unavailable, even with a previous conversation approval.
-- **Workspace**: Listing aliases does not prompt. To use a credential, select **Review credential use** and check the alias, destination, and operation. **Allow for this conversation** covers the same credential and arguments; for Alibaba Cloud DNS, it also covers pagination with the same field mapping.
-- **Auto approve**: Host queries, including `https.get-json` and SSH queries, run without a prompt. Requests to hand a credential to an arbitrary local command are denied without prompting. To add a credential, you still enter its value in the secure input dialog.
+- **Workspace**: Listing aliases does not prompt. A native Studio dialog shows the command or destination. For host queries, **Allow for this conversation** covers the same request. Each command requires its own approval.
+- **Auto approve**: Eligible operations run without a prompt, including commands that use temporary variables. You still enter a new credential in the secure input dialog.
 
-In Workspace mode, Studio keeps conversation approvals in local memory and never exports them. New or forked conversations, a different credential or mapping, and a Studio restart require approval again. Older runtimes may still require manual approval.
-
-Studio handles authentication and returns only query results or a safe failure reason, such as an HTTP status, certificate verification failure, or timeout. Older hosts or project runtimes do not expose host operations.
-
-Before approving `command.run`, check the program and arguments. Only the approved command receives the temporary file descriptor through `STEAMHARNESS_BOT_CREDENTIAL_FILE`. Studio does not write the value to the project folder, arguments, or chat. Approve programs you trust: a program that receives a credential can use it, and Studio cannot control how it handles the value.
+In Workspace mode, Studio keeps conversation approvals in local memory and never exports them. New or forked conversations, a different credential or mapping, and a Studio restart require approval again. Using temporary variables requires an updated Studio and project runtime.
 
 ## Bot files
 

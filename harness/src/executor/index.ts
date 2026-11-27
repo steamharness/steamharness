@@ -798,11 +798,9 @@ function withLiveRuntimeInput(input: UserInputContext, events: Pick<Runtime, "em
     const userPolicy = getUserSettings().agent.permissionPolicy;
     if (userPolicy === "read-only") throw new HarnessError({ type: "tool_permission_denied", message: "Read-only mode does not allow credential queries." });
     const credentialUse = parseBotCredentialUse(request.credentialUse);
-    if (credentialUse.connector === "host") {
-      const operation = input.credentialUseOperations?.find(operation => operation.id === credentialUse.operation);
-      if (!operation || operation.requiresTool && readBotCredentialUsePolicy(request) === undefined) {
-        throw new HarnessError({ type: "input_validation", message: "This credential operation is not supported in the current run." });
-      }
+    const operation = input.credentialUseOperations?.find(operation => operation.id === credentialUse.operation);
+    if (!operation || operation.requiresTool && readBotCredentialUsePolicy(request) === undefined) {
+      throw new HarnessError({ type: "input_validation", message: "This credential operation is not supported in the current run." });
     }
     const title = "Use a saved Bot credential";
     const credentialUsePolicy = userPolicy === "auto" && readBotCredentialUsePolicy(request) === "auto" ? "auto" : "workspace";

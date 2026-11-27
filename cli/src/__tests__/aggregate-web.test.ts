@@ -215,7 +215,7 @@ it.each([false, true])('offers non-blocking, turn-bound credential capture (fold
 
 it.each(['read-only', 'workspace', 'auto', 'folder-ceiling'] as const)('applies %s policy to hosted credential queries', async mode => {
   const native = vi.fn<BotCredentialHost>(async (_entry, action) => action.action === 'use' && action.approval?.mode === 'reuse'
-    ? 'approval-required' : { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.com' }] });
+    ? 'approval-required' : { status: 'ok', data: { account: 'fixture-account' } });
   const f = await fixture({ ...(mode === 'folder-ceiling' && { folderHistory: [] }), credentials: {
     host: native, policy: mode === 'folder-ceiling' ? 'auto' : mode, ceiling: 'workspace',
   } });
@@ -223,13 +223,13 @@ it.each(['read-only', 'workspace', 'auto', 'folder-ceiling'] as const)('applies 
   const call = (action: string, input: object = {}) => f.app.hostTurn('agent', { action, conversationId, requestId, ...input });
   await call('submit', { text: 'Query the fixture', allowBotCredentials: true });
   await vi.waitFor(() => expect(f.active.has('agent')).toBe(true));
-  const use = parseBotCredentialUse({ name: 'fixture-alias', connector: 'alibaba-cloud-dns', operation: 'list-domains', fields: { accessKeyId: 'keyId', accessKeySecret: 'keySecret' } });
+  const use = parseBotCredentialUse({ name: 'fixture-alias', connector: 'host', operation: 'fixture.read', args: { account: 'fixture-account' } });
   f.active.get('agent')!.emit({ type: 'user_input_requested', requestId: pendingId, nodeName: 'fixture', title: 'fixture', params: [], credentialUse: use, metadata: { credentialUsePolicy: 'auto' } });
   expect(await call('credential', { pendingId, allowBotCredentials: true })).toEqual({ status: 'processing' });
   await vi.waitFor(() => expect(f.resolveLiveInput).toHaveBeenCalledExactlyOnceWith(requestId, expect.objectContaining({ values: mode === 'read-only'
-    ? { status: 'failed' } : { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.com' }] } })));
+    ? { status: 'failed', reason: 'blocked-policy' } : { status: 'ok', data: { account: 'fixture-account' } } })));
   expect(native.mock.calls.map(([, action]) => action.action === 'use' && action.approval?.mode)).toEqual(mode === 'read-only' ? [] : mode === 'auto' ? ['auto'] : ['reuse', 'prompt']);
-  expect(JSON.stringify(await call('turn'))).not.toMatch(/fixture-alias|keySecret|example\.com/);
+  expect(JSON.stringify(await call('turn'))).not.toMatch(/fixture-alias|fixture-account/);
 });
 
 it.each([false, true])('does not derive secure turn authority from a late request or an older SDK (legacy: %s)', async legacy => {

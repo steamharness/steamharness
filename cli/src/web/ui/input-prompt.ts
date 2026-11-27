@@ -132,14 +132,7 @@ export class InputPrompt {
     const active = document.activeElement;
     const focusName = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.id : '';
     this.form.replaceChildren();
-    if (this.request.credentialUse) {
-      const use = this.request.credentialUse;
-      const summary = document.createElement('p');
-      summary.textContent = use.connector === 'host' ? use.name ? t('Credential: {0} · Operation: {1}', use.name, use.operation) : t('Credential operation: {0}', use.operation)
-        : t('Credential: {0} · {1} · Page {2}', use.name, use.operation === 'list-domains' ? t('List Alibaba Cloud DNS domains') : t('List Alibaba Cloud DNS records for {0}', use.domain), use.page);
-      summary.style.overflowWrap = 'anywhere';
-      this.form.append(summary, this.securePromptButton(t('Review credential use'), t('Waiting for Studio…')));
-    } else if (this.request.credential) {
+    if (this.request.credential) {
       const { name, kind } = this.request.credential;
       const alias = document.createElement('p');
       alias.textContent = t('{0}: {1}', t(kind === 'ssh-private-key' ? 'SSH private key' : kind === 'password' ? 'Password'

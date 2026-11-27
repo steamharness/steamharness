@@ -238,17 +238,6 @@ export function createBotCredentialVault(store: SecretStore, profile: string, pr
       if (slot.kind === 'ssh-private-key') return Buffer.byteLength(stored, 'utf8') <= MAX_SECRET_BYTES && isPrivateKeyText(stored) ? stored : null;
       return validBotCredentialText(stored) ? stored : null;
     },
-    /** Native connector input after confirmation. There is no pipe action for reading a value. */
-    async readStructured(name: string, signal: AbortSignal, allowLegacyPair = false) {
-      await requireStorage(signal);
-      const stored = await getSaved({ name, kind: 'structured' }, signal);
-      signal.throwIfAborted();
-      if (stored !== undefined) return parseStructuredCredential(stored) ?? null;
-      if (!allowLegacyPair) return;
-      const legacy = await getSaved({ name, kind: legacyPairKind }, signal);
-      signal.throwIfAborted();
-      return legacy === undefined ? undefined : parseStructuredCredential(legacy, legacyPairFields) ?? null;
-    },
     async list(signal?: AbortSignal): Promise<BotCredentialSummary[]> {
       await requireStorage(signal);
       return listBotCredentialSummaries(store, prefixes, signal);

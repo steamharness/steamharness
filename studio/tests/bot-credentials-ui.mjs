@@ -1,7 +1,7 @@
 // Exercise the real CLI, worker and browser with an isolated stand-in for the native host.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { writeProjectFixture } from '../../cli/scripts/test-project-fixture.mjs';
 import { projectFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
+import { prepareBotCredentialOperation } from '../extensions/studio-workstation/src/bot-credential-operations.ts';
 
 const workspace = fileURLToPath(new URL('../../', import.meta.url)), core = path.join(workspace, 'harness');
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-test-bot-credentials-')));
@@ -19,10 +20,13 @@ const directory = path.join(root, 'project'), projectId = randomUUID(), entryId 
 const kind = 'api-key', name = 'fixture-service', forbidden = `fixture-only-${randomUUID()}`;
 const named = { kind: 'structured', name: 'fixture-sso', fields: ['tenant', 'client-id', 'client.secret'] };
 const other = { kind: 'structured', name: 'fixture-other' };
-const use = { name: named.name, connector: 'alibaba-cloud-dns', operation: 'list-domains',
-  fields: { accessKeyId: 'client-id', accessKeySecret: 'client.secret' }, page: 1 };
-const queryResult = { status: 'ok', page: 1, total: 1, rows: [{ domain: 'example.com' }] };
-const records = { ...use, operation: 'list-records', domain: 'example.com', page: 2 };
+const use = { name: named.name, connector: 'host', operation: 'fixture.lookup', args: { field: 'client-id' } };
+const digest = createHash('sha256').update(forbidden).digest('hex');
+const script = `const { createHash } = require('node:crypto'); const token = process.env.FIXTURE_SECRET; if (!token || createHash('sha256').update(token).digest('hex') !== '${digest}' || process.env.FIXTURE_ID !== 'client-fixture') process.exit(1); process.stdout.write('command-output');`;
+const commandUse = { name: named.name, connector: 'host', operation: 'command.run', args: {
+  kind: 'structured', program: process.execPath, argv: ['-e', script], env: { FIXTURE_ID: 'client-id', FIXTURE_SECRET: 'client.secret' },
+} };
+const queryResult = { status: 'ok', data: { account: 'fixture-account' } };
 const children = new Set();
 const fixturePages = new Map();
 const nativeFrame = createServer((incoming, response) => {
@@ -33,7 +37,7 @@ const nativeFrame = createServer((incoming, response) => {
 });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function waitFor(read, message) {
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 240; i++) {
     const value = read(); if (value) return value;
     await delay(50);
   }
@@ -63,6 +67,8 @@ async function launch(language, native, structured = native, useEnabled = struct
   });
   write({ type: 'configure', surface: 'editor', localBotCredentials: native, localBotCredentialStructured: structured, localBotCredentialUse: useEnabled,
     localBotCredentialConversationApproval: useEnabled, localBotCredentialPermissionPolicy: permissionSupport,
+    botCredentialUseOperations: [{ id: use.operation, description: 'Look up a fixture account.' }],
+    botCredentialScopedOperations: [{ id: commandUse.operation, description: 'Run a local fixture command.', requiresTool: 'bash' }],
     userSettings: { agent: { permissionPolicy } } });
   const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
   try {
@@ -109,9 +115,10 @@ try {
       ? fauxAssistantMessage([fauxToolCall('bot_credentials_use', args)], { stopReason: 'toolUse' }) : fauxAssistantMessage('No credential use support');
     const readQuery = request => {
       const result = JSON.parse(request.messages.findLast(message => message.role === 'toolResult').content[0].text);
-      return fauxAssistantMessage('Fixture query: ' + (result.status === 'ok' ? result.rows[0].domain ?? result.rows[0].value : result.status));
+      return fauxAssistantMessage('Fixture query: ' + (result.status === 'ok' ? result.data.account ?? result.data.stdout : result.status));
     };
-    model.setResponses([request => JSON.stringify(request.messages.findLast(message => message.role === 'user')).includes('Use in the new conversation') ? query(request)
+    model.setResponses([request => JSON.stringify(request.messages.findLast(message => message.role === 'user')).includes('Run using temporary variables') ? query(request, ${JSON.stringify(commandUse)})
+      : JSON.stringify(request.messages.findLast(message => message.role === 'user')).includes('Use in the new conversation') ? query(request)
       : getCurrentTools(request.messages).some(tool => tool.name === 'bot_credentials_request')
       ? fauxAssistantMessage([fauxToolCall('bot_credentials_request', ${JSON.stringify({ name, kind })})], { stopReason: 'toolUse' }) : fauxAssistantMessage('No credential tool'), request => {
       const result = request.messages.findLast(message => message.role === 'toolResult');
@@ -125,8 +132,8 @@ try {
     }, request => {
       const receipts = request.messages.filter(message => message.role === 'toolResult').slice(-2).map(readReceipt);
       return fauxAssistantMessage('Fixture follow-up: ' + receipts.map(({ name, status }) => name + '=' + status).join(', '));
-    }, request => query(request), readQuery, request => query(request), readQuery, request => query(request, ${JSON.stringify(records)}), readQuery, fauxAssistantMessage('Fixture can continue')]);
-    export const executor = steamharness.defineBot({ engine: 'agent', agent: { models, resolvedModel: models.getModel('faux', 'fixture'), tools: [], paramOptions: { fields: { provider: false, model: false } } } });
+    }, request => query(request), readQuery, request => query(request), readQuery, request => query(request), readQuery, fauxAssistantMessage('Fixture can continue')]);
+    export const executor = steamharness.defineBot({ engine: 'agent', agent: { models, resolvedModel: models.getModel('faux', 'fixture'), tools: ['bash'], paramOptions: { fields: { provider: false, model: false } } } });
     export default executor;
   `);
   nativeFrame.listen(0, '127.0.0.1'); await once(nativeFrame, 'listening');
@@ -204,70 +211,42 @@ try {
   await prompt.waitFor({ state: 'detached' });
   assert.equal(await frame.locator('.resolved-inputs .pending').count(), 0);
 
-  const review = prompt.getByRole('button', { name: 'Review credential use' });
-  const requestQuery = async () => {
-    await frame.locator('#message:enabled').fill('List domains with the saved credential'); await frame.locator('#send').click();
-    try { await prompt.getByText(`Credential: ${named.name} · List Alibaba Cloud DNS domains · Page 1`, { exact: true }).waitFor(); }
-    catch (error) {
-      const state = (await local.post({ ...identity, type: 'ready' })).body.messages?.find(item => item.type === 'state');
-      const replies = state?.sessions?.find(session => session.id === sessionId)?.messages.map(message => [message.status, message.content, message.error, message.pendingInput?.nodeName]);
-      throw new Error(`Fixture did not show the query confirmation: ${JSON.stringify(replies)}\n${local.stderr()}`, { cause: error });
-    }
-    assert.equal(await prompt.locator('input,textarea').count(), 0);
-  };
-  await requestQuery();
-  const pendingState = (await local.post({ ...identity, type: 'ready' })).body.messages.find(item => item.type === 'state');
-  const pending = pendingState.sessions.find(session => session.id === sessionId).messages.find(item => item.pendingInput?.credentialUse);
-  const forgedUse = await local.post({ ...identity, type: 'resume', messageId: pending.id, requestId: pending.pendingInput.requestId, values: queryResult });
-  assert.notEqual(forgedUse.status, 200);
-  const forgedApproval = await local.post({ ...identity, type: 'bot-credential-input', messageId: pending.id, requestId: pending.pendingInput.requestId, approval: { scopeId: randomUUID(), mode: 'reuse' } });
-  assert.notEqual(forgedApproval.status, 200);
-  assert.equal(local.sent.filter(record => record.action === 'use').length, 0);
-  await review.click();
-  const approvedQuery = await waitFor(() => local.sent.find(record => record.action === 'use'), 'Missing native credential use request');
+  await frame.locator('#message:enabled').fill('Look up an account using the saved credential'); await frame.locator('#send').click();
+  const approvedQuery = await waitFor(() => local.sent.find(record => record.action === 'use'), 'Missing native credential use request').catch(async error => {
+    const state = (await local.post({ ...identity, type: 'ready' })).body.messages?.find(item => item.type === 'state');
+    const messages = state?.sessions?.find(session => session.id === sessionId)?.messages;
+    throw new Error(`Fixture failed before opening native approval: ${JSON.stringify(messages?.map(({ role, status, pendingInput, error, content }) => ({
+      role, status, pending: pendingInput?.nodeName, error, content: content?.slice(-200),
+    })))}\n${local.stderr()}`, { cause: error });
+  });
+  assert.equal(await prompt.count(), 0);
   const { scopeId } = approvedQuery.approval;
   assert.match(scopeId, /^[a-f0-9-]{36}$/);
   assert.notEqual(scopeId, sessionId);
   assert.deepEqual(approvedQuery, { type: 'bot-credential-request', id: approvedQuery.id, entryId, action: 'use', use, approval: { scopeId, mode: 'prompt' } });
   local.write({ type: 'bot-credential-result', id: approvedQuery.id, result: queryResult });
-  await frame.getByText('Fixture query: example.com', { exact: true }).waitFor();
-  await prompt.waitFor({ state: 'detached' });
-  const domainCard = frame.locator('.result-card[aria-label="Alibaba Cloud DNS domains"]');
-  await domainCard.getByRole('cell', { name: 'example.com', exact: true }).waitFor();
-  assert.match(await domainCard.innerText(), /Completed[\s\S]*Credential alias[\s\S]*fixture-sso[\s\S]*Page/);
-  assert.equal(await domainCard.getByRole('columnheader', { name: 'Domain' }).count(), 1);
+  await frame.getByText('Fixture query: fixture-account', { exact: true }).waitFor();
+  assert.equal(await frame.locator('.result-card').count(), 0);
 
-  await frame.locator('#message:enabled').fill('List domains again'); await frame.locator('#send').click();
+  await frame.locator('#message:enabled').fill('Look up the account again'); await frame.locator('#send').click();
   const miss = await waitFor(() => local.sent.find(record => record.approval?.mode === 'reuse'), 'Missing one-time approval lookup');
   assert.deepEqual(miss.approval, { scopeId, mode: 'reuse' });
   assert.equal(await prompt.count(), 0);
   local.write({ type: 'bot-credential-result', id: miss.id, status: 'approval-required' });
-  await review.waitFor();
-  await review.click();
   const grant = await waitFor(() => local.sent.find(record => record.approval?.mode === 'prompt' && record.id !== approvedQuery.id), 'Missing second use request');
   assert.deepEqual(grant.approval, { scopeId, mode: 'prompt' });
-  local.write({ type: 'bot-credential-result', id: grant.id, result: { ...queryResult, rows: [{ domain: 'second.example.com' }] } });
-  await frame.getByText('Fixture query: second.example.com', { exact: true }).waitFor();
+  local.write({ type: 'bot-credential-result', id: grant.id, result: { status: 'ok', data: { account: 'second-account' } } });
+  await frame.getByText('Fixture query: second-account', { exact: true }).waitFor();
   await prompt.waitFor({ state: 'detached' });
 
-  await frame.locator('#message:enabled').fill('List records on page 2'); await frame.locator('#send').click();
-  const reuse = await waitFor(() => local.sent.find(record => record.approval?.mode === 'reuse' && record.use?.operation === 'list-records'), 'Missing automatic credential use on the next turn');
-  assert.deepEqual(reuse, { type: 'bot-credential-request', id: reuse.id, entryId, action: 'use', use: records, approval: { scopeId, mode: 'reuse' } });
+  await frame.locator('#message:enabled').fill('Use the same request once more'); await frame.locator('#send').click();
+  const reuse = await waitFor(() => local.sent.find(record => record.approval?.mode === 'reuse' && record.id !== miss.id), 'Missing automatic credential use on the next turn');
+  assert.deepEqual(reuse, { type: 'bot-credential-request', id: reuse.id, entryId, action: 'use', use, approval: { scopeId, mode: 'reuse' } });
   assert.equal(await prompt.count(), 0);
-  const longRecord = 'record-content-'.repeat(32);
-  local.write({ type: 'bot-credential-result', id: reuse.id, result: { status: 'ok', page: 2, total: 25, rows: [
-    { name: '@', type: 'A', value: '192.0.2.42', ttl: 600 }, { name: 'verification', type: 'TXT', value: longRecord, ttl: 3600 },
-  ] } });
-  await frame.getByText('Fixture query: 192.0.2.42', { exact: true }).waitFor();
+  local.write({ type: 'bot-credential-result', id: reuse.id, result: { status: 'ok', data: { account: 'third-account' } } });
+  await frame.getByText('Fixture query: third-account', { exact: true }).waitFor();
   await prompt.waitFor({ state: 'detached' });
-  const recordsCard = frame.locator('.result-card[aria-label="Alibaba Cloud DNS records"]');
-  await recordsCard.getByRole('cell', { name: '192.0.2.42', exact: true }).waitFor();
-  assert.deepEqual(await recordsCard.getByRole('columnheader').allTextContents(), ['Record name', 'Type', 'Record value', 'TTL (seconds)']);
-  assert.match(await recordsCard.innerText(), /Page\s*2\s*Rows on this page\s*2\s*Total rows\s*25/);
-  await page.setViewportSize({ width: 390, height: 640 });
-  assert.equal(await recordsCard.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
-  assert.equal(await recordsCard.getByRole('cell', { name: longRecord, exact: true }).count(), 1);
-  await page.setViewportSize({ width: 960, height: 700 });
+  assert.equal(await frame.locator('.result-card').count(), 0);
   await frame.locator('#message:enabled').fill('Continue after saving'); await frame.locator('#send').click();
   await frame.getByText('Fixture can continue', { exact: true }).waitFor();
 
@@ -279,10 +258,10 @@ try {
   assert.equal(followUp.pendingInput, undefined);
   assert.equal(followUp.submittingInput, undefined);
   assert.deepEqual(followUp.resolvedInputs.map(input => input.request.credential), [named, other]);
-  const queryReply = settled.messages.find(item => item.role === 'assistant' && item.content === 'Fixture query: example.com');
+  const queryReply = settled.messages.find(item => item.role === 'assistant' && item.content === 'Fixture query: fixture-account');
   assert.equal(queryReply.status, 'success');
   assert.deepEqual(queryReply.resolvedInputs.map(input => input.values), [{ status: 'ok' }]);
-  const reusedReply = settled.messages.find(item => item.role === 'assistant' && item.content === 'Fixture query: 192.0.2.42');
+  const reusedReply = settled.messages.find(item => item.role === 'assistant' && item.content === 'Fixture query: third-account');
   assert.deepEqual(reusedReply.resolvedInputs.map(input => input.values), [{ status: 'ok' }]);
   const exported = await local.post({ ...identity, type: 'session-action', action: 'export', id: sessionId });
   const download = exported.body.messages.find(item => item.type === 'download');
@@ -295,14 +274,11 @@ try {
   await frame.locator('#new').click();
   await frame.getByText('Fixture can continue', { exact: true }).waitFor({ state: 'detached' });
   await frame.locator('#message:enabled').fill('Use in the new conversation'); await frame.locator('#send').click();
-  await review.waitFor();
   assert.equal(local.sent.filter(record => record.approval?.mode === 'reuse').length, 2);
-  await review.click();
   const newScope = await waitFor(() => local.sent.find(record => record.approval?.mode === 'prompt' && record.approval.scopeId !== scopeId), 'New conversation did not request its own approval');
   local.write({ type: 'bot-credential-result', id: newScope.id, result: { status: 'declined' } });
   await frame.getByText('Fixture query: declined', { exact: true }).waitFor();
-  await domainCard.getByText('Credential use declined', { exact: true }).waitFor();
-  assert.equal(await domainCard.getByRole('table').count(), 0);
+  assert.equal(await frame.locator('.result-card').count(), 0);
   await frame.locator('#message:enabled').waitFor();
   assert.ok(!local.stderr().includes(forbidden));
   await page.goto('about:blank'); await local.close(); await checkFiles(local.data);
@@ -328,16 +304,15 @@ try {
   await page.goto('about:blank'); await unavailable.close();
 
   const automatic = await launch('zh-CN', true, true, true, 'auto');
-  await startTurn(automatic, 'Use in the new conversation');
-  const autoRequest = await waitFor(() => automatic.sent.find(record => record.approval?.mode === 'auto'), 'Auto approve did not submit a native query');
-  assert.deepEqual(autoRequest, { type: 'bot-credential-request', id: autoRequest.id, entryId, action: 'use', use, approval: { mode: 'auto' } });
+  await startTurn(automatic, 'Run using temporary variables');
+  const autoRequest = await waitFor(() => automatic.sent.find(record => record.approval?.mode === 'auto'), 'Auto approve did not submit a native command');
+  assert.deepEqual(autoRequest, { type: 'bot-credential-request', id: autoRequest.id, entryId, action: 'use', use: commandUse, approval: { mode: 'auto' } });
   assert.equal(await prompt.count(), 0);
-  automatic.write({ type: 'bot-credential-result', id: autoRequest.id, result: queryResult });
-  await frame.getByText('Fixture query: example.com', { exact: true }).waitFor();
-  const localizedCard = frame.locator('.result-card[aria-label="阿里云 DNS 域名列表"]');
-  await localizedCard.getByText('已完成', { exact: true }).waitFor();
-  await localizedCard.getByRole('columnheader', { name: '域名' }).waitFor();
-  await localizedCard.getByRole('cell', { name: 'example.com', exact: true }).waitFor();
+  const commandResult = await prepareBotCredentialOperation(autoRequest.use).run([{ 'client-id': 'client-fixture', 'client.secret': forbidden, tenant: 'not-mapped' }], AbortSignal.timeout(5_000), directory);
+  assert.deepEqual(commandResult, { status: 'ok', data: { exitCode: 0, stdout: 'command-output', stderr: '' } });
+  automatic.write({ type: 'bot-credential-result', id: autoRequest.id, result: commandResult });
+  await frame.getByText('Fixture query: command-output', { exact: true }).waitFor();
+  assert.equal(await frame.locator('.result-card').count(), 0);
   assert.equal(await prompt.count(), 0);
   await page.goto('about:blank'); await automatic.close(); await checkFiles(automatic.data);
 
@@ -350,16 +325,12 @@ try {
 
   const legacyAuto = await launch('en', true, true, true, 'auto', false);
   await startTurn(legacyAuto, 'Use in the new conversation');
-  await review.waitFor();
+  await frame.getByText('Fixture query: failed', { exact: true }).waitFor();
+  assert.equal(await prompt.count(), 0);
   assert.equal(legacyAuto.sent.some(record => record.type === 'bot-credential-request'), false);
-  await review.click();
-  const legacyRequest = await waitFor(() => legacyAuto.sent.find(record => record.action === 'use'), 'Legacy host did not receive the manual query');
-  assert.equal(legacyRequest.approval?.mode, 'prompt');
-  legacyAuto.write({ type: 'bot-credential-result', id: legacyRequest.id, result: { status: 'declined' } });
-  await frame.getByText('Fixture query: declined', { exact: true }).waitFor();
   await page.goto('about:blank'); await legacyAuto.close();
   assert.deepEqual(errors, []);
-  console.log('Bot credentials passed: read-only blocks, workspace prompts, auto approve runs silently, and older hosts still require approval.');
+  console.log('Bot credentials passed: only saves use chat cards; Workspace uses native approval and Auto Approve runs silently.');
 } finally {
   await browser?.close(); await Promise.all([...children].map(close => close()));
   if (nativeFrame.listening) await new Promise(resolve => nativeFrame.close(resolve));
