@@ -358,6 +358,21 @@ it('renders path names as copyable text without interpreting markup', async () =
   expect(f.requests('open-path').at(-1).path).toBe(path);
 });
 
+it('keeps a draft attachment clickable through an unrelated conversation update', async () => {
+  const f = await fixture();
+  const path = '/workspace/template.xlsx';
+  const current = session('first');
+  current.draft!.references = [{ path, name: 'template.xlsx', kind: 'file', size: 1024 }];
+  f.receive('second'); f.receive('first', false, [current]);
+  const card = document.querySelector<HTMLButtonElement>('#draft-attachments .path-reference-open')!;
+  card.focus();
+  f.receive('first', false, [{ ...current, title: 'Updated title' }]);
+  expect(document.querySelector('#draft-attachments .path-reference-open')).toBe(card);
+  expect(document.activeElement).toBe(card);
+  card.click();
+  expect(f.requests('open-path')).toMatchObject([{ attachment: true, path }]);
+});
+
 it('ignores a late drop result after switching away and back, and accepts a new drop for the current draft', async () => {
   const f = await fixture(); f.drop(transfer({ 'text/uri-list': 'file:///tmp/old' })); const old = f.requests('resolve-paths')[0];
   f.receive('second'); f.receive('first');

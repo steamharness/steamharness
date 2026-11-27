@@ -183,6 +183,8 @@ function initialize(): void {
   let composing = false;
   let draftFiles: Attachment[] = [];
   let draftReferences: PathReference[] = [];
+  const draftAttachments = document.querySelector<HTMLElement>('#draft-attachments')!;
+  let draftAttachmentSignature: string | undefined;
   let dropGeneration = 0;
   let advertisedDropTarget: string | undefined;
   const pendingDrops = new Set<string>();
@@ -1035,6 +1037,14 @@ function initialize(): void {
     }
   }
 
+  function renderDraftAttachments(): void {
+    const signature = JSON.stringify([dropScope(), vscode.canOpenAttachments, draftFiles, draftReferences]);
+    // Keep pointer gestures and focus on the same card across unrelated state updates.
+    if (signature === draftAttachmentSignature) return;
+    draftAttachmentSignature = signature;
+    attachmentList(draftAttachments, draftFiles, true, draftReferences);
+  }
+
   function attachmentList(container: HTMLElement, attachments: Attachment[], removable: boolean, references: PathReference[] = []): void {
     container.replaceChildren(); container.hidden = !attachments.length && !references.length;
     for (const file of attachments) {
@@ -1050,7 +1060,7 @@ function initialize(): void {
           else dialogs.attachmentDetails(file.name, details, () => post({ type: 'open-file', id: file.id }));
         }));
       }
-      if (removable) { item.append(iconButton('close', t("Remove attachment"), () => { draftFiles = draftFiles.filter((entry) => entry.id !== file.id); attachmentList(container, draftFiles, true, draftReferences); saveDraft(); updateControls(); })); }
+      if (removable) { item.append(iconButton('close', t("Remove attachment"), () => { draftFiles = draftFiles.filter((entry) => entry.id !== file.id); renderDraftAttachments(); saveDraft(); updateControls(); })); }
       container.append(item);
     }
     for (const reference of references) {
@@ -1061,7 +1071,7 @@ function initialize(): void {
         else dialogs.attachmentDetails(reference.name, details);
       }));
       if (removable) item.append(iconButton('close', t("Remove path reference"), () => {
-        draftReferences = draftReferences.filter(entry => entry.path !== reference.path); attachmentList(container, draftFiles, true, draftReferences); saveDraft(); updateControls();
+        draftReferences = draftReferences.filter(entry => entry.path !== reference.path); renderDraftAttachments(); saveDraft(); updateControls();
       }));
       container.append(item);
     }
@@ -1460,7 +1470,7 @@ function initialize(): void {
     }
     renderHistory(switching); updateSessionMenu();
     document.querySelector<HTMLElement>('#editing-queue')!.hidden = !editingQueueId;
-    attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences);
+    renderDraftAttachments();
     const indexedMessages: IndexedUserMessage[] = [];
     if (!session.messages.length) {
       if (!transcriptContent.querySelector('.empty')) { transcriptContent.innerHTML = `<div class="empty">${icon(conversation ? 'comment-discussion' : 'run-all')}</div>`; }
@@ -2003,7 +2013,7 @@ function initialize(): void {
       uploading = Math.max(0, uploading - 1);
       try {
         draftReferences = pathReferences([...new Map([...draftReferences, ...pathReferences(message.references)].map(reference => [reference.path, reference])).values()]);
-        attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); saveDraft(); textarea.focus();
+        renderDraftAttachments(); saveDraft(); textarea.focus();
       } catch (error) { showError(t((error as Error).message)); }
       updateControls();
     } else if (message.type === 'attachment-cancelled' && message.sessionId === state?.activeId) {
@@ -2026,7 +2036,7 @@ function initialize(): void {
       } else {
         const merged = [...new Map([...draftFiles, ...(message.files as Attachment[])].map(file => [file.id, file])).values()];
         if (merged.length > 32) showError(t('A message can contain up to 32 uploaded attachments.'));
-        else { draftFiles = merged; attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); saveDraft(); }
+        else { draftFiles = merged; renderDraftAttachments(); saveDraft(); }
       }
       updateControls();
     } else if (message.type === 'command-executed' && message.sessionId === state?.activeId) {
@@ -2034,7 +2044,7 @@ function initialize(): void {
     } else if (message.type === 'sent' && state && message.sessionId === state.activeId) {
       delete parameterEdits[formKey];
       submitting = false; conversationMentions.setText(''); draftFiles = []; draftReferences = []; editingQueueId = undefined; drafts[`${state.project.uri}:${state.activeId}`] = ''; sizeComposer(); persist();
-      attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); updateControls(); textarea.focus();
+      renderDraftAttachments(); updateControls(); textarea.focus();
     } else if (message.type === 'usage' && message.sessionId === state?.activeId) { dialogs.usageResult(message.requestId, message.usage); }
     else if (message.type === 'exported' && message.sessionId === state?.activeId) {
       const button = messages.get(message.messageId)?.root.querySelector<HTMLButtonElement>('.export-message'); if (button) { button.disabled = false; button.innerHTML = icon('export'); }

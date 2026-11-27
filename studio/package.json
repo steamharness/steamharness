@@ -28,6 +28,7 @@
     "test:analysis-live": "node tests/studio-analysis-live.mjs",
     "test:start-ui": "node tests/start-page-ui.mjs",
     "test:mode-ui": "node tests/studio-mode-ui.mjs",
+    "test:attachment-preview-ui": "node tests/studio-mode-ui.mjs --attachment-preview",
     "test:account-menu-ui": "node tests/account-menu-ui.mjs",
     "test:settings-ui": "node tests/settings-ui.mjs && node tests/settings-regressions-ui.mjs",
     "test:sidebar-ui": "node tests/settings-sidebar-ui.mjs",

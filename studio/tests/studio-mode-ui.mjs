@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import * as XLSX from 'xlsx';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { ROOT, assertRuntime, assertUpstream, exists } from '../scripts/distribution.mjs';
 import { serveLocalWebviewAssets } from './local-webview-assets.mjs';
@@ -18,6 +19,7 @@ const upstream = await assertUpstream();
 const platform = process.env.STEAMHARNESS_STUDIO_INTERNAL === '1';
 const titlebarOnly = process.env.STEAMHARNESS_UI_FOCUS === 'titlebar';
 const toolsToggleOnly = process.env.STEAMHARNESS_UI_FOCUS === 'tools-toggle';
+const attachmentPreviewOnly = process.argv.includes('--attachment-preview');
 const sourceRoot = path.resolve(process.env.STUDIO_STEAMHARNESS_SOURCE ?? path.join(ROOT, '..'));
 const proof = path.resolve(ROOT, process.env.STEAMHARNESS_UI_PROOF ?? '.studio/studio-mode-ui');
 await mkdir(proof, { recursive: true });
@@ -107,6 +109,17 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       globalThis._VSCODE_NLS_LANGUAGE = language;
       if (messages) { globalThis._VSCODE_NLS_MESSAGES = messages; }
     }, { language, messages: sourceMessages });
+    if (attachmentPreviewOnly) {
+      // Exercise the desktop attachment-open path without desktop clipboard or dialogs.
+      await context.addInitScript(() => {
+        if (parent === window || !location.pathname.startsWith('/entries/')) return;
+        addEventListener('message', event => {
+          if (event.source === parent && event.data?.type === 'workflow-host' && event.data.attachmentOpenVersion !== undefined) {
+            event.data.attachmentOpenVersion = 1;
+          }
+        });
+      });
+    }
     if (titlebarOnly) {
       // Detect fullscreen during bootstrap, before the workbench registers its listeners.
       await context.addInitScript(() => Object.defineProperty(screen, 'height', { get: () => window.innerHeight }));
@@ -318,6 +331,57 @@ export default executor;`);
       }
     }, Boolean, 'Project result frame did not open');
     const toggleTools = page.locator('.studio-steam-toggle-tools');
+    if (attachmentPreviewOnly) {
+      const name = 'assistant-attachment.xlsx', cell = 'Assistant XLSX preview';
+      const file = path.join(folder, name), workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([[cell, 42]]), 'Results');
+      const original = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+      await writeFile(file, original);
+      const assistant = () => until(async () => {
+        for (const candidate of page.frames()) {
+          if (await candidate.locator('body[data-surface=assistant] #attach:enabled').isVisible().catch(() => false)) { return candidate; }
+        }
+      }, Boolean, 'Assistant composer did not open', 90_000);
+      const attach = async frame => {
+        await frame.locator('#attach').click();
+        await frame.locator('#conversation-file-menu [data-kind=files]').click();
+        await page.locator('.quick-input-widget:visible .quick-input-list .monaco-list-row').getByText(name, { exact: true }).click();
+        const card = frame.locator('#draft-attachments .path-reference-open').filter({ hasText: name });
+        await card.waitFor();
+        assert.ok((await card.getAttribute('title')).includes(file), 'The draft must reference the original file');
+        return card;
+      };
+      const assertPreview = async (mode, editor, expected = 'opens') => {
+        await editor.locator('.tab.active').filter({ hasText: name }).waitFor();
+        await until(async () => {
+          for (const candidate of page.frames()) {
+            if (await candidate.locator('[data-cell=A1]').filter({ hasText: cell }).isVisible().catch(() => false)) {
+              const bounds = await candidate.locator('#preview-app').boundingBox(), target = await editor.boundingBox();
+              if (bounds && target && bounds.x >= target.x - 1 && bounds.x < target.x + target.width) { return true; }
+            }
+          }
+        }, Boolean, `${mode}: the XLSX tab did not render its cells`, 20_000);
+        const tabs = (await call({ action: 'state' })).groups.flatMap(group => group.tabs).filter(tab => tab.uri === pathToFileURL(file).href);
+        assert.equal(tabs.length, 1, `${mode}: there must be exactly one tab for the attachment`);
+        assert.equal(tabs[0].viewType, 'studio.documentPreview');
+        await page.screenshot({ path: path.join(proof, `${language}-${mode}-attachment-${expected}.png`) });
+        check(`${language}: ${mode} ${expected} the original XLSX in a visible editor tab`);
+      };
+      await command('studio.enterSteamMode'); await projectFrame();
+      await command('studio.internalOpenSteamTool', 'assistant');
+      const steamAssistant = await assistant(), steamCard = await attach(steamAssistant);
+      const steamEditor = page.locator('.part.auxiliarybar .studio-steam-editors[data-tool=editor]:visible');
+      await steamCard.click(); await assertPreview('steam', steamEditor);
+      await command('studio.internalOpenSteamTool', 'assistant');
+      await steamCard.press('Enter'); await assertPreview('steam', steamEditor, 'reopens');
+      await command('workbench.action.closeActiveEditor');
+      await command('studio.enterIdeMode'); await command('studio.openAssistant');
+      const ideAssistant = await assistant();
+      await (await attach(ideAssistant)).click();
+      await assertPreview('ide', page.locator('.part.editor:not(.studio-steam-editors):visible'));
+      assert.deepEqual(await readFile(file), original, 'Opening the preview must not change the original');
+      continue;
+    }
     if (toolsToggleOnly) {
       await page.locator('.monaco-workbench.studio-narrow-titlebar').waitFor();
       await steam.click();
