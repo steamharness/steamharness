@@ -36,7 +36,9 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
     entries: AgentModelCatalogEntry[]; unavailable?: boolean; defaultModel?: { credentialId: string; model: string };
   }>;
   kanban?(input: { projectDir: string; projectId: string; entryId: string; call?: unknown }, signal: AbortSignal): Promise<unknown>;
-}) {
+}, managedProjectDir?: string) {
+  // The editor registers the loaded build; local files and terminals belong to its stable project home.
+  const workdir = managedProjectDir ?? assistant.workdir;
   const installedThemes = (): string[] => [...new Set(vscode.extensions.all.flatMap(extension =>
     (extension.packageJSON?.contributes?.themes ?? []).flatMap((theme: { id?: string; label?: string }) =>
       typeof (theme.id ?? theme.label) === 'string' ? [theme.id ?? theme.label as string] : [])))].sort();
@@ -50,10 +52,15 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
 
   return async (operation: string, input: Record<string, unknown>, permissionPolicy: StudioControlPermissionPolicy = 'workspace'): Promise<unknown> => {
     assertAvailable();
-    const allowedPath = async (filename: string): Promise<string> => {
-      const candidate = await realpath(path.resolve(assistant.workdir, filename));
+    const allowedPath = async (filename: string, base = workdir): Promise<string> => {
+      const candidate = await realpath(path.resolve(base, filename));
+      if (managedProjectDir && (await realpath(managedProjectDir) !== managedProjectDir
+        || !contains(path.join(managedProjectDir, 'builds'), await realpath(assistant.workdir)))) {
+        throw new Error(t('Studio Control workspace is no longer available.'));
+      }
       if (permissionPolicy !== 'auto') {
         const roots = await Promise.all(assistant.roots.map(root => realpath(root.folderPath)));
+        if (managedProjectDir) { roots.push(managedProjectDir); }
         if (!roots.some(root => contains(root, candidate))) { throw new Error(t('Studio Control can only access the registered workspace folders.')); }
       }
       assertAvailable();
@@ -83,7 +90,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
     };
     switch (operation) {
       case 'studio.kanban.diagnostics': {
-        const directory = await allowedPath(optionalString('projectDir') ?? assistant.workdir);
+        const directory = await allowedPath(optionalString('projectDir') ?? '.', assistant.workdir);
         await allowedPath(path.join(directory, 'steamharness.json'));
         const declaration = await readProjectDeclarationFromDirectory(directory);
         const entry = selectProjectEntry(declaration, requiredString('entryId'));
@@ -111,7 +118,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         const target: Record<string,unknown> = {storage:input.storage,entryId,...(requestedTarget?{target:requestedTarget}:{})};
         if(input.storage==='local') {
           if(input.projectId!==undefined) throw new Error(t('Use projectDir for local configurations.'));
-          const directory=await allowedPath(requiredString('projectDir'));
+          const directory=await allowedPath(requiredString('projectDir'), assistant.workdir);
           if(!(await stat(directory)).isDirectory())throw new Error(t('Studio Control requires a directory.'));
           await allowedPath(path.join(directory,'steamharness.json'));
           try { await allowedPath(path.join(directory,'configuration.json')); }
@@ -171,12 +178,12 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         }
         assertAvailable();
         return { appName: vscode.env.appName, vscodeVersion: vscode.version, language: vscode.env.language,
-          workdir: assistant.workdir, folders: assistant.roots, activeEditor, permissionPolicy, pathAccess: permissionPolicy === 'auto' ? 'all' : 'workspace',
+          workdir, folders: assistant.roots, activeEditor, permissionPolicy, pathAccess: permissionPolicy === 'auto' ? 'all' : 'workspace',
           theme: vscode.workspace.getConfiguration('workbench').get<string>('colorTheme'),
           themes: installedThemes(), views: Object.keys(views), operations };
       }
       case 'studio.entries.get': {
-        const directory = await allowedPath(optionalString('projectDir') ?? assistant.workdir);
+        const directory = await allowedPath(optionalString('projectDir') ?? '.', assistant.workdir);
         if (!(await stat(directory)).isDirectory()) { throw new Error(t('Studio Control requires a directory.')); }
         await allowedPath(path.join(directory, 'steamharness.json'));
         const manifest = await readProjectDocument(vscode.Uri.file(directory));
@@ -238,7 +245,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         return { theme, mode: 'manual' };
       }
       case 'studio.terminal.open': {
-        const cwd = await allowedPath(optionalString('cwd') ?? assistant.workdir);
+        const cwd = await allowedPath(optionalString('cwd') ?? '.');
         if (!(await stat(cwd)).isDirectory()) { throw new Error(t('Studio Control requires a directory.')); }
         assertAvailable();
         const terminal = vscode.window.createTerminal({ name: t('Studio terminal'), cwd });

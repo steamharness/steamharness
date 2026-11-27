@@ -508,7 +508,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           const directory = project.assistant ? await assistantDirectory() : project.folderPath;
           const assistantScope = (managedWorkspace ? workspaceAssistant : assistant) ?? { workdir: directory, roots };
           if (!studioControlWorkspaceAvailable(assistantScope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
-          bridge = await startStudioControlBridge(createStudioControlHandler(assistantScope, runSignal, context, configurationService), runSignal);
+          bridge = await startStudioControlBridge(createStudioControlHandler(assistantScope, runSignal, context, configurationService,
+            projectHome && await realpath(projectHome)), runSignal);
           studioControl = { url: bridge.url, token: bridge.token, mcpServer: JSON.stringify({
             id: 'workflow-studio', command: [runtime.nodePath, (await resolveProjectCli(directory)).entry, 'mcp', directory, '--entry', STUDIO_CONTROL_ENTRY_ID],
             environment: { PATH: nodeRuntimeEnvironment(runtime).PATH!, ...createProjectCliEnvironment({}, undefined, runtime, authRoot), STEAMHARNESS_LOCAL_ACCOUNT_KEY: scope.workspace?.owner ?? 'local', ...(runtime.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) },

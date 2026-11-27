@@ -131,6 +131,25 @@ test('a control project outside the opened workspace cannot register a scope', a
   await assert.rejects(execute('studio.state.get', {}), /workspace is no longer available/);
 });
 
+test('managed assistant files and terminals use the project home while the open build authorizes control', async t => {
+  const f = await fixture(t);
+  const home = path.join(await realpath(f.workdir), 'project'), buildDir = path.join(home, 'builds', 'one');
+  await mkdir(buildDir, { recursive: true });
+  await saveManifest(buildDir, manifest(ids[0]));
+  await writeFile(path.join(home, 'plan.md'), 'durable plan');
+  const folder = { name: 'Assistant', uri: f.uri(buildDir) };
+  f.vscode.workspace.workspaceFolders = [folder];
+  const registration = { workdir: buildDir, roots: [{ name: folder.name, uri: folder.uri.toString(), folderPath: buildDir }] };
+  const execute = load(hostCode, f.vscode).createStudioControlHandler(registration, f.controller.signal, {}, undefined, home);
+  assert.equal((await execute('studio.state.get', {})).workdir, home);
+  assert.equal((await execute('studio.terminal.open', {})).cwd, home);
+  assert.equal((await execute('studio.file.open', { filePath: 'plan.md' })).filePath, path.join(home, 'plan.md'));
+  assert.equal((await execute('studio.entries.get', {})).projectDir, buildDir);
+  await assert.rejects(execute('studio.file.open', { filePath: path.join(f.outside, 'index.ts') }), /only access/);
+  f.vscode.workspace.workspaceFolders = [];
+  await assert.rejects(execute('studio.terminal.open', {}), /workspace is no longer available/);
+});
+
 test('auto permits external files, diagnostics, terminals and project queries while other policies keep their scope', async t => {
   const f = await fixture(t);
   const outsideFile = path.join(f.outside, 'index.ts');

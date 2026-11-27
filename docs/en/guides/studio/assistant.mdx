@@ -56,6 +56,8 @@ The assistant project contains a default `main` Bot and a `studio-control` Workf
 
 Opening a terminal does not execute a command. State, diagnostics, and entry queries are approved by default. Other editor operations retain tool permissions and Build/Plan approval rules.
 
+When you launch the Studio-managed assistant on its own, its terminal and relative file paths start in your account's project ID directory. After `bash` writes `plan.md`, ask the assistant to open `plan.md` by name. Entry queries still read the current build's manifest. An assistant bound to a folder uses that folder instead.
+
 Control requires a Node extension host. Closing the conversation, removing the workspace, or revoking trust invalidates the connection. The `studio-control` subdirectory is not a standalone project. It does not provide the old Desktop Dock, updater, or login-start controls.
 
 ## Diagnose a Kanban page
