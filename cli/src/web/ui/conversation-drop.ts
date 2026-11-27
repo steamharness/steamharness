@@ -11,7 +11,7 @@ interface Entry {
 const formats = ['files', 'codefiles', 'resourceurls', 'codeeditors', 'text/uri-list'];
 export function isFileDrop(transfer: DataTransfer): boolean { return Array.from(transfer.types).some(type => formats.includes(type.toLowerCase())); }
 
-export function transferredFileUrls(transfer: Pick<DataTransfer, 'getData'>): string[] {
+function transferredFileUrls(transfer: Pick<DataTransfer, 'getData'>): string[] {
   return transfer.getData('text/uri-list').split(/\r?\n/).filter(line => line.startsWith('file:'));
 }
 
@@ -43,6 +43,13 @@ export function capturePickedFiles(files: File[], directories = false): FileImpo
   return { ...captureEntries(paths.length === files.length ? [...new Set(paths)] : [], files, []), directories };
 }
 
+export function capturePastedFiles(transfer: DataTransfer): FileImport | undefined {
+  const paths = transferredFileUrls(transfer);
+  if (paths.length) return captureEntries([...new Set(paths)], [], []);
+  const files = Array.from(transfer.files ?? []);
+  return files.length ? capturePickedFiles(files) : undefined;
+}
+
 export function capturePickedDirectory(directory: PickedDirectory): FileImport {
   const entry = (handle: PickedDirectory | PickedFile): Entry => ({
     name: handle.name, isDirectory: handle.kind === 'directory',
@@ -63,7 +70,7 @@ function captureEntries(paths: string[], files: File[], entries: (Entry | null)[
     const append = (entry: DroppedEntry) => { output.push(entry); if (output.length > 1000) throw new Error('A drop can contain up to 1,000 files and folders.'); };
     const read = async (file: File, name: string) => {
       bytes += file.size;
-      if (bytes > 50 * 1024 * 1024) throw new Error('Dropped files exceed 50 MiB.');
+      if (bytes > 50 * 1024 * 1024) throw new Error('Files selected for import exceed 50 MiB in total.');
       const data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',', 2)[1]); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
       });

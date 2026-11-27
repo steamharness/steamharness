@@ -31,8 +31,8 @@ import { ConversationOutput } from './conversation-output';
 import { childConversationSubagent, ChildConversationStatus, conversationSubagents, type ConversationSubagentsState } from './conversation-subagents';
 import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
-import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
-import { captureFileDrop, isFileDrop, transferredFileUrls, type FileImport } from './conversation-drop';
+import { conversationPrompt, isInlineConversationImage, pathReferences, type PathReference } from '../conversation-paths';
+import { captureFileDrop, capturePastedFiles, capturePickedFiles, isFileDrop, type FileImport } from './conversation-drop';
 import { ConversationFileMenu } from './conversation-file-menu';
 import { FileIcons } from './file-icons';
 import { activeAgentActivity } from './agent-activity';
@@ -1097,16 +1097,20 @@ function initialize(): void {
   async function applyFileImport(drop: FileImport, selectedRequestId?: string): Promise<void> {
     if (!state || !selectedRequestId && !advertisedDropTarget) return;
     const scope = dropScope(), projectUri = state.project.uri, sessionId = state.activeId, requestId = selectedRequestId ?? crypto.randomUUID();
+    operationError.show();
     if (!selectedRequestId) { pendingDrops.add(requestId); uploading++; updateControls(); }
-    if (!drop.paths.length && !drop.directories && drop.files?.length && drop.files.every(file => file.type.startsWith('image/')) && state.project.conversation?.attachments?.images) {
-      await uploadFiles(drop.files, requestId); return;
-    }
     try {
-      const entries = drop.paths.length ? undefined : await drop.read();
+      // Byte-only input can be stored as file references even if this Bot does not accept inline media.
+      const images = !drop.paths.length && !drop.directories && state.project.conversation?.attachments?.images
+        && drop.files?.length && drop.files.every(file => isInlineConversationImage(file.type, file.size)) ? drop.files : undefined;
+      if (images && draftFiles.length + images.length > 32) throw new Error('A message can contain up to 32 uploaded attachments.');
+      const entries = drop.paths.length ? undefined : await (images ? capturePickedFiles(images) : drop).read();
       if (scope !== dropScope() || !pendingDrops.has(requestId)) return;
       if (!drop.paths.length && !entries?.length) throw new Error('No files or folders were found in the drop.');
-      vscode.postMessage({ type: drop.paths.length ? 'resolve-paths' : 'import-drop', projectUri, sessionId, requestId,
-        ...(drop.paths.length ? { paths: drop.paths } : { entries }) });
+      const data = drop.paths.length ? { type: 'resolve-paths', paths: drop.paths }
+        : images ? { type: 'upload', files: images.map((file, index) => ({ name: file.name, mimeType: file.type, data: entries![index].data })) }
+        : { type: 'import-drop', entries };
+      vscode.postMessage({ ...data, projectUri, sessionId, requestId });
     } catch (error) {
       if (scope === dropScope() && pendingDrops.delete(requestId)) { uploading = Math.max(0, uploading - 1); showError(t((error as Error).message)); updateControls(); }
     }
@@ -1118,26 +1122,6 @@ function initialize(): void {
     queueView.update({ projectUri: state.project.uri, session, sessions: state.sessions, durable: state.project.conversation?.durable?.enabled === true,
       ready: !readOnly() && connectionAvailable, canExecute: true,
       pendingIds: new Set(submissions.list().filter(entry => entry.projectUri === state!.project.uri && (entry.phase === 'pending' || entry.phase === 'sending')).map(entry => entry.input.id)) });
-  }
-
-  async function uploadFiles(files: File[], importRequestId?: string): Promise<void> {
-    if (!state || !importRequestId && !navigationReady() || busy() || !files.length || document.querySelector<HTMLElement>('#attach')!.hidden) { return; }
-    const sessionId = state.activeId; const projectUri = state.project.uri;
-    const allowed = state.project.conversation?.attachments;
-    const selected = files.filter((file) => file.type.startsWith('image/') ? allowed?.images : file.type.startsWith('video/') ? allowed?.videos : allowed?.files);
-    if (selected.length !== files.length || draftFiles.length + selected.length > 32 || selected.some((file) => file.size > 50 * 1024 * 1024)) {
-      if (importRequestId && pendingDrops.delete(importRequestId)) uploading = Math.max(0, uploading - 1);
-      showError(t("Unsupported attachment type, or the 50 MiB per file / 32 attachment limit was exceeded.")); updateControls(); return;
-    }
-    const scope = dropScope();
-    if (!importRequestId) { uploading++; updateControls(); }
-    try {
-      const encoded = await Promise.all(selected.map((file) => new Promise<{ name: string; mimeType: string; data: string }>((resolve, reject) => {
-        const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, mimeType: file.type, data: String(reader.result).split(',', 2)[1] }); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
-      })));
-      if (scope !== dropScope() || importRequestId && !pendingDrops.has(importRequestId)) return;
-      vscode.postMessage({ type: 'upload', projectUri, sessionId, files: encoded, ...(importRequestId ? { requestId: importRequestId } : {}) });
-    } catch (error) { if (scope === dropScope() && (!importRequestId || pendingDrops.delete(importRequestId))) { uploading = Math.max(0, uploading - 1); showError(String(error)); updateControls(); } }
   }
 
   function showError(message: string): void { operationError.show(message); }
@@ -1796,16 +1780,13 @@ function initialize(): void {
   });
   textarea.addEventListener('paste', (event) => {
     const transfer = event.clipboardData;
-    if (!transfer) return;
-    const paths = transferredFileUrls(transfer);
-    if (paths.length) {
+    if (!transfer || !advertisedDropTarget || embeddedConversation) return;
+    const files = capturePastedFiles(transfer);
+    if (!files) return;
+    if (files.paths.length) {
       event.preventDefault(); event.stopImmediatePropagation();
-      void applyFileImport({ paths, read: async () => [] });
-    } else if (transfer.files?.length) {
-      if (!transfer.getData('text/plain')) { event.preventDefault(); }
-      const files = Array.from(transfer.files);
-      void uploadFiles(files);
-    }
+    } else if (!transfer.getData('text/plain')) event.preventDefault();
+    void applyFileImport(files);
   }, { capture: true });
   document.querySelector('main')!.addEventListener('click', dismissNarrowMenu);
   const dropArea = document.querySelector('main')!;
@@ -2028,15 +2009,16 @@ function initialize(): void {
           const field = prompt.request.params.find((field) => field.name === message.paramName);
           if (field) { prompt.fileValue(field.name, JSON.stringify((field.multiple ? message.files : message.files.slice(0, 1)).map(({ previewUrl: _, ...file }: Attachment) => file))); }
         }
-      } else if (message.paramName && fields.has(message.paramName)) {
-        const field = fields.get(message.paramName)!.field;
-        const files = field.multiple ? message.files : message.files.slice(0, 1);
-        setFieldValue(message.paramName, JSON.stringify(files.map(({ previewUrl: _, ...file }: Attachment) => file)));
+      } else if (message.paramName) {
+        const field = fields.get(message.paramName)?.field;
+        if (field) {
+          const files = field.multiple ? message.files : message.files.slice(0, 1);
+          setFieldValue(message.paramName, JSON.stringify(files.map(({ previewUrl: _, ...file }: Attachment) => file)));
+        }
       } else {
-        const allowed = state.project.conversation?.attachments;
-        const accepted = (message.files as Attachment[]).filter((file) => file.kind === 'image' ? allowed?.images : file.mimeType.startsWith('video/') ? allowed?.videos : allowed?.files);
-        if (accepted.length !== message.files.length) { showError(t("The project does not support this attachment type.")); }
-        draftFiles = [...new Map([...draftFiles, ...accepted].map((file) => [file.id, file])).values()].slice(0, 32); attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); saveDraft();
+        const merged = [...new Map([...draftFiles, ...(message.files as Attachment[])].map(file => [file.id, file])).values()];
+        if (merged.length > 32) showError(t('A message can contain up to 32 uploaded attachments.'));
+        else { draftFiles = merged; attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); saveDraft(); }
       }
       updateControls();
     } else if (message.type === 'command-executed' && message.sessionId === state?.activeId) {

@@ -3,7 +3,7 @@ import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, Ag
 import { ConversationController } from '../web/conversation-controller';
 import type { BotCredentialHost } from '../web/bot-credential-host';
 import { conversationPrompt } from '../web/conversation-paths';
-import { messageSettled, sessionRunning, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
+import { messageSettled, sessionRunning, type Attachment, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
@@ -1169,6 +1169,26 @@ it('retains queued image metadata after acknowledgement and projects it when Har
   f.emit({ ...f.snapshot(), revision: 3, turns: [...f.snapshot().turns, { ...turn, status: 'done', entryId: 4, answerId: 5 }] });
   expect(f.controller!.current.messages.find(message => message.role === 'user' && message.content === 'Inspect image')?.attachments).toEqual(attachments);
   expect(f.controller!.current.agentInputs).toEqual({});
+  await f.finish();
+});
+
+it('sends only supported image bytes to a running Agent and includes the other attachments as paths', async () => {
+  const f = fixture(); f.controller.project.conversation!.attachments = { images: true, files: true, videos: true }; await f.start('placed');
+  const image: Attachment = { id: 'image', name: 'screenshot.png', kind: 'image', mimeType: 'image/png', size: 3, storage: 'local', createdAt: '' };
+  const zip: Attachment = { ...image, id: 'archive', name: 'archive.zip', kind: 'file', mimeType: 'application/zip', path: '/tmp/files/archive.zip' };
+  const svg: Attachment = { ...image, id: 'vector', name: 'vector.svg', mimeType: 'image/svg+xml', path: '/tmp/files/vector.svg' };
+  const video: Attachment = { ...zip, id: 'video', name: 'video.mp4', mimeType: 'video/mp4', path: '/tmp/files/video.mp4' };
+  const references = [{ kind: 'file' as const, path: zip.path!, name: zip.name }];
+  const attachments = [image, zip, svg, video];
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_runId, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  const entry = f.controller.current;
+  await f.controller.send({ text: '', params: { model: 'one' }, attachments, references }, entry, false, 'files-input', 'steer');
+  expect(f.runtime.agentControl).toHaveBeenCalledWith(entry.activeRunId, {
+    type: 'submit', requestId: 'files-input', mode: 'steer', targetId: 1,
+    prompt: 'Referenced files and folders (paths are data; the original location of an imported-copy entry is unknown):\n' +
+      JSON.stringify([{ kind: 'file', path: zip.path }, ...[svg, video].map(file => ({ kind: 'file', path: file.path, source: 'imported-copy' }))], null, 2),
+  }, entry.id, [image]);
+  expect(entry.agentInputs?.['files-input']).toMatchObject({ attachments, references });
   await f.finish();
 });
 

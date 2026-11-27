@@ -90,23 +90,25 @@ test('Studio paste reads text and image from the native host without changing ot
   assert.deepEqual(reads, ['text', 'image']); assert.equal(standardPastes(), 1);
 });
 
-test('a Finder selection reaches only the project surface without reading its clipboard icon', async () => {
-  const { view, commands, reads } = nativePasteFixture();
-  Object.assign(view, { extension: { id: { value: 'studio.studio-workstation' } }, providedViewType: 'studio.project' });
-  const fileUrls = ['file:///tmp/table%20%23.xlsx', 'file:///tmp/archive.zip'];
-  view._nativeHostService.readClipboardFileUrls = async () => { reads.push('files'); return fileUrls; };
-  view.paste(); await settle();
-  assert.deepEqual(reads.splice(0), ['files', 'text']);
-  assert.deepEqual(commands[0].clipboard.fileUrls, fileUrls);
-  assert.equal(commands[0].clipboard.image.byteLength, 0);
+for (const surface of ['studio.project', 'studio.projectTool', 'studio.developerAssistant']) {
+  test(`a Finder selection reaches ${surface} without reading its clipboard icon`, async () => {
+    const { view, commands, reads } = nativePasteFixture();
+    Object.assign(view, { extension: { id: { value: 'studio.studio-workstation' } }, providedViewType: surface });
+    const fileUrls = ['file:///Users/demo/Desktop/archive%20%23.zip'];
+    view._nativeHostService.readClipboardFileUrls = async () => { reads.push('files'); return fileUrls; };
+    view.paste(); await settle();
+    assert.deepEqual(reads.splice(0), ['files', 'text']);
+    assert.deepEqual(commands[0].clipboard.fileUrls, fileUrls);
+    assert.equal(commands[0].clipboard.image.byteLength, 0);
 
-  view.providedViewType = 'studio.projectSidebar'; view.paste(); await settle();
-  assert.deepEqual(reads.splice(0), ['text', 'image']);
-  assert.equal(commands[1].clipboard.fileUrls, undefined);
-  view.providedViewType = 'studio.project'; view._nativeHostService.readClipboardFileUrls = async () => [];
-  view.paste(); await settle();
-  assert.deepEqual(reads, ['text']); assert.equal(commands[2].clipboard.image.byteLength, 0);
-});
+    view.providedViewType = 'studio.projectSidebar'; view.paste(); await settle();
+    assert.deepEqual(reads.splice(0), ['text', 'image']);
+    assert.equal(commands[1].clipboard.fileUrls, undefined);
+    view.providedViewType = surface; view._nativeHostService.readClipboardFileUrls = async () => [];
+    view.paste(); await settle();
+    assert.deepEqual(reads, ['text']); assert.equal(commands[2].clipboard.image.byteLength, 0);
+  });
+}
 
 const nativeHostSource = await readFile(new URL('../upstream/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts', import.meta.url), 'utf8');
 const fileUrlsMethod = nativeHostSource.slice(nativeHostSource.indexOf('\tasync readClipboardFileUrls('), nativeHostSource.indexOf('\n\tasync writeClipboardText('));

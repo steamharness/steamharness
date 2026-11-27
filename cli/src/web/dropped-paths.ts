@@ -32,7 +32,7 @@ export async function importDroppedEntries(root: string, value: unknown): Promis
     if (entry.kind === 'file') {
       if (typeof entry.data !== 'string' || entry.data.length > 70 * 1024 * 1024 || entry.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(entry.data)) throw new Error(t("Invalid dropped file data."));
       bytes = Buffer.from(entry.data, 'base64'); size += bytes.length;
-      if (size > 50 * 1024 * 1024) throw new Error(t("Dropped files exceed 50 MiB."));
+      if (size > 50 * 1024 * 1024) throw new Error(t("Files selected for import exceed 50 MiB in total."));
     }
     return { name: entry.name as string, kind: entry.kind as 'file' | 'directory', bytes };
   });
@@ -54,6 +54,6 @@ export async function importDroppedEntries(root: string, value: unknown): Promis
       await mkdir(entry.kind === 'directory' ? target : path.dirname(target), { recursive: true });
       if (entry.bytes) await writeFile(target, entry.bytes, { flag: 'wx' });
     }
-    return pathReferences([...top].map(([name, kind]) => ({ path: path.join(directory, name), kind, size: fileSizes.get(name) })));
+    return pathReferences([...top].map(([name, kind]) => ({ path: path.join(directory, name), kind, size: fileSizes.get(name), source: 'imported-copy' })));
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }

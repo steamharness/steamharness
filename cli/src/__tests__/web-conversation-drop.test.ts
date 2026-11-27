@@ -253,8 +253,49 @@ it('pastes Finder file references ahead of filenames or image representations an
   expect(dialogs.image).not.toHaveBeenCalled();
 });
 
+it.each([
+  ['example.zip', 'application/zip'], ['table.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  ['opaque', ''], ['clip.mp4', 'video/mp4'], ['diagram.svg', 'image/svg+xml'],
+])('pastes and sends one %s as an imported file even in an image-only Bot', async (name, type) => {
+  const f = await fixture('en', { ...project, conversation: { attachments: { images: true } } });
+  const file = new File(['bytes'], name, { type });
+  vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+    Object.defineProperty(this, 'result', { value: `data:${type || 'application/octet-stream'};base64,Ynl0ZXM=` });
+    this.onload?.(new ProgressEvent('load') as ProgressEvent<FileReader>);
+  });
+  const event = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData: transfer({}, { files: [file] }) });
+  document.querySelector('#message')!.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  await vi.advanceTimersByTimeAsync(0);
+  const imports = f.requests('import-drop');
+  expect(imports).toHaveLength(1);
+  expect(imports[0].entries).toEqual([{ name, kind: 'file', data: 'Ynl0ZXM=' }]);
+  expect(f.requests('upload')).toEqual([]);
+  const reference = { path: `/workspace/imports/${name}`, name, kind: 'file', size: 5 };
+  f.emit({ type: 'path-references', projectUri: project.uri, sessionId: 'first', requestId: imports[0].requestId, references: [reference] });
+  expect(document.querySelector<HTMLElement>('#error')!.hidden).toBe(true);
+  document.querySelector<HTMLButtonElement>('#send')!.click();
+  expect(f.requests('send').at(-1)).toMatchObject({ text: '', references: [reference], attachments: [] });
+});
+
+it.each([true, false])('pastes one large native file by path, using the URI list when available (%s)', async uriList => {
+  const f = await fixture('en', { ...project, conversation: { attachments: { images: true } } });
+  const file = Object.assign(new File(['unused'], 'archive.zip', { type: 'application/zip' }), { path: '/tmp/archive.zip' });
+  Object.defineProperty(file, 'size', { value: 51 * 1024 * 1024 });
+  const read = vi.spyOn(FileReader.prototype, 'readAsDataURL');
+  const icon = new File(['icon'], 'clipboard.png', { type: 'image/png' });
+  const clipboardData = uriList ? transfer({ 'text/uri-list': 'file:///tmp/archive.zip', 'text/plain': file.name }, { files: [icon] })
+    : transfer({ 'text/plain': file.name }, { files: [file] });
+  const event = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData });
+  document.querySelector('#message')!.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(f.requests('resolve-paths')).toMatchObject([{ paths: [uriList ? 'file:///tmp/archive.zip' : file.path] }]);
+  expect(f.requests('upload')).toEqual([]); expect(f.requests('import-drop')).toEqual([]); expect(read).not.toHaveBeenCalled();
+  expect(document.querySelector<HTMLElement>('#error')!.hidden).toBe(true);
+});
+
 it.each([true, false])('shows managed attachment metadata, keeps genuine image preview, and handles native capability %s', async native => {
-  const f = await fixture('en', { ...project, conversation: { attachments: { images: true, files: true } } }, native);
+  const f = await fixture('en', { ...project, conversation: { attachments: { images: true } } }, native);
   const file: Attachment = { id: 'sheet', name: 'table.xlsx', size: 4096, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', kind: 'file', storage: 'local', path: '/tmp/managed/table.xlsx', createdAt: '' };
   const photo: Attachment = { ...file, id: 'photo', name: 'screenshot.png', kind: 'image', mimeType: 'image/png', previewUrl: '/api/file/photo' };
   f.emit({ type: 'attachments', sessionId: 'first', projectUri: project.uri, files: [file, photo] });

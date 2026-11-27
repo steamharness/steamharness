@@ -3,7 +3,7 @@ import { hydrateUserSettings } from './user-settings';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { getUserSettings, parseBotCredentialSlot, parseUserSettings, type UserSettings } from 'steamharness';
-import { conversationPrompt, type PathReference } from './conversation-paths';
+import { conversationPrompt, isInlineConversationImage, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import { confirmAgentCommand, retryableAgentCommandError } from './agent-command-retry';
 import { credentialStatus, credentialUnavailable, credentialUseSupported, parseBotCredentialUse, parseBotCredentialUseResult, type BotCredentialApproval, type BotCredentialHost } from './bot-credential-host';
@@ -370,12 +370,13 @@ export class ConversationController {
         owner.agentParameters.allowBotCredentialInput = input.allowBotCredentialInput;
       }
       if (planIndex >= 0 && previous!.args[planIndex + 1] !== 'false' && owner.activeRunId) throw new Error(t("The current session is running."));
-      if (attachmentsUnsupported(input.attachments)) throw new Error(t('This session accepts image attachments.'));
-      if (!input.references?.length && (input.text === '/compact' || input.text === '/summarize')) {
+      if (!input.references?.length && !input.attachments.length && (input.text === '/compact' || input.text === '/summarize')) {
         await this.agentCommand(entry.id, { type: 'compact', requestId: queued.id }, undefined, input.configurationSelection);
       } else {
+        // The running Agent transport takes image bytes only; other files remain readable by path.
+        const { media, paths } = conversationAttachmentInputs(input.attachments, this.project.conversation?.attachments, true);
         (entry.agentInputs ??= {})[queued.id] = queued;
-        try { await this.agentCommand(entry.id, { type: 'submit', requestId: queued.id, prompt: conversationPrompt(input.text, input.references), mode }, input.attachments, input.configurationSelection); }
+        try { await this.agentCommand(entry.id, { type: 'submit', requestId: queued.id, prompt: conversationPrompt(input.text, input.references, paths), mode }, media.images, input.configurationSelection); }
         catch (error) {
           if (!entry.agentCommands?.some(item => item.command.requestId === queued.id)) { delete entry.agentInputs[queued.id]; await this.persist(); }
           throw error;
@@ -413,11 +414,10 @@ export class ConversationController {
     const parameters = projectParameters(this.project, input.entrypointId);
     const args = projectParamArgs(parameters.fields, input.params, input.states);
     if (this.project.projectType === 'bot') {
-      args.push('--message', conversationPrompt(input.text, input.references));
+      const { media, paths } = conversationAttachmentInputs(input.attachments, this.project.conversation?.attachments);
+      args.push('--message', conversationPrompt(input.text, input.references, paths));
       for (const [flag, files] of [
-        ['--images', input.attachments.filter((file) => file.kind === 'image')],
-        ['--videos', input.attachments.filter((file) => file.mimeType.startsWith('video/'))],
-        ['--files', input.attachments.filter((file) => file.kind !== 'image' && !file.mimeType.startsWith('video/'))],
+        ['--images', media.images], ['--videos', media.videos], ['--files', media.files],
       ] as const) { if (files.length) { args.push(flag, JSON.stringify(files.map(({ previewUrl: _, ...reference }) => reference))); } }
     } else if (input.text) { args.push(...this.rawArgs(input.text)); }
     if (!answer) {
@@ -1644,4 +1644,14 @@ export class ConversationController {
 
 export { sessionRunning } from './workflow-types';
 
-function attachmentsUnsupported(attachments: Attachment[]): boolean { return attachments.some(file => file.kind !== 'image'); }
+function conversationAttachmentInputs(attachments: Attachment[], inline: NonNullable<Project['conversation']>['attachments'] = { images: true }, imagesOnly = false) {
+  const media: Record<'images' | 'videos' | 'files', Attachment[]> = { images: [], videos: [], files: [] };
+  const paths: string[] = [];
+  for (const file of attachments) {
+    const channel = file.kind === 'image' ? 'images' : file.mimeType.startsWith('video/') ? 'videos' : 'files';
+    if (inline?.[channel] && (channel === 'images' ? isInlineConversationImage(file.mimeType, file.size) : !imagesOnly)) media[channel].push(file);
+    else if (file.path) paths.push(file.path);
+    else throw new Error(t('Attachment file is unavailable: {0}', file.name));
+  }
+  return { media, paths };
+}

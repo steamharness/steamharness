@@ -149,6 +149,7 @@ describe('steamharness web', () => {
     expect(app.controller!.current.messages[0]).toMatchObject({ content: '', references });
     const imported = await (await post({ type: 'import-drop', entries: [{ name: 'browser/nested.txt', kind: 'file', data: Buffer.from('browser bytes').toString('base64') }, { name: 'browser/empty', kind: 'directory' }], requestId: 'import-drop' })).json();
     const reference = imported.messages.find((message: any) => message.type === 'path-references').references[0];
+    expect(reference.source).toBe('imported-copy');
     expect(await readFile(path.join(reference.path, 'nested.txt'), 'utf8')).toBe('browser bytes');
     await post({ type: 'send', text: 'Read the imported folder', params: {}, attachments: [], references: [reference] }); await app.controller!.idle();
     expect(vi.mocked(runtime.run).mock.calls[1][0].args.join('\n')).toContain(reference.path);
@@ -156,6 +157,24 @@ describe('steamharness web', () => {
     await post({ type: 'session-action', id: app.controller!.current.id, action: 'delete' });
     await expect(readFile(path.join(reference.path, 'nested.txt'))).rejects.toThrow();
     expect(await readFile(path.join(folder, 'source.txt'), 'utf8')).toBe('original bytes');
+  });
+
+  it('sends an uploaded file of an undeclared type using its resolved path, not the client path', async () => {
+    const { app, directory, runtime, post } = await fixture();
+    app.project.conversation = { attachments: { images: true } };
+    const actualPath = path.join(directory, 'archive.unknown'); await writeFile(actualPath, 'original bytes');
+    const reference = { id: 'archive', name: 'archive.unknown', kind: 'file' as const, mimeType: 'application/octet-stream', size: 14,
+      storage: 'local' as const, createdAt: '', conversationId: app.controller!.current.id };
+    vi.mocked(runtime.readFile).mockResolvedValue({ reference, path: actualPath });
+    const result = await post({ type: 'send', text: '', params: {}, attachments: [{ id: reference.id, path: '/spoofed/path' }] });
+    expect(result.status, await result.text()).toBe(200);
+    await app.controller!.idle();
+    const args = vi.mocked(runtime.run).mock.calls[0][0].args;
+    expect(args).not.toContain('--files');
+    const prompt = args[args.indexOf('--message') + 1];
+    expect(prompt).toContain('the original location of an imported-copy entry is unknown');
+    expect(JSON.parse(prompt.split('\n').slice(1).join('\n'))).toEqual([{ kind: 'file', path: actualPath, source: 'imported-copy' }]);
+    expect(app.controller!.current.messages[0].attachments).toEqual([{ ...reference, path: actualPath }]);
   });
 
   it('reconciles terminal durable turns imported by cross-window history refresh before publishing or saving them', async () => {

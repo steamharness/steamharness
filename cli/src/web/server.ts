@@ -657,7 +657,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   };
   const readAttachments = async (files: unknown, sessionId = controller.activeId): Promise<Attachment[]> => {
     if (!Array.isArray(files) || files.length > 32) { throw new Error('Invalid attachments.'); }
-    return Promise.all(files.map(async file => { if (typeof file?.id !== 'string') { throw new Error('Invalid attachment.'); } const { reference } = await runtime.readFile(project, file.id); if (reference.conversationId !== sessionId) { throw new Error('Attachment belongs to another conversation.'); } return reference; }));
+    return Promise.all(files.map(async file => {
+      if (typeof file?.id !== 'string') throw new Error('Invalid attachment.');
+      const { reference, path } = await runtime.readFile(project, file.id);
+      if (reference.conversationId !== sessionId) throw new Error('Attachment belongs to another conversation.');
+      return { ...reference, path };
+    }));
   };
   const findResourceCard = (reference: ResourceCardReference) => {
     let items, scopeId, source: ResourceCardReference;
