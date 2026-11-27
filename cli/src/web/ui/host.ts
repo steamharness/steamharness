@@ -17,7 +17,7 @@ import { acquireHostKeyboard } from './host-keyboard';
 import { prepareImageFiles } from './image-cropper';
 
 type Message = Record<string, any>;
-export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; readonly canOpenAttachments?: boolean; copyText?(text: string): Promise<boolean>; reloadProject?(draft?: Message): Promise<void> }
+export interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; fileUrl?(id: string): string; keyboard?: ReturnType<typeof acquireHostKeyboard>; editing?: { readonly enabled: boolean }; readonly canOpenAttachments?: boolean; readonly resolveLocalFiles?: (files: File[]) => Promise<string[] | undefined>; copyText?(text: string): Promise<boolean>; reloadProject?(draft?: Message): Promise<void> }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -70,19 +70,35 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     serverProjectRequests.clear();
   });
   let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, browserOpenHost = false, fileIconsHost = false, downloadHost = false;
-  let attachmentOpenHost = false;
+  let attachmentOpenHost = false, localFilePathsHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
   const pathOpens = new Map<string, Message>();
   const browserOpens = new Map<string, Message>();
   const fileIconRequests = new Set<string>();
+  const localFileRequests = new Map<string, { target: string; count: number; finish(paths?: string[]): void }>();
+  const resolveLocalFiles = async (files: File[]): Promise<string[] | undefined> => {
+    const target = dropTarget;
+    if (!localFilePathsHost || !target || !files.length || files.length > 32) return;
+    const requestId = crypto.randomUUID();
+    return new Promise(resolve => {
+      const finish = (paths?: string[]) => { clearTimeout(timer); localFileRequests.delete(requestId); resolve(paths); };
+      const timer = setTimeout(() => finish(), 2500);
+      localFileRequests.set(requestId, { target, count: files.length, finish });
+      try { window.parent.postMessage({ type: 'workflow-resolve-local-files', version: 1, target, requestId, files }, '*'); }
+      catch { finish(); }
+    });
+  };
   const selectedFiles = (message: Message, selection?: FileImport, error?: string) => {
     if (pathPickers.get(message.requestId) !== message) return;
     pathPickers.delete(message.requestId);
     emit({ type: error ? 'error' : 'files-selected', requestType: 'select-paths', requestId: message.requestId,
       projectUri: message.projectUri, sessionId: message.sessionId, target: message.target, selection, message: error });
   };
-  addEventListener('pagehide', () => { pathPickers.clear(); pathOpens.clear(); browserOpens.clear(); fileIconRequests.clear(); });
+  addEventListener('pagehide', () => {
+    pathPickers.clear(); pathOpens.clear(); browserOpens.clear(); fileIconRequests.clear();
+    for (const pending of localFileRequests.values()) pending.finish();
+  });
   const advertiseDropTarget = () => { if (window.parent !== window) window.parent.postMessage({ type: 'workflow-drop-target', version: 1, target: dropTarget }, '*'); };
   const captureInput = (input: HTMLElement): EditTarget => {
     const field = input as HTMLInputElement | HTMLTextAreaElement;
@@ -212,6 +228,19 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
     if (event.data.pathOpenVersion !== undefined) pathOpenHost = event.data.pathOpenVersion === 1;
     if (event.data.attachmentOpenVersion !== undefined) attachmentOpenHost = event.data.attachmentOpenVersion === 1;
+    if (event.data.localFilePathsVersion !== undefined) {
+      localFilePathsHost = event.data.localFilePathsVersion === 1;
+      if (!localFilePathsHost) for (const pending of localFileRequests.values()) pending.finish();
+    }
+    const localFiles = event.data.localFilePaths;
+    if (localFiles?.version === 1) {
+      const pending = localFileRequests.get(localFiles.requestId);
+      if (pending && localFiles.target === pending.target) {
+        const paths = localFiles.paths;
+        pending.finish(dropTarget === pending.target && Array.isArray(paths) && paths.length === pending.count
+          && paths.every((path: unknown) => typeof path === 'string' && path.startsWith('file:') && path.length <= 4096 && !/[\0\r\n]/.test(path)) ? paths : undefined);
+      }
+    }
     if (event.data.browserOpenVersion !== undefined) browserOpenHost = event.data.browserOpenVersion === 1;
     if (event.data.downloadVersion !== undefined) downloadHost = event.data.downloadVersion === 1;
     if (event.data.fileIconsVersion !== undefined || event.data.fileIconsChanged?.version === 1) {
@@ -488,6 +517,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     },
     fileUrl: id => connection.fileUrl(`/api/file/${encodeURIComponent(id)}`),
     get canOpenAttachments() { return pathOpenHost && attachmentOpenHost; },
+    get resolveLocalFiles() { return localFilePathsHost ? resolveLocalFiles : undefined; },
     getState: () => { try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null'); } catch { return undefined; } },
     setState: (state) => {
       try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}

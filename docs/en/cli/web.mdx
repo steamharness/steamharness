@@ -27,7 +27,9 @@ Use ↑/↓ to select, Enter or Tab to insert, Esc to dismiss, and Shift+Enter f
 
 Referencing an entry neither switches windows nor runs it. Existing `/` commands remain available.
 
-Choose, drop, or paste files in any format without configuring attachment types first. On macOS, copy a file in Finder and paste it into the Studio Assistant composer to reference its original path. If the browser only provides file contents, CLI Web sends supported images inline or imports a copy and marks its original location as unknown. A browser import can contain up to 50 MiB at a time. For larger files, send a local path the Bot can access.
+In Studio desktop running locally, choose, drop, or paste files in any format. The Bot reads the original file by path without creating a conversation copy. If Studio cannot get the original path, use the attachment picker in the composer to choose the file again.
+
+If the browser only provides file contents, CLI Web sends supported images inline or imports a copy and marks its original location as unknown. A browser import can contain up to 50 MiB at a time. For larger files, send a path the Bot can access.
 
 File cards show the file name, format, and size when available. In desktop Studio, select a card to preview supported formats such as XLSX, PDF, and DOCX, or to reveal an unsupported file in your system file manager. In standalone CLI Web, select the card to see file details and download an uploaded attachment.
 

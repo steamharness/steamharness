@@ -4,7 +4,7 @@ interface ProjectFrameDetails { version: 1; revision: string; localUsage: boolea
 const projectConversationPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 export const projectConversationId = (value: unknown): value is string => typeof value === 'string' && projectConversationPattern.test(value);
 
-export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false, nativeDownload = true, selection?: ConversationSelection, features?: { workflowDraft?: boolean; showScheduledRun?: string; projectDetails?: ProjectFrameDetails }): string {
+export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore', projectSetup = false, platform = false, nativeDownload = true, selection?: ConversationSelection, features?: { workflowDraft?: boolean; showScheduledRun?: string; projectDetails?: ProjectFrameDetails; localFilePaths?: boolean }): string {
   const address = new URL(url);
   if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid SteamHarness Web URL.'); }
   const locale = language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
@@ -19,6 +19,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
     <script nonce="${nonce}">
       const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)},projectDetails=${literal(features?.projectDetails)};
       const isNative=()=>document.documentElement.dataset.vscodeNativeClipboard==='1';
+      const localFilePaths=()=>${features?.localFilePaths === true}&&isNative();
       let theme=${literal(theme)},windowChrome=${literal(windowChrome)},editCommands=false,contextMenu=false,clipboardImageRequestId;
       const postHost=message=>frame.contentWindow.postMessage(message,origin);
       const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
@@ -50,7 +51,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();postHost({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})});contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,projectDetails,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:isNative()?1:0,clipboardImageVersion:isNative()?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,attachmentOpenVersion:isNative()?1:0,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;clipboardImageRequestId=undefined;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,projectDetails,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:isNative()?1:0,clipboardImageVersion:isNative()?1:0,resourceVersion:1,${platform ? 'serverProjectVersion:1,' : ''}${projectSetup ? 'projectSetupVersion:1,' : ''}${features?.workflowDraft ? 'workflowDraftVersion:1,' : ''}${features?.showScheduledRun ? `showScheduledRun:${literal(features.showScheduledRun)},` : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,attachmentOpenVersion:isNative()?1:0,localFilePathsVersion:localFilePaths()?1:0,browserOpenVersion:1,downloadVersion:${nativeDownload ? 1 : 0},userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
           if(event.origin!==origin)return;
@@ -93,6 +94,10 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
             }
           }
           if(message?.type==='workflow-drop-target'&&message.version===1){vscode.postMessage(message);}
+          else if(message?.type==='workflow-resolve-local-files'&&message.version===1&&localFilePaths()){
+            const {type,version,target,requestId,files}=message;
+            if(typeof target==='string'&&typeof requestId==='string'&&Array.isArray(files)&&files.length>0&&files.length<=32&&files.every(file=>file instanceof File))vscode.postMessage({type,version,target,requestId,files});
+          }
           else if(${features?.workflowDraft === true}&&message?.type==='workflow-save-draft'&&message.version===1){vscode.postMessage(message);}
           else if(['workflow-open-entry','workflow-trace','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-path-picker','workflow-path-open','workflow-browser-open','workflow-user-settings','workflow-file-icons',...(${nativeDownload}?['workflow-download']:[]),...(${platform}?['workflow-server-project','workflow-account']:[]),...(${projectSetup}?['workflow-project-upload']:[])].includes(message?.type)&&message.version===1)vscode.postMessage(message.type==='workflow-project-upload'?{type:message.type,version:1}:message);
           return;

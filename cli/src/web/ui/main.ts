@@ -33,6 +33,7 @@ import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, isInlineConversationImage, pathReferences, type PathReference } from '../conversation-paths';
 import { captureFileDrop, capturePastedFiles, capturePickedFiles, isFileDrop, type FileImport } from './conversation-drop';
+import { nativeClipboardImageFormat } from './edit-commands';
 import { ConversationFileMenu } from './conversation-file-menu';
 import { FileIcons } from './file-icons';
 import { activeAgentActivity } from './agent-activity';
@@ -1094,20 +1095,27 @@ function initialize(): void {
     return button;
   }
 
-  async function applyFileImport(drop: FileImport, selectedRequestId?: string): Promise<void> {
+  async function applyFileImport(drop: FileImport, selectedRequestId?: string, nativeClipboardImage = false): Promise<void> {
     if (!state || !selectedRequestId && !advertisedDropTarget) return;
     const scope = dropScope(), projectUri = state.project.uri, sessionId = state.activeId, requestId = selectedRequestId ?? crypto.randomUUID();
     operationError.show();
     if (!selectedRequestId) { pendingDrops.add(requestId); uploading++; updateControls(); }
     try {
-      // Byte-only input can be stored as file references even if this Bot does not accept inline media.
-      const images = !drop.paths.length && !drop.directories && state.project.conversation?.attachments?.images
+      let paths = drop.paths;
+      const resolveLocalFiles = vscode.resolveLocalFiles;
+      if (!paths.length && resolveLocalFiles && !nativeClipboardImage) {
+        if (drop.files && drop.files.length > 32) throw new Error('Too many path references.');
+        paths = drop.files?.length ? await resolveLocalFiles(drop.files) ?? [] : [];
+        if (scope !== dropScope() || !pendingDrops.has(requestId)) return;
+        if (!paths.length) throw new Error('Original file path unavailable. Choose the file with the attachment picker.');
+      }
+      const images = !paths.length && !drop.directories && state.project.conversation?.attachments?.images
         && drop.files?.length && drop.files.every(file => isInlineConversationImage(file.type, file.size)) ? drop.files : undefined;
       if (images && draftFiles.length + images.length > 32) throw new Error('A message can contain up to 32 uploaded attachments.');
-      const entries = drop.paths.length ? undefined : await (images ? capturePickedFiles(images) : drop).read();
+      const entries = paths.length ? undefined : await (images ? capturePickedFiles(images) : drop).read();
       if (scope !== dropScope() || !pendingDrops.has(requestId)) return;
-      if (!drop.paths.length && !entries?.length) throw new Error('No files or folders were found in the drop.');
-      const data = drop.paths.length ? { type: 'resolve-paths', paths: drop.paths }
+      if (!paths.length && !entries?.length) throw new Error('No files or folders were found in the drop.');
+      const data = paths.length ? { type: 'resolve-paths', paths }
         : images ? { type: 'upload', files: images.map((file, index) => ({ name: file.name, mimeType: file.type, data: entries![index].data })) }
         : { type: 'import-drop', entries };
       vscode.postMessage({ ...data, projectUri, sessionId, requestId });
@@ -1786,7 +1794,7 @@ function initialize(): void {
     if (files.paths.length) {
       event.preventDefault(); event.stopImmediatePropagation();
     } else if (!transfer.getData('text/plain')) event.preventDefault();
-    void applyFileImport(files);
+    void applyFileImport(files, undefined, transfer.getData(nativeClipboardImageFormat) === '1');
   }, { capture: true });
   document.querySelector('main')!.addEventListener('click', dismissNarrowMenu);
   const dropArea = document.querySelector('main')!;

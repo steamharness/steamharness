@@ -378,7 +378,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       };
       const renderFrame = () => {
         frameLoaded = false;
-        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection, { workflowDraft: !!draft, projectDetails: usageBinding.frame() });
+        panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject, account.platform, !launcher.previewWeb, selection, { workflowDraft: !!draft, projectDetails: usageBinding.frame(), localFilePaths: !vscode.env.remoteName && !launcher.previewWeb });
       };
       const openConversation = (id: string) => {
         if (closed || project.projectType !== 'bot' || !projectConversationId(id)) return;

@@ -59,6 +59,31 @@ test('project frames advertise browser support and forward URL opens only from t
   } finally { dom.window.close(); }
 });
 
+test('only the local desktop frame can forward native file objects for path resolution', () => {
+  for (const [local, native] of [[true, true], [true, false], [false, true]]) {
+    const posted = [], received = [];
+    const origin = 'http://127.0.0.1:3000';
+    const html = module.exports.projectFrameHtml(`${origin}/entries/main/`, 'Project', 'file:///project', 'light', 'nonce', 'en',
+      undefined, undefined, false, false, true, undefined, { localFilePaths: local });
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://studio.test/', beforeParse(window) {
+      window.acquireVsCodeApi = () => ({ postMessage: message => posted.push(message), getState: () => undefined, setState() {} });
+    } });
+    try {
+      const { window } = dom, frame = window.document.querySelector('iframe');
+      window.document.documentElement.dataset.vscodeNativeClipboard = native ? '1' : '0';
+      frame.contentWindow.postMessage = message => received.push(message);
+      frame.dispatchEvent(new window.Event('load'));
+      assert.equal(received.at(-1).localFilePathsVersion, local && native ? 1 : 0);
+      const file = new window.File(['sample'], 'sample.zip'), request = { type: 'workflow-resolve-local-files', version: 1, requestId: 'drop', target: 'assistant:one', files: [file] };
+      const send = (origin, data) => window.dispatchEvent(new window.MessageEvent('message', { source: frame.contentWindow, origin, data }));
+      send('https://foreign.test', request); send(origin, { ...request, files: [{ name: 'sample.zip' }] }); send(origin, request);
+      const lookups = posted.filter(message => message.type === request.type);
+      assert.equal(lookups.length, local && native ? 1 : 0);
+      if (lookups.length) assert.equal(lookups[0].files[0], file);
+    } finally { dom.window.close(); }
+  }
+});
+
 test('the usage bridge forwards only the bound frame revision and strips directory overrides', () => {
   const posted = [], received = [];
   const projectDetails = { version: 1, revision: 'open-project', localUsage: true };

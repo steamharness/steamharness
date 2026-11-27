@@ -4,15 +4,15 @@ import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { kernelLock } from './helpers/kernel-lock.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const patch = path.join(root, 'patches/0050-studio-conversation-file-drop.patch');
-const contents = await readFile(patch, 'utf8');
-const helper = contents.split('diff --git ')[1].split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n');
+const localBridgePatch = path.join(root, 'patches/0184-studio-local-file-path-bridge.patch');
+const helper = await readFile(path.join(root, 'upstream/vscode/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts'), 'utf8');
 
 function fixture() {
   const listeners = new Map(), messages = [];
@@ -25,7 +25,8 @@ function fixture() {
     Disposable, EventType: { DRAG_OVER: 'dragover', DROP: 'drop' },
     addDisposableListener: (_window, type, listener, capture) => { assert.equal(capture, true); listeners.set(type, listener); return { dispose: () => listeners.delete(type) }; },
     containsDragType: event => event.supported !== false, extractEditorsDropData: event => event.editors ?? [],
-    URI: { parse: value => ({ scheme: new URL(value).protocol.slice(0, -1), toString: () => value }) },
+    isAbsolute: path.isAbsolute, getPathForFile: file => file.nativePath,
+    URI: { parse: value => ({ scheme: new URL(value).protocol.slice(0, -1), toString: () => value }), file: pathToFileURL },
   };
   runInNewContext(code, context);
   const drop = new context.Drop(message => messages.push(JSON.parse(JSON.stringify(message))));
@@ -61,6 +62,21 @@ test('native URI drops preserve encoded names and exclude remote resources', () 
   assert.deepEqual(f.messages[0].drop, { target: 'new-target', paths: ['file:///tmp/a%23.txt'] });
 });
 
+test('resolves native-backed Files by path only for the currently advertised conversation', () => {
+  const f = fixture(), nativePath = path.resolve('desktop file #.zip');
+  const request = { target: 'assistant:one', requestId: 'drop', files: [{ nativePath }] };
+  f.drop.resolveLocalFiles(request);
+  assert.equal(f.messages.length, 0);
+  f.drop.update(request.target);
+  f.drop.resolveLocalFiles({ ...request, target: 'other' });
+  f.drop.resolveLocalFiles({ ...request, files: Array(33).fill(request.files[0]) });
+  assert.equal(f.messages.length, 0);
+  f.drop.resolveLocalFiles(request);
+  assert.deepEqual(f.messages.at(-1), { type: 'workflow-host', localFilePaths: { version: 1, target: request.target, requestId: request.requestId, paths: [pathToFileURL(nativePath).href] } });
+  f.drop.resolveLocalFiles({ ...request, files: [...request.files, { path: nativePath }] });
+  assert.deepEqual(f.messages.at(-1).localFilePaths.paths, []);
+});
+
 test('the integrated drag bridge patch reverses and reapplies against the pinned kernel without modifying the active checkout', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-drop-patch-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const config = await kernelLock();
@@ -70,7 +86,13 @@ test('the integrated drag bridge patch reverses and reapplies against the pinned
     await mkdir(path.dirname(path.join(directory, filename)), { recursive: true });
     await writeFile(path.join(directory, filename), original[index]);
   }
-  execFileSync('git', ['apply', '--reverse', '--check', patch], { cwd: directory }); execFileSync('git', ['apply', '--reverse', patch], { cwd: directory });
-  execFileSync('git', ['apply', '--check', patch], { cwd: directory }); execFileSync('git', ['apply', patch], { cwd: directory });
+  for (const filename of [localBridgePatch, patch]) {
+    execFileSync('git', ['apply', '--reverse', '--check', filename], { cwd: directory });
+    execFileSync('git', ['apply', '--reverse', filename], { cwd: directory });
+  }
+  for (const filename of [patch, localBridgePatch]) {
+    execFileSync('git', ['apply', '--check', filename], { cwd: directory });
+    execFileSync('git', ['apply', filename], { cwd: directory });
+  }
   assert.deepEqual(await Promise.all(files.map(filename => readFile(path.join(directory, filename)))), original);
 });

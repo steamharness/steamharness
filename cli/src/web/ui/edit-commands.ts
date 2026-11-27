@@ -37,6 +37,8 @@ export function selectedText(target: Element | null = document.activeElement): s
   return window.getSelection()?.toString() ?? '';
 }
 
+export const nativeClipboardImageFormat = 'application/x-steamharness-clipboard-image';
+
 export function pasteHostClipboard(clipboard: { text?: unknown; image?: unknown; fileUrls?: unknown }): void {
   if (typeof clipboard.text !== 'string' || clipboard.image !== undefined && !ArrayBuffer.isView(clipboard.image)) { return; }
   const target = document.activeElement;
@@ -49,6 +51,7 @@ export function pasteHostClipboard(clipboard: { text?: unknown; image?: unknown;
   } else if (clipboard.image && clipboard.image.byteLength) {
     const image = new Uint8Array(clipboard.image.buffer, clipboard.image.byteOffset, clipboard.image.byteLength);
     transfer.items.add(new File([new Uint8Array(image)], 'clipboard.png', { type: 'image/png' }));
+    transfer.setData(nativeClipboardImageFormat, '1');
   }
   const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer });
   target.dispatchEvent(event);

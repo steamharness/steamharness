@@ -854,6 +854,7 @@
   "Too many path references.": "路径引用数量超过 32 个。",
   "A drop can contain up to 1,000 files and folders.": "一次最多拖入 1,000 个文件和文件夹。",
   "No files or folders were found in the drop.": "没有找到拖入的文件或文件夹。",
+  "Original file path unavailable. Choose the file with the attachment picker.": "无法获取原始路径，请通过附件按钮选择文件。",
   "Add files or folders": "添加文件或文件夹",
   "Choose folders": "选择文件夹",
   "Open folder in file manager": "在文件管理器中打开文件夹",

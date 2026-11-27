@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { captureFileDrop, capturePickedFiles } from '../web/ui/conversation-drop';
+import { nativeClipboardImageFormat } from '../web/ui/edit-commands';
 import type { Attachment, ConversationSession, Project } from '../web/workflow-types';
 
-const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn(), canOpenAttachments: true }));
+const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn(), canOpenAttachments: true,
+  resolveLocalFiles: undefined as ((files: File[]) => Promise<string[] | undefined>) | undefined }));
 const dialogs = vi.hoisted(() => ({ image: vi.fn(), attachmentDetails: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} image = dialogs.image; attachmentDetails = dialogs.attachmentDetails; } }));
@@ -23,7 +25,7 @@ afterEach(() => {
 
 async function fixture(language = 'en', currentProject = project, canOpenAttachments = true) {
   vi.resetModules(); vi.useFakeTimers(); host.postMessage.mockReset(); host.getState.mockReturnValue(undefined); host.setState.mockReset();
-  host.canOpenAttachments = canOpenAttachments; dialogs.image.mockClear(); dialogs.attachmentDetails.mockClear();
+  host.canOpenAttachments = canOpenAttachments; host.resolveLocalFiles = undefined; dialogs.image.mockClear(); dialogs.attachmentDetails.mockClear();
   document.documentElement.lang = language;
   for (const target of [window, document]) {
     const add = target.addEventListener.bind(target);
@@ -292,6 +294,38 @@ it.each([true, false])('pastes one large native file by path, using the URI list
   expect(f.requests('resolve-paths')).toMatchObject([{ paths: [uriList ? 'file:///tmp/archive.zip' : file.path] }]);
   expect(f.requests('upload')).toEqual([]); expect(f.requests('import-drop')).toEqual([]); expect(read).not.toHaveBeenCalled();
   expect(document.querySelector<HTMLElement>('#error')!.hidden).toBe(true);
+});
+
+it.each([true, false])('never reads or imports a desktop drop while resolving the original path (%s)', async found => {
+  const f = await fixture('zh-CN', { ...project, conversation: { attachments: { images: true } } });
+  const file = new File(['local original bytes'], 'original.zip', { type: 'application/zip' });
+  Object.defineProperty(file, 'size', { value: 51 * 1024 * 1024 });
+  const paths = ['file:///Desktop/original.zip'];
+  const resolve = host.resolveLocalFiles = vi.fn(async () => found ? paths : undefined);
+  const read = vi.spyOn(FileReader.prototype, 'readAsDataURL');
+  f.drop(transfer({ Files: '' }, { files: [file] }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(resolve).toHaveBeenCalledExactlyOnceWith([file]);
+  expect(read).not.toHaveBeenCalled(); expect(f.requests('import-drop')).toEqual([]); expect(f.requests('upload')).toEqual([]);
+  const error = document.querySelector<HTMLElement>('#error')!;
+  if (found) { expect(f.requests('resolve-paths')).toMatchObject([{ paths }]); expect(error.hidden).toBe(true); }
+  else { expect(f.requests('resolve-paths')).toEqual([]); expect(error.textContent).toContain('无法获取原始路径'); }
+});
+
+it('keeps genuine native clipboard images without treating a disk file as a screenshot', async () => {
+  const f = await fixture('en', { ...project, conversation: { attachments: { images: true } } });
+  const resolve = host.resolveLocalFiles = vi.fn(async () => undefined);
+  vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+    Object.defineProperty(this, 'result', { value: 'data:image/png;base64,aW1hZ2U=' });
+    this.onload?.(new ProgressEvent('load') as ProgressEvent<FileReader>);
+  });
+  const file = new File(['image'], 'clipboard.png', { type: 'image/png' });
+  const paste = (data: DataTransfer) => document.querySelector('#message')!.dispatchEvent(Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData: data }));
+  paste(transfer({}, { files: [file] })); await vi.advanceTimersByTimeAsync(0);
+  expect(resolve).toHaveBeenCalledExactlyOnceWith([file]); expect(f.requests('upload')).toEqual([]);
+  paste(transfer({ [nativeClipboardImageFormat]: '1' }, { files: [file] })); await vi.advanceTimersByTimeAsync(0);
+  expect(resolve).toHaveBeenCalledTimes(1);
+  expect(f.requests('upload')).toMatchObject([{ files: [{ name: 'clipboard.png', mimeType: 'image/png', data: 'aW1hZ2U=' }] }]);
 });
 
 it.each([true, false])('shows managed attachment metadata, keeps genuine image preview, and handles native capability %s', async native => {

@@ -199,6 +199,29 @@ it('only uses the attachment open mode with a parent that supports it', async ()
   f.receive({ attachmentOpenVersion: 0 }); expect(f.host.canOpenAttachments).toBe(false); f.close();
 });
 
+it('correlates original-path lookups with the desktop parent and the active conversation', async () => {
+  const f = hostFixture(), files = [new File(['local bytes'], 'sample.zip')];
+  await f.host.postMessage({ type: 'drop-target', target: f.request.target });
+  f.receive({ localFilePathsVersion: 1 }, {});
+  expect(f.host.resolveLocalFiles).toBeUndefined();
+  f.receive({ localFilePathsVersion: 1 });
+  const pending = f.host.resolveLocalFiles!(files);
+  const request = f.sent.at(-1);
+  expect(request).toMatchObject({ type: 'workflow-resolve-local-files', version: 1, target: f.request.target, files });
+  const result = { version: 1, target: request.target, requestId: request.requestId, paths: ['file:///Desktop/sample.zip'] };
+  f.receive({ localFilePaths: { ...result, paths: ['file:///wrong'] } }, {});
+  f.receive({ localFilePaths: { ...result, target: 'foreign' } });
+  f.receive({ localFilePaths: result });
+  await expect(pending).resolves.toEqual(result.paths);
+
+  const stale = f.host.resolveLocalFiles!(files), staleRequest = f.sent.at(-1);
+  await f.host.postMessage({ type: 'drop-target', target: 'another conversation' });
+  f.receive({ localFilePaths: { ...result, requestId: staleRequest.requestId, target: staleRequest.target } });
+  await expect(stale).resolves.toBeUndefined();
+  const closed = f.host.resolveLocalFiles!(files); f.close();
+  await expect(closed).resolves.toBeUndefined();
+});
+
 it('authenticates and correlates Studio theme responses and refreshes after host invalidation', async () => {
   const f = hostFixture(), request = { type: 'file-icons', requestId: 'icons-1', files: [{ path: '/src/index.ts', kind: 'file' }] };
   f.receive({ fileIconsVersion: 1 }, {}); await f.host.postMessage(request); expect(f.sent).toHaveLength(0);
